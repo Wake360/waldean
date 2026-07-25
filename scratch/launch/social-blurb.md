@@ -1,0 +1,1 @@
+I built a linter that catches train/test leakage and other statistical malpractice in notebooks — then mutation-tested it and found it was 96% wrong on real code. Rebuilt it, ran it again: 0 false positives on that set, and 0.89 precision on a fresh 60-notebook batch. Full writeup + repo: github.com/Wake360/wald
