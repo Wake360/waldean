@@ -16,8 +16,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --locked --extra corpus --extra dev
-      - run: uvx ruff check wald/ tests/
-      - run: uvx pyright wald/
+      - run: uvx ruff@0.15.21 check wald/ tests/
+      - run: uvx pyright@1.1.411 wald/
       # unit tests: fast, no kernel execution
       - run: uv run pytest tests/ --ignore=tests/test_gates.py -q
       # golden gates G0+G1: rebuild the corpus from scratch (mutation verify
@@ -38,7 +38,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: uv sync --locked --extra corpus --extra dev
-      - run: uvx ruff check wald/ tests/
-      - run: uvx pyright wald/
+      - run: uvx ruff@0.15.21 check wald/ tests/
+      - run: uvx pyright@1.1.411 wald/
       # unit tests only: no corpus build, gates, or eval (they need Jupyter kernel execution)
       - run: uv run pytest tests/ --ignore=tests/test_gates.py -q
