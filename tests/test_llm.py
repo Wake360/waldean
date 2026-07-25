@@ -425,6 +425,24 @@ def test_agent_backend_raises_on_error_envelope(monkeypatch):
         llm.AgentBackend().complete("sys", "user")
 
 
+def test_agent_backend_disables_user_hooks(monkeypatch):
+    # 17/45 sessions in the 2026-07-09 indicative eval died on a user-level
+    # SessionEnd hook EAGAIN; the backend must not inherit user hooks.
+    envelope = json.dumps({
+        "type": "result", "subtype": "success", "is_error": False, "result": '{"ok": 1}',
+    })
+    captured = {}
+
+    def fake_run(cmd, *a, **kw):
+        captured["cmd"] = cmd
+        return FakeCompleted(0, stdout=envelope)
+
+    monkeypatch.setattr(llm.subprocess, "run", fake_run)
+    llm.AgentBackend().complete("SYSTEM", "USERPROMPT")
+    idx = captured["cmd"].index("--settings")
+    assert json.loads(captured["cmd"][idx + 1]) == {"disableAllHooks": True}
+
+
 def test_codex_backend_reads_answer_from_output_file(monkeypatch, tmp_path):
     captured = {}
 

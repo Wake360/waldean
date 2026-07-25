@@ -209,6 +209,7 @@ class AgentBackend:
             result = subprocess.run(
                 ["claude", "-p", "--output-format", "json", "--model", "sonnet",
                  "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+                 "--settings", '{"disableAllHooks":true}',
                  "--system-prompt", system, "--disallowed-tools", "*"],
                 input=user,
                 capture_output=True, text=True, timeout=600,
