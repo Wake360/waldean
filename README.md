@@ -30,7 +30,7 @@ verdict: 1 high, 0 medium | static layer (no LLM)
 - **Fix:** Fit the transformer on the training split only; apply transform to the test split.
 - **Confidence:** 0.92
 
-## CLEAN (checked): baserate-accuracy-imbalanced, testing-multiple-uncorrected
+## CLEAN (checked): baserate-accuracy-imbalanced, leakage-temporal-shuffle, testing-multiple-uncorrected
 
 ```
 
@@ -238,22 +238,19 @@ notebook ──> ingest (nbformat) ──> layer A: static detectors ──> rep
 
 The hybrid split is the point: leakage is an AST pattern — an LLM has no
 business there. The LLM layer handles only what statics cannot: whether
-the prose claims match what the code computes. It is built and tested
-key-free against replay fixtures, but its quality gates (G2/G3) never
-ran — they need Anthropic + OpenAI keys, and the keys never arrived. Per
-the project's pre-planned termination rule, **v1 ships as the static
-linter only; no narrative-layer numbers are claimed here.**
+the prose claims match what the code computes. Its quality gates (G2/G3)
+never ran, so **no narrative-layer numbers are claimed; the static
+linter is the validated product.**
 
-The narrative layer stays in the repo as an experimental, unvalidated
-path: `--llm-subscription` runs it through the `claude`/`codex` CLIs
-(subscription billing, no API keys), and `--llm` runs it against the
-Anthropic/OpenAI APIs for anyone holding both keys. Neither path has
-passed a quality gate. An indicative, non-gate dev-split run over the
-subscription backend is at
+The narrative layer runs through the `claude`/`codex` CLIs on
+subscription billing: `wald check --llm --llm-subscription <notebook>`.
+Its numbers are dev-split and indicative by construction
+(`gate_evidence: false`); it has not passed a quality gate. An
+indicative dev-split run is at
 `evals/2026-07-09-llm-eval-dev-subscription-indicative.md` — unpinned
 models, not reproducible, and 17 of its files hit backend errors and
 were excluded, so read it as a snapshot, not evidence. Static-only is
-the default; without `--llm` or `--llm-subscription`, Wald calls no API.
+the default; without `--llm --llm-subscription`, Wald runs no LLM.
 
 Taxonomy is data (`flaws.yaml`): 9 flaw classes with definition, book
 anchor, mutation recipe and severity (`wald rules` lists them). Adding a
@@ -308,14 +305,15 @@ time, to verify mutations.
 ## Roadmap
 
 - **M2** — LLM narrative layer + cross-provider verifier + fusion: built,
-  tested key-free against replay fixtures (`plans/m2.md`). The G2/G3 gate
-  runs (F1 ≥ 0.7, verifier kills ≥ 80% of seeded false flags) never
-  happened — the two API keys never arrived. Per the termination rule,
-  v1 closes with the static layer only; the gate harness stays intact for
-  whoever runs it with keys.
+  tested against replay fixtures (`plans/m2.md`), and runs on
+  subscription CLIs (`wald check --llm --llm-subscription`). The G2/G3
+  gates never ran; narrative numbers stay dev-split and indicative
+  (`gate_evidence: false`).
 - **M3** — table consistency checks (cohort sums vs. declared population).
-- **M4** — GitHub Action with PR annotations, severity calibration.
-  (Dogfood on real licensed notebooks: done, `evals/2026-07-04-dogfood.md`.)
+- **M4** — GitHub Action with PR annotations: shipped in 0.2.1
+  (`action.yml`). Severity calibration stays parked until flag volume
+  exists. (Dogfood on real licensed notebooks: done,
+  `evals/2026-07-04-dogfood.md`.)
 - Corpus contributions welcome: see `CONTRIBUTING.md` for the clean-corpus
   criteria, real-notebook licensing rules, and the flaw-class contribution
   shape (taxonomy record, detector, mutation with mechanical `verify()`).
