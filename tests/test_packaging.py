@@ -19,3 +19,15 @@ def test_action_version_matches_package():
     action_version = action["inputs"]["version"]["default"]
 
     assert action_version == pkg_version
+
+
+def test_init_version_matches_package():
+    pyproject = (REPO / "pyproject.toml").read_text()
+    match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', pyproject)
+    assert match, "no version found in pyproject.toml"
+    pkg_version = match.group(1)
+
+    init_text = (REPO / "wald" / "__init__.py").read_text()
+    init_match = re.search(r'__version__\s*=\s*"([^"]+)"', init_text)
+    assert init_match, "no __version__ in wald/__init__.py"
+    assert init_match.group(1) == pkg_version
