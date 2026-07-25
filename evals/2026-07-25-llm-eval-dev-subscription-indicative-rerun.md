@@ -34,7 +34,8 @@ The 2026-07-09 run (`evals/2026-07-09-llm-eval-dev-subscription-indicative.md`) 
 files fail with backend errors (mostly a user-level `SessionEnd` hook killing agent sessions),
 void-ing gate evidence for those files. This re-run, after hook isolation, has 0 backend errors
 across the dev split — same perfect narrative F1 and G3 kill rates on the files that did
-complete in the prior run, plus full coverage this time.
+complete in the prior run, plus full coverage this time; true-flag survival dipped from 20/20
+to 24/25 — the verifier killed one real flag.
 
 ## Honest caveats
 

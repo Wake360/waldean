@@ -146,7 +146,7 @@ scripts and not on plain scripts, which have none.
 
 ## GitHub Action
 
-`Wake360/wald@v0.3.0` is a composite action that installs `wald-lint`, runs
+`Wake360/wald@v0.3.1` is a composite action that installs `wald-lint`, runs
 `wald check` on the paths you pass, writes a SARIF 2.1.0 log, and reports a
 `gate-exit-code` mapped through `fail-on` (high, medium, or never). The
 action never fails the job itself — it exposes the code and lets your
@@ -185,7 +185,7 @@ jobs:
       - name: wald
         id: wald
         if: steps.changed.outputs.files != ''
-        uses: Wake360/wald@v0.3.0
+        uses: Wake360/wald@v0.3.1
         with:
           paths: ${{ steps.changed.outputs.files }}
           fail-on: high
@@ -209,7 +209,7 @@ jobs:
 ```yaml
 repos:
   - repo: https://github.com/Wake360/wald
-    rev: v0.3.0
+    rev: v0.3.1
     hooks:
       - id: wald
       - id: wald-scripts
@@ -247,10 +247,10 @@ subscription billing: `wald check --llm --llm-subscription <notebook>`.
 Its numbers are dev-split and indicative by construction
 (`gate_evidence: false`); it has not passed a quality gate. An
 indicative dev-split run is at
-`evals/2026-07-09-llm-eval-dev-subscription-indicative.md` — unpinned
-models, not reproducible, and 17 of its files hit backend errors and
-were excluded, so read it as a snapshot, not evidence. Static-only is
-the default; without `--llm --llm-subscription`, Wald runs no LLM.
+`evals/2026-07-25-llm-eval-dev-subscription-indicative-rerun.md` —
+unpinned models, not reproducible (the prior 2026-07-09 run lost 17/45
+files to backend errors; the rerun after hook isolation completed all
+files). Static-only is the default; without `--llm`, Wald calls no LLM.
 
 Taxonomy is data (`flaws.yaml`): 9 flaw classes with definition, book
 anchor, mutation recipe and severity (`wald rules` lists them). Adding a

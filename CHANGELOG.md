@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.1
+
+- LLM narrative layer: `AgentBackend` now passes `--settings
+  '{"disableAllHooks":true}'` to the `claude`/`codex` CLIs, so a
+  user-level Claude hook can no longer kill a subscription eval
+  session mid-run — the 2026-07-09 dev-split eval lost 17/45 sessions
+  to a `SessionEnd` hook doing exactly this.
+- Packaging: `wald/__init__.py` version had drifted to 0.2.1 against
+  the 0.3.0 release; fixed and locked by a new packaging test so the
+  two can't diverge again.
+- CI: ruff pinned to 0.15.21 and pyright to 1.1.411 — ruff 0.16.0
+  reported 37 new findings on an unrelated version bump.
+- README rewritten for the subscription-only narrative path.
+
 ## 0.3.0
 
 - CLI: `.py` input support — `wald check analysis.py` runs on plain
