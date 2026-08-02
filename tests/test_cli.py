@@ -602,3 +602,38 @@ def test_eval_predictions_rejects_llm(fake_corpus, capsys):
                "--predictions", str(fake_corpus / "nope.json"), "--llm"])
     assert rc == 3
     assert "drop --llm" in capsys.readouterr().err
+
+
+def test_eval_predictions_malformed_json_exits_3(fake_corpus, capsys):
+    preds = fake_corpus / "preds.json"
+    preds.write_text("not json")
+    rc = main(["eval", "--corpus", str(fake_corpus), "--predictions", str(preds)])
+    err = capsys.readouterr().err
+    assert rc == 3
+    assert err.startswith("wald: --predictions: ")
+
+
+def test_eval_predictions_unknown_corpus_path_exits_3(fake_corpus, capsys):
+    preds = fake_corpus / "preds.json"
+    preds.write_text(json.dumps({"mutated/typo.ipynb": []}))
+    rc = main(["eval", "--corpus", str(fake_corpus), "--predictions", str(preds)])
+    err = capsys.readouterr().err
+    assert rc == 3
+    assert err.startswith("wald: --predictions: ")
+    assert "typo" in err
+
+
+@pytest.mark.parametrize("preds_content", [
+    "[]",  # top-level list, not an object
+    json.dumps({"clean/c.ipynb": [{"confidence": 1.0}]}),  # missing flaw_id
+    json.dumps({"clean/c.ipynb": [{"flaw_id": "leakage-fit-before-split",
+                                    "confidence": "high"}]}),  # non-numeric confidence
+    json.dumps({"clean/c.ipynb": "oops"}),  # value is a string, not a list
+])
+def test_eval_predictions_malformed_shapes_exit_3(fake_corpus, capsys, preds_content):
+    preds = fake_corpus / "preds.json"
+    preds.write_text(preds_content)
+    rc = main(["eval", "--corpus", str(fake_corpus), "--predictions", str(preds)])
+    err = capsys.readouterr().err
+    assert rc == 3
+    assert err.startswith("wald: --predictions: ")

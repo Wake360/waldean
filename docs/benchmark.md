@@ -9,8 +9,9 @@ scored against it.
 ## Format
 
 One JSON object. Keys are corpus-relative POSIX paths exactly as they
-appear in `corpus/MANIFEST.json` (`clean/...`, `mutated/...`, `real/...`).
-Values are lists of findings:
+appear in `corpus/MANIFEST.json` (`clean/...`, `mutated/...`) and
+`corpus/real/MANIFEST.json` (`real/...`) — 275 files total (56 synthetic
+clean + 192 mutants + 27 real clean). Values are lists of findings:
 
     {
       "mutated/churn-s11__leakage-fit-before-split__m0.ipynb": [
@@ -31,14 +32,20 @@ come from `wald rules --format json`. Unknown file keys are an error.
 Scoring reuses wald's own eval code path: a mutant is a TP only if a
 finding carries its exact `flaw_id`; any confident finding on a clean
 notebook is an FP; confident findings of a *different* class on a mutant
-are FPs too. Narrative-only mutants (32 of 192) are excluded from the
-static table, same as for wald itself.
+are FPs too. Narrative-only mutants (32 of 192) are excluded from static
+recall — the static classes can't decide them — but not from scoring
+altogether: a confident static-class finding on one still counts as a
+cross-class FP, same as for wald itself.
 
 ## Corpus version
 
-Cite the `built` date plus the `provenance` block from
+Cite the `built` date plus the `provenance` string from
 `corpus/MANIFEST.json`. A rebuilt corpus (`wald corpus build`) with the
 same seeds and `WALD_BUILD_DATE` is byte-identical.
+
+The report prints to stdout only (nothing is written to disk); `--split`
+does not apply to `--predictions` runs — both dev and held-out mutants
+are scored together.
 
 ## Worked example
 

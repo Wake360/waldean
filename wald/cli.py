@@ -232,7 +232,14 @@ def cmd_eval(args) -> int:
             return 3
         from .eval import evaluate_predictions, render_report
 
-        results = evaluate_predictions(args.corpus, args.predictions)
+        try:
+            results = evaluate_predictions(args.corpus, args.predictions)
+        except SystemExit as exc:
+            print(f"wald: --predictions: {exc}", file=sys.stderr)
+            return 3
+        except Exception as exc:
+            print(f"wald: --predictions: {_input_error(exc)}", file=sys.stderr)
+            return 3
         report = render_report(results)
         report = report.replace("# Wald eval —",
                                 "# Wald eval (external predictions) —", 1)
