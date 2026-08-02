@@ -317,6 +317,8 @@ time, to verify mutations.
   gates never ran; narrative numbers stay dev-split and indicative
   (`gate_evidence: false`).
 - **M3** — table consistency checks (cohort sums vs. declared population).
+- **Benchmark** — the corpus is scoreable by external tools:
+  `wald eval --predictions` (`docs/benchmark.md`).
 - **M4** — GitHub Action with PR annotations: shipped in 0.2.1
   (`action.yml`). Severity calibration stays parked until flag volume
   exists. (Dogfood on real licensed notebooks: done,
