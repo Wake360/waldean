@@ -5,7 +5,7 @@
 #   crontab -e   ->   0 9 * * 1 /Users/filipvachek/wald/scripts/llm-smoke.sh
 # or use Claude Code /schedule with the same command.
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 log="$HOME/.wald-llm-smoke.log"
 ts=$(date +%Y-%m-%dT%H:%M)
 out=$(uv run wald check examples/leaky.ipynb --llm --llm-subscription 2>&1)
