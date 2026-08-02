@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from wald.cli import _expand_notebooks, main
+from wald.cli import _EmptyDir, _expand_notebooks, main
 from wald.llm import BackendError
 
 REPO = Path(__file__).parent.parent
@@ -572,3 +572,14 @@ def test_rules_json_valid(capsys):
     assert len(data) == 9
     for d in data:
         assert set(d) == {"id", "layer", "severity", "definition", "book_anchor"}
+
+
+def test_expand_nonexistent_path_passes_through(tmp_path):
+    # not a dir -> passed through; cmd_check reports the read failure later
+    missing = str(tmp_path / "nope.ipynb")
+    assert _expand_notebooks([missing]) == [missing]
+
+
+def test_expand_empty_dir_raises(tmp_path):
+    with pytest.raises(_EmptyDir):
+        _expand_notebooks([str(tmp_path)])
