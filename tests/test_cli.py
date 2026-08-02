@@ -583,3 +583,22 @@ def test_expand_nonexistent_path_passes_through(tmp_path):
 def test_expand_empty_dir_raises(tmp_path):
     with pytest.raises(_EmptyDir):
         _expand_notebooks([str(tmp_path)])
+
+
+def test_eval_predictions_cli(fake_corpus, capsys):
+    preds = fake_corpus / "preds.json"
+    preds.write_text(json.dumps({
+        "mutated/m.ipynb": [{"flaw_id": "leakage-fit-before-split"}],
+    }))
+    rc = main(["eval", "--corpus", str(fake_corpus), "--predictions", str(preds)])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "external predictions" in out
+    assert "recall" in out
+
+
+def test_eval_predictions_rejects_llm(fake_corpus, capsys):
+    rc = main(["eval", "--corpus", str(fake_corpus),
+               "--predictions", str(fake_corpus / "nope.json"), "--llm"])
+    assert rc == 3
+    assert "drop --llm" in capsys.readouterr().err

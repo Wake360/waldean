@@ -225,6 +225,20 @@ def cmd_check(args) -> int:
 
 
 def cmd_eval(args) -> int:
+    if args.predictions:
+        if args.llm:
+            print("wald: --predictions scores an external tool; drop --llm",
+                  file=sys.stderr)
+            return 3
+        from .eval import evaluate_predictions, render_report
+
+        results = evaluate_predictions(args.corpus, args.predictions)
+        report = render_report(results)
+        report = report.replace("# Wald eval —",
+                                "# Wald eval (external predictions) —", 1)
+        print(report)
+        return 0
+
     if args.llm:
         from .eval import run_llm_eval
 
@@ -344,6 +358,10 @@ def main(argv=None) -> int:
                              "(subscription billing, no API keys); never gate-eligible")
     p_eval.add_argument("--split", choices=["dev", "heldout"], default="dev")
     p_eval.add_argument("--replay-dir", help="record/replay LLM responses here")
+    p_eval.add_argument("--predictions",
+                        help="score an external tool: JSON of {corpus-relative "
+                             "path: [{flaw_id, confidence}]} instead of running "
+                             "wald's own detectors")
     p_eval.set_defaults(func=cmd_eval)
 
     p_corpus = sub.add_parser("corpus", help="corpus operations")
