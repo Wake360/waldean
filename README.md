@@ -37,6 +37,13 @@ verdict: 1 high, 0 medium | static layer (no LLM)
 Exit codes: `0` clean, `1` medium findings, `2` high findings — usable as a
 pre-merge gate.
 
+Try it:
+
+```bash
+pip install wald-lint
+wald check your_notebook.ipynb
+```
+
 ## How Wald proves it works: mutation testing for statistics
 
 The detector is not measured by demos. A **mutation corpus** exists before
