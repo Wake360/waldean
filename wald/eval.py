@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from .corpus import _build_date
@@ -99,6 +100,50 @@ def evaluate(corpus_root: str | Path, floor: float = DEFAULT_CONFIDENCE_FLOOR,
         "clean_fp_files": clean_fp_files,
         "missed_mutants": misses,
     }
+    return results
+
+
+@dataclass
+class _PredFlag:
+    flaw_id: str
+    confidence: float = 1.0
+
+
+def predictions_producer(predictions: dict, corpus_root: str | Path):
+    """flags_producer for evaluate(): looks flags up from an external
+    predictions dict keyed by manifest-relative POSIX path."""
+    root = Path(corpus_root).resolve()
+
+    def produce(nb):
+        rel = Path(nb.path).resolve().relative_to(root).as_posix()
+        return [
+            _PredFlag(str(p["flaw_id"]), float(p.get("confidence", 1.0)))
+            for p in predictions.get(rel, [])
+        ]
+
+    return produce
+
+
+def evaluate_predictions(corpus_root: str | Path, predictions_path: str | Path,
+                         floor: float = DEFAULT_CONFIDENCE_FLOOR) -> dict:
+    """Score an external tool's predictions against the corpus ground truth
+    using the same counting logic that scores wald's own detectors."""
+    root = Path(corpus_root)
+    predictions = json.loads(Path(predictions_path).read_text())
+    manifest = json.loads((root / "MANIFEST.json").read_text())
+    known = {e["file"] for e in manifest["clean"]}
+    known |= {e["file"] for e in manifest["mutants"]}
+    real_manifest = root / "real" / "MANIFEST.json"
+    if real_manifest.exists():
+        known |= {e["file"] for e in json.loads(real_manifest.read_text())["clean"]}
+    unknown = sorted(set(predictions) - known)
+    if unknown:
+        raise SystemExit(
+            f"predictions reference files not in the corpus: {unknown[:5]}"
+        )
+    results = evaluate(root, floor=floor,
+                       flags_producer=predictions_producer(predictions, root))
+    results["predictions_file"] = str(predictions_path)
     return results
 
 
