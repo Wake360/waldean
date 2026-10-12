@@ -62,3 +62,28 @@ def test_convert_rejects_missing_file(fake_corpus):
     results = [_result(fake_corpus, "clean/c.ipynb", [])]
     with pytest.raises(ValueError, match="mutated/m.ipynb"):
         conv.convert(results, fake_corpus)
+
+
+yang = _load("yang_eval")
+
+
+def test_notebook_path_maps_label_to_zip_member(tmp_path):
+    got = yang.notebook_path("GitHub-data/notebooks/2021-09-05/nb_1244.py", tmp_path)
+    assert got == tmp_path / "2021-09-05-nb_1244.ipynb"
+
+
+def test_confusion_reads_label_prefix():
+    rows = [
+        {"nb": "a", "pre": "Y (MinMaxScaler)"},
+        {"nb": "b", "pre": "N [no model]"},
+        {"nb": "c", "pre": "Y"},
+        {"nb": "d", "pre": "N"},
+    ]
+    assert yang.confusion(rows, {"a", "b"}) == {"tp": 1, "fp": 1, "fn": 1, "tn": 1}
+
+
+def test_score_counts_errors_as_unflagged():
+    rows = [{"nb": "a", "pre": "Y"}, {"nb": "b", "pre": "N"}]
+    s = yang.score(rows, {"a": "error", "b": "clean"})
+    assert s["confusion"] == {"tp": 0, "fp": 0, "fn": 1, "tn": 1}
+    assert s["errors"] == ["a"]
