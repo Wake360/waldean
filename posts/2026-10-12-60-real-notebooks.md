@@ -3,7 +3,8 @@
 I ran Wald, a static leakage linter, on 60 notebooks it had never seen.
 Wald reads code and never executes it. This post covers what it caught,
 what it missed, and why the misses look the way they do. Every number
-here comes from one eval file, linked at the end.
+here comes from two files in the repo, both linked at the end: the eval
+report and its anonymized ledger of confirmed leaks.
 
 ## Setup
 
@@ -66,17 +67,17 @@ full data in a single cell.
 **An RFECV scout subsample.** The notebook called `fit_transform` on
 `X_train`, which was already split off. A later `train_test_split` only
 carved a feature-selection scout set out of that training data and then
-discarded it. Wald saw a fit before a split call and flagged it. It
-cannot tell which split is the evaluation split, so it treated a
-throwaway split as the real one. This is a new false-positive idiom.
+discarded it. It was not the evaluation split. The eval logs this as a
+new false-positive idiom. My reading, not a finding of the eval: a fit
+followed by a split call looks like a leak unless the tool knows which
+split feeds the metric.
 
-**A target-side `y.fillna`.** Wald read filling missing values in the
-label vector as a feature transform. Imputing `y` is its own question,
-but it is not the feature leak Wald claimed.
+**A target-side `y.fillna`.** The eval describes this flag as a
+target-side `y.fillna` mistaken for a feature transform.
 
-**A duplicate scaler flag.** One borderline flag repeated a scaler leak
-that was already reported. The leak was real; the second flag added
-nothing.
+**A duplicate scaler flag.** The eval counts one duplicate/borderline
+scaler flag among the three that did not survive. It gives no further
+detail.
 
 Corpus evals give Wald a 0.0% false-positive rate on curated clean
 notebooks. That number does not transfer. On messy real code Wald is not
@@ -85,8 +86,11 @@ perfect, and these three flags show where it slips.
 ## The eight misses
 
 Miss-hunting found 8 real leaks that Wald did not flag, each in a
-different notebook. None of them has a name-level syntactic anchor the
-static layer keys on. The snippets below are written fresh to show each
+different notebook. The eval describes all eight as leaks with no
+name-level syntactic anchor the static layer keys on. Two of the
+idioms, the scaler feeding `cross_val_score` and the TF-IDF/SVD case, do
+use named transformers, and the eval does not say which part of the pattern Wald
+failed to connect. The snippets below are written fresh to show each
 idiom. They are not copied from any notebook.
 
 **Per-group imputation before the split.** A group median is computed
@@ -105,10 +109,8 @@ df["LotFrontage"] = df["LotFrontage"].fillna(df["LotFrontage"].mean())
 X_train, X_test, y_train, y_test = train_test_split(X, y)
 ```
 
-**A scaler fit on full data that feeds `cross_val_score`.** There is no
-`train_test_split` call to anchor on. The folds exist only inside
-`cross_val_score`, and every fold was scaled with statistics from all of
-them.
+**A scaler fit on full data that feeds `cross_val_score`.** Every fold
+is scaled with statistics computed over all of them.
 
 ```python
 X_scaled = StandardScaler().fit_transform(X)
@@ -144,17 +146,18 @@ cross_val_score(model, df[features], df["target"], cv=StratifiedKFold())
 
 ## What this says about static analysis
 
-Static analysis catches leaks that have a syntactic anchor. A named
-transformer such as `StandardScaler`, a `fit_transform` call, and a
-`train_test_split` call later in the dataflow give a linter something to
-connect.
+Most of what Wald caught had a syntactic anchor: a named transformer
+such as `StandardScaler`, a `fit_transform` call, and a
+`train_test_split` call later in the dataflow.
 
-It misses leaks expressed as pandas arithmetic. `groupby().transform()`,
-`fillna(df[col].mean())` and `get_dummies` compute a statistic over all
-rows without any object that looks like a fitted transformer. It also
-misses splits that happen inside `cross_val_score` or inside a helper
-function. Closing these gaps needs deeper dataflow or reading the
-notebook's claims, not more name-based heuristics.
+The misses are a mix of idioms. Some are pandas code,
+`groupby().transform()`, `fillna(df[col].mean())` and `get_dummies`,
+that computes a statistic over all rows without a fitted transformer
+object. Some use named transformers, where the evaluation happens
+through `cross_val_score` or the fit covers a whole text corpus. Two are
+temporal leaks inside cross-validation or a training helper. The eval's view is that closing
+these gaps needs narrative fusion or new dataflow, not more static
+heuristics.
 
 The gap is not total. The ledger shows some pandas statistics that Wald
 did flag, including a column-mean `fillna`. The eval does not say why
