@@ -18,6 +18,7 @@ Checked on 2026-10-12: waldean.ai, waldean.io, waldean.dev and getwaldean.com ar
 
 1. Two layers. `wald` remains the open-source engine, CLI, PyPI package and GitHub repository. Waldean is the brand for the product, web UI and company built on top of it. Nothing in this repository is renamed.
 2. Register waldean.ai (primary), waldean.io and getwaldean.com now. waldean.dev is a redirect to docs and the open-source engine. Create a GitHub org under `waldean-ai` or request release of the dormant `waldean` handle.
+   Registered 2026-10-12: waldean.dev, waldean.io, getwaldean.com. waldean.ai is still unregistered; it stays the intended primary and should be taken before any public use of the name.
 3. The rebrand trigger is product, not calendar: Waldean goes public only once the week-4 decision in plan 05 says "continue narrow" and `wald propose` is in the hands of first users.
 4. The first Waldean UI is a thin wrapper over `wald check` and `wald propose`: upload a notebook, get the report, a proposed patch and a verification recipe. It serves people who already work in Python notebooks but do not want a CLI. Wider audiences (analysts outside Python, approvers) are reached only after the engine gains capabilities they need, not by UI alone.
 5. The brand story: "Waldean" reads as "in the manner of Abraham Wald", an analysis that does not fall for survivorship bias.
