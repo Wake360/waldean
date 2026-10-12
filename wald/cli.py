@@ -230,26 +230,34 @@ def cmd_eval(args) -> int:
             print("wald: --predictions scores an external tool; drop --llm",
                   file=sys.stderr)
             return 3
-        from .eval import evaluate_predictions, render_report
+        if args.split is not None:
+            print("wald: --split does not apply to --predictions; both splits are scored",
+                  file=sys.stderr)
+            return 3
+        from .eval import evaluate_predictions, load_predictions, render_report
 
         try:
-            results = evaluate_predictions(args.corpus, args.predictions)
-        except SystemExit as exc:
-            print(f"wald: --predictions: {exc}", file=sys.stderr)
-            return 3
-        except Exception as exc:
+            predictions = load_predictions(args.predictions)
+        except (OSError, ValueError) as exc:
             print(f"wald: --predictions: {_input_error(exc)}", file=sys.stderr)
             return 3
-        report = render_report(results)
-        report = report.replace("# Wald eval —",
-                                "# Wald eval (external predictions) —", 1)
-        print(report)
+        try:
+            results = evaluate_predictions(args.corpus, predictions)
+        except SystemExit as exc:
+            print(f"wald: {exc}", file=sys.stderr)
+            return 3
+        except Exception as exc:
+            print(f"wald: corpus: {_input_error(exc)}", file=sys.stderr)
+            return 3
+        results["predictions_file"] = args.predictions
+        print(render_report(results))
         return 0
 
     if args.llm:
         from .eval import run_llm_eval
 
-        if args.llm_subscription and args.split == "heldout":
+        split = args.split or "dev"
+        if args.llm_subscription and split == "heldout":
             print("wald: subscription runs cannot produce gate evidence — set "
                   "ANTHROPIC_API_KEY + OPENAI_API_KEY for the held-out gate",
                   file=sys.stderr)
@@ -265,7 +273,7 @@ def cmd_eval(args) -> int:
             print(f"wald: --llm needs {' and '.join(missing)} set in the environment",
                   file=sys.stderr)
             return 3
-        results = run_llm_eval(args.corpus, det, ver, split=args.split, out_dir=args.out)
+        results = run_llm_eval(args.corpus, det, ver, split=split, out_dir=args.out)
         print(f"llm eval written to {args.out}/{results['date']}-llm-eval-{results['split']}.md")
         for c, r in results["narrative_classes"].items():
             f1 = f"{r['f1']:.2f}" if r["f1"] is not None else "—"
@@ -363,7 +371,7 @@ def main(argv=None) -> int:
     p_eval.add_argument("--llm-subscription", action="store_true",
                         help="run the narrative layer through the claude/codex CLIs "
                              "(subscription billing, no API keys); never gate-eligible")
-    p_eval.add_argument("--split", choices=["dev", "heldout"], default="dev")
+    p_eval.add_argument("--split", choices=["dev", "heldout"])
     p_eval.add_argument("--replay-dir", help="record/replay LLM responses here")
     p_eval.add_argument("--predictions",
                         help="score an external tool: JSON of {corpus-relative "

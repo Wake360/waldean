@@ -18,9 +18,7 @@ from .llm import PINNED_DETECTOR_MODEL, PINNED_VERIFIER_MODEL, BackendError
 from .taxonomy import load_taxonomy
 
 
-def evaluate(corpus_root: str | Path, floor: float = DEFAULT_CONFIDENCE_FLOOR,
-             flags_producer=run_static) -> dict:
-    root = Path(corpus_root)
+def load_corpus_manifest(root: Path) -> tuple[dict, int]:
     manifest_path = root / "MANIFEST.json"
     if not manifest_path.exists():
         raise SystemExit(
@@ -35,6 +33,13 @@ def evaluate(corpus_root: str | Path, floor: float = DEFAULT_CONFIDENCE_FLOOR,
         real_clean = json.loads(real_manifest.read_text())["clean"]
         n_real = len(real_clean)
         manifest["clean"] = manifest["clean"] + real_clean
+    return manifest, n_real
+
+
+def evaluate(corpus_root: str | Path, floor: float = DEFAULT_CONFIDENCE_FLOOR,
+             flags_producer=run_static) -> dict:
+    root = Path(corpus_root)
+    manifest, n_real = load_corpus_manifest(root)
 
     per_class = {c: {"tp": 0, "fn": 0, "fp": 0} for c in sorted(STATIC_DECIDABLE)}
     candidate = {"selection-survivorship-cohort": {"tp": 0, "fn": 0}}
@@ -109,47 +114,48 @@ class _PredFlag:
     confidence: float = 1.0
 
 
-def predictions_producer(predictions: dict, corpus_root: str | Path):
-    """flags_producer for evaluate(): looks flags up from an external
-    predictions dict keyed by manifest-relative POSIX path."""
-    root = Path(corpus_root).resolve()
+def load_predictions(path: str | Path) -> dict[str, list[_PredFlag]]:
+    raw = json.loads(Path(path).read_text())
+    if not isinstance(raw, dict):
+        raise ValueError("expected a JSON object of {corpus path: [findings]}")
+    predictions = {}
+    for rel, findings in raw.items():
+        if not isinstance(findings, list):
+            raise ValueError(f"{rel}: expected a list of findings")
+        try:
+            predictions[rel] = [
+                _PredFlag(str(f["flaw_id"]), float(f.get("confidence", 1.0)))
+                for f in findings
+            ]
+        except (KeyError, TypeError, ValueError, AttributeError):
+            raise ValueError(
+                f"{rel}: each finding needs a flaw_id and a numeric confidence"
+            ) from None
+    return predictions
 
-    def produce(nb):
-        rel = Path(nb.path).resolve().relative_to(root).as_posix()
-        return [
-            _PredFlag(str(p["flaw_id"]), float(p.get("confidence", 1.0)))
-            for p in predictions.get(rel, [])
-        ]
 
-    return produce
-
-
-def evaluate_predictions(corpus_root: str | Path, predictions_path: str | Path,
+def evaluate_predictions(corpus_root: str | Path, predictions: dict[str, list[_PredFlag]],
                          floor: float = DEFAULT_CONFIDENCE_FLOOR) -> dict:
-    """Score an external tool's predictions against the corpus ground truth
-    using the same counting logic that scores wald's own detectors."""
     root = Path(corpus_root)
-    predictions = json.loads(Path(predictions_path).read_text())
-    manifest = json.loads((root / "MANIFEST.json").read_text())
-    known = {e["file"] for e in manifest["clean"]}
-    known |= {e["file"] for e in manifest["mutants"]}
-    real_manifest = root / "real" / "MANIFEST.json"
-    if real_manifest.exists():
-        known |= {e["file"] for e in json.loads(real_manifest.read_text())["clean"]}
+    manifest, _ = load_corpus_manifest(root)
+    known = {e["file"] for e in manifest["clean"] + manifest["mutants"]}
     unknown = sorted(set(predictions) - known)
     if unknown:
         raise SystemExit(
-            f"predictions reference files not in the corpus: {unknown[:5]}"
+            f"--predictions: files not in the corpus: {unknown[:5]}"
         )
-    results = evaluate(root, floor=floor,
-                       flags_producer=predictions_producer(predictions, root))
-    results["predictions_file"] = str(predictions_path)
-    return results
+    resolved = root.resolve()
+
+    def produce(nb):
+        return predictions.get(Path(nb.path).resolve().relative_to(resolved).as_posix(), [])
+
+    return evaluate(root, floor=floor, flags_producer=produce)
 
 
 def render_report(results: dict) -> str:
     lines = [
-        f"# Wald eval — {results['date']} (corpus built {results['corpus_built']})",
+        f"# Wald eval{' (external predictions)' if 'predictions_file' in results else ''}"
+        f" — {results['date']} (corpus built {results['corpus_built']})",
         "",
         f"{results['n_clean']} clean notebooks "
         f"({results.get('n_clean_real', 0)} real, reviewed; rest synthetic), "

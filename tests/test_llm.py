@@ -426,8 +426,6 @@ def test_agent_backend_raises_on_error_envelope(monkeypatch):
 
 
 def test_agent_backend_disables_user_hooks(monkeypatch):
-    # 17/45 sessions in the 2026-07-09 indicative eval died on a user-level
-    # SessionEnd hook EAGAIN; the backend must not inherit user hooks.
     envelope = json.dumps({
         "type": "result", "subtype": "success", "is_error": False, "result": '{"ok": 1}',
     })

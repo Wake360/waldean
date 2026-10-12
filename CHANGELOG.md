@@ -2,6 +2,13 @@
 
 ## 0.3.1
 
+- `wald eval --predictions FILE` scores an external tool's findings
+  against the mutation corpus with the same counting logic as Wald's own
+  detectors (`docs/benchmark.md`). Malformed input exits 3 with a message
+  that names the bad entry. `--split` and `--llm` are rejected together
+  with `--predictions`.
+- `scripts/self-score.sh` proves that Wald's own flags, converted to the
+  predictions format, reproduce `wald eval` exactly.
 - LLM narrative layer: `AgentBackend` now passes `--settings
   '{"disableAllHooks":true}'` to the `claude`/`codex` CLIs, so a
   user-level Claude hook can no longer kill a subscription eval

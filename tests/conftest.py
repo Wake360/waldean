@@ -9,7 +9,6 @@ MINIMAL_NB = json.dumps(
 
 @pytest.fixture
 def fake_corpus(tmp_path):
-    """Two-notebook corpus: one clean, one fit-before-split mutant."""
     (tmp_path / "clean").mkdir()
     (tmp_path / "mutated").mkdir()
     (tmp_path / "clean" / "c.ipynb").write_text(MINIMAL_NB)

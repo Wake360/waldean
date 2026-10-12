@@ -43,9 +43,13 @@ Cite the `built` date plus the `provenance` string from
 `corpus/MANIFEST.json`. A rebuilt corpus (`wald corpus build`) with the
 same seeds and `WALD_BUILD_DATE` is byte-identical.
 
-The report prints to stdout only (nothing is written to disk); `--split`
-does not apply to `--predictions` runs — both dev and held-out mutants
-are scored together.
+The report prints to stdout only (nothing is written to disk). Both dev
+and held-out mutants are scored together; passing `--split` with
+`--predictions` is an error (exit 3).
+
+Exit 3 also covers bad input. A malformed or unreadable predictions file
+reports as `wald: --predictions: ...`; a missing or broken corpus reports
+as `wald: corpus ...`.
 
 ## Worked example
 

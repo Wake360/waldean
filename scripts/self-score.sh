@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Self-consistency proof for the benchmark mode: wald's own flags, converted
-# to the predictions format, must reproduce wald eval's numbers exactly.
 set -eu
 cd "$(dirname "$0")/.."
 tmp=$(mktemp -d)
@@ -22,8 +20,6 @@ for f in files:
         capture_output=True, text=True,
     )
     report = json.loads(out.stdout)
-    # candidates carry sub-floor findings (e.g. survivorship); eval's
-    # candidate layer counts them at any confidence, so include both lists
     preds[f] = [
         {"flaw_id": fl["flaw_id"], "confidence": fl["confidence"]}
         for fl in report["flags"] + report["candidates"]

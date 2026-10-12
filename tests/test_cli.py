@@ -575,7 +575,6 @@ def test_rules_json_valid(capsys):
 
 
 def test_expand_nonexistent_path_passes_through(tmp_path):
-    # not a dir -> passed through; cmd_check reports the read failure later
     missing = str(tmp_path / "nope.ipynb")
     assert _expand_notebooks([missing]) == [missing]
 
@@ -624,12 +623,14 @@ def test_eval_predictions_unknown_corpus_path_exits_3(fake_corpus, capsys):
 
 
 @pytest.mark.parametrize("preds_content", [
-    "[]",  # top-level list, not an object
-    json.dumps({"clean/c.ipynb": [{"confidence": 1.0}]}),  # missing flaw_id
+    "[]",
+    json.dumps({"clean/c.ipynb": [{"confidence": 1.0}]}),
     json.dumps({"clean/c.ipynb": [{"flaw_id": "leakage-fit-before-split",
-                                    "confidence": "high"}]}),  # non-numeric confidence
-    json.dumps({"clean/c.ipynb": "oops"}),  # value is a string, not a list
-])
+                                    "confidence": "high"}]}),
+    json.dumps({"clean/c.ipynb": "oops"}),
+    json.dumps({"clean/c.ipynb": ["oops"]}),
+], ids=["top-level-list", "missing-flaw-id", "non-numeric-confidence",
+        "findings-not-a-list", "finding-not-an-object"])
 def test_eval_predictions_malformed_shapes_exit_3(fake_corpus, capsys, preds_content):
     preds = fake_corpus / "preds.json"
     preds.write_text(preds_content)
@@ -637,3 +638,31 @@ def test_eval_predictions_malformed_shapes_exit_3(fake_corpus, capsys, preds_con
     err = capsys.readouterr().err
     assert rc == 3
     assert err.startswith("wald: --predictions: ")
+
+
+def test_eval_predictions_missing_corpus_blames_corpus(tmp_path, capsys):
+    preds = tmp_path / "preds.json"
+    preds.write_text("{}")
+    rc = main(["eval", "--corpus", str(tmp_path / "nocorpus"), "--predictions", str(preds)])
+    err = capsys.readouterr().err
+    assert rc == 3
+    assert err.startswith("wald: corpus not found")
+
+
+def test_eval_predictions_missing_corpus_notebook_blames_corpus(fake_corpus, capsys):
+    preds = fake_corpus / "preds.json"
+    preds.write_text("{}")
+    (fake_corpus / "clean" / "c.ipynb").unlink()
+    rc = main(["eval", "--corpus", str(fake_corpus), "--predictions", str(preds)])
+    err = capsys.readouterr().err
+    assert rc == 3
+    assert err.startswith("wald: corpus: ")
+
+
+def test_eval_predictions_rejects_split(fake_corpus, capsys):
+    preds = fake_corpus / "preds.json"
+    preds.write_text("{}")
+    rc = main(["eval", "--corpus", str(fake_corpus), "--predictions", str(preds),
+               "--split", "dev"])
+    assert rc == 3
+    assert "--split does not apply" in capsys.readouterr().err
