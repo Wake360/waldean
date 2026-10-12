@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 
-from wald.ingest import Cell, ParsedNotebook
-from wald.llm import BackendError
-from wald.verifier import Verdict, verify_finding
+from waldean.ingest import Cell, ParsedNotebook
+from waldean.llm import BackendError
+from waldean.verifier import Verdict, verify_finding
 
 
 @dataclass
@@ -107,7 +107,7 @@ def test_prompt_includes_cited_code_cell_output():
 
 
 def test_prompt_truncates_long_code_cell_output():
-    from wald.verifier import OUTPUT_CAP
+    from waldean.verifier import OUTPUT_CAP
 
     long_output = "Z" * (OUTPUT_CAP + 200)
     backend = StubBackend({"verdict": "unsupported", "reason": "x"})

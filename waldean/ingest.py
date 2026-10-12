@@ -65,7 +65,7 @@ def parse_notebook(path: str | Path) -> ParsedNotebook:
         raise ValueError("input exceeds 20 MB cap")
     with warnings.catch_warnings():
         # valid older notebooks lack per-cell `id`; nbformat's read-time
-        # validate() warns about it, which is not a wald-level problem
+        # validate() warns about it, which is not a waldean-level problem
         warnings.simplefilter("ignore", MissingIDFieldWarning)
         try:
             nb = nbformat.read(str(path), as_version=4)

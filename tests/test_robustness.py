@@ -1,6 +1,6 @@
 import json
 
-from wald.cli import main
+from waldean.cli import main
 
 
 def _write(tmp_path, name, text):
@@ -42,7 +42,7 @@ def test_oversized_file_rejected_exit_3(tmp_path, capsys):
     rc = main(["check", str(p)])
     assert rc == 3
     err = capsys.readouterr().err
-    assert err.startswith("wald: ")
+    assert err.startswith("waldean: ")
     assert "20 MB cap" in err
     assert "Traceback" not in err
 
@@ -55,6 +55,6 @@ def test_too_many_cells_rejected_exit_3(tmp_path, capsys):
     rc = main(["check", str(p)])
     assert rc == 3
     err = capsys.readouterr().err
-    assert err.startswith("wald: ")
+    assert err.startswith("waldean: ")
     assert "5000-cell cap" in err
     assert "Traceback" not in err

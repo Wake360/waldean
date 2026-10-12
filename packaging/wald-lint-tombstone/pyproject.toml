@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wald-lint"
+version = "0.4.0"
+description = "Renamed to waldean. Install waldean instead; this package only pulls it in."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Filip Vachek", email = "filip.vachek@gmail.com" }]
+dependencies = ["waldean>=0.4.0"]
+classifiers = ["Development Status :: 7 - Inactive"]
+
+[project.urls]
+Homepage = "https://github.com/Wake360/waldean"
+
+[tool.setuptools]
+py-modules = []

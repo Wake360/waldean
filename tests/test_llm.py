@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from wald import llm
+from waldean import llm
 
 
 class StubBackend:
@@ -423,6 +423,22 @@ def test_agent_backend_raises_on_error_envelope(monkeypatch):
     monkeypatch.setattr(llm.subprocess, "run", fake_run)
     with pytest.raises(llm.BackendError, match="agent session turn failed"):
         llm.AgentBackend().complete("sys", "user")
+
+
+def test_agent_backend_disables_user_hooks(monkeypatch):
+    envelope = json.dumps({
+        "type": "result", "subtype": "success", "is_error": False, "result": '{"ok": 1}',
+    })
+    captured = {}
+
+    def fake_run(cmd, *a, **kw):
+        captured["cmd"] = cmd
+        return FakeCompleted(0, stdout=envelope)
+
+    monkeypatch.setattr(llm.subprocess, "run", fake_run)
+    llm.AgentBackend().complete("SYSTEM", "USERPROMPT")
+    idx = captured["cmd"].index("--settings")
+    assert json.loads(captured["cmd"][idx + 1]) == {"disableAllHooks": True}
 
 
 def test_codex_backend_reads_answer_from_output_file(monkeypatch, tmp_path):

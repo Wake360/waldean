@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.4.0
+
+- Renamed the project from Wald to Waldean. The PyPI package is now
+  `waldean` (was `wald-lint`), the command is `waldean` (was `wald`), the
+  import package is `waldean`, the repository is `Wake360/waldean`, the
+  GitHub Action is `Wake360/waldean@v0.4.0` and the pre-commit hook ids are
+  `waldean` and `waldean-scripts`. Environment variables use the
+  `WALDEAN_` prefix, and corpus notebook metadata uses the `waldean` key.
+  Detection behavior and report content are unchanged. See
+  `docs/adr/0002-rename-project-to-waldean.md`.
+
+## 0.3.1
+
+- `wald eval --predictions FILE` scores an external tool's findings
+  against the mutation corpus with the same counting logic as Wald's own
+  detectors (`docs/benchmark.md`). Malformed input exits 3 with a message
+  that names the bad entry. `--split` and `--llm` are rejected together
+  with `--predictions`.
+- `scripts/self-score.sh` proves that Wald's own flags, converted to the
+  predictions format, reproduce `wald eval` exactly.
+- LLM narrative layer: `AgentBackend` now passes `--settings
+  '{"disableAllHooks":true}'` to the `claude`/`codex` CLIs, so a
+  user-level Claude hook can no longer kill a subscription eval
+  session mid-run — the 2026-07-09 dev-split eval lost 17/45 sessions
+  to a `SessionEnd` hook doing exactly this.
+- Packaging: `wald/__init__.py` version had drifted to 0.2.1 against
+  the 0.3.0 release; fixed and locked by a new packaging test so the
+  two can't diverge again.
+- CI: ruff pinned to 0.15.21 and pyright to 1.1.411 — ruff 0.16.0
+  reported 37 new findings on an unrelated version bump.
+- README rewritten for the subscription-only narrative path.
+
 ## 0.3.0
 
 - CLI: `.py` input support — `wald check analysis.py` runs on plain

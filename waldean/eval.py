@@ -1,6 +1,6 @@
 """Corpus eval: detectors vs. labeled mutants -> confusion matrix per class.
 
-This is the project's evidence. `wald eval` runs the static layer over the
+This is the project's evidence. `waldean eval` runs the static layer over the
 whole corpus and writes a dated report; gates G0/G1 assert on its output.
 """
 
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from .corpus import _build_date
@@ -17,16 +18,14 @@ from .llm import PINNED_DETECTOR_MODEL, PINNED_VERIFIER_MODEL, BackendError
 from .taxonomy import load_taxonomy
 
 
-def evaluate(corpus_root: str | Path, floor: float = DEFAULT_CONFIDENCE_FLOOR,
-             flags_producer=run_static) -> dict:
-    root = Path(corpus_root)
+def load_corpus_manifest(root: Path) -> tuple[dict, int]:
     manifest_path = root / "MANIFEST.json"
     if not manifest_path.exists():
         raise SystemExit(
-            f"corpus not found: {manifest_path} (run: wald corpus build --root {root})"
+            f"corpus not found: {manifest_path} (run: waldean corpus build --root {root})"
         )
     manifest = json.loads(manifest_path.read_text())
-    # reviewed real notebooks (corpus/real) join the clean set; wald corpus
+    # reviewed real notebooks (corpus/real) join the clean set; waldean corpus
     # build regenerates only the synthetic MANIFEST, so they live separately
     real_manifest = root / "real" / "MANIFEST.json"
     n_real = 0
@@ -34,13 +33,20 @@ def evaluate(corpus_root: str | Path, floor: float = DEFAULT_CONFIDENCE_FLOOR,
         real_clean = json.loads(real_manifest.read_text())["clean"]
         n_real = len(real_clean)
         manifest["clean"] = manifest["clean"] + real_clean
+    return manifest, n_real
+
+
+def evaluate(corpus_root: str | Path, floor: float = DEFAULT_CONFIDENCE_FLOOR,
+             flags_producer=run_static) -> dict:
+    root = Path(corpus_root)
+    manifest, n_real = load_corpus_manifest(root)
 
     per_class = {c: {"tp": 0, "fn": 0, "fp": 0} for c in sorted(STATIC_DECIDABLE)}
     candidate = {"selection-survivorship-cohort": {"tp": 0, "fn": 0}}
     clean_fp_files = []
     misses = []
     # mutants whose flaw is narrative-layer-only: the static layer cannot
-    # decide them (measured by `wald eval --llm`), but they are still checked
+    # decide them (measured by `waldean eval --llm`), but they are still checked
     # below for spurious confident static flags, and counted here so the
     # report reconciles with the headline mutant total instead of dropping them
     narrative_only = {}
@@ -102,9 +108,54 @@ def evaluate(corpus_root: str | Path, floor: float = DEFAULT_CONFIDENCE_FLOOR,
     return results
 
 
+@dataclass
+class _PredFlag:
+    flaw_id: str
+    confidence: float = 1.0
+
+
+def load_predictions(path: str | Path) -> dict[str, list[_PredFlag]]:
+    raw = json.loads(Path(path).read_text())
+    if not isinstance(raw, dict):
+        raise ValueError("expected a JSON object of {corpus path: [findings]}")
+    predictions = {}
+    for rel, findings in raw.items():
+        if not isinstance(findings, list):
+            raise ValueError(f"{rel}: expected a list of findings")
+        try:
+            predictions[rel] = [
+                _PredFlag(str(f["flaw_id"]), float(f.get("confidence", 1.0)))
+                for f in findings
+            ]
+        except (KeyError, TypeError, ValueError, AttributeError):
+            raise ValueError(
+                f"{rel}: each finding needs a flaw_id and a numeric confidence"
+            ) from None
+    return predictions
+
+
+def evaluate_predictions(corpus_root: str | Path, predictions: dict[str, list[_PredFlag]],
+                         floor: float = DEFAULT_CONFIDENCE_FLOOR) -> dict:
+    root = Path(corpus_root)
+    manifest, _ = load_corpus_manifest(root)
+    known = {e["file"] for e in manifest["clean"] + manifest["mutants"]}
+    unknown = sorted(set(predictions) - known)
+    if unknown:
+        raise SystemExit(
+            f"--predictions: files not in the corpus: {unknown[:5]}"
+        )
+    resolved = root.resolve()
+
+    def produce(nb):
+        return predictions.get(Path(nb.path).resolve().relative_to(resolved).as_posix(), [])
+
+    return evaluate(root, floor=floor, flags_producer=produce)
+
+
 def render_report(results: dict) -> str:
     lines = [
-        f"# Wald eval — {results['date']} (corpus built {results['corpus_built']})",
+        f"# Waldean eval{' (external predictions)' if 'predictions_file' in results else ''}"
+        f" — {results['date']} (corpus built {results['corpus_built']})",
         "",
         f"{results['n_clean']} clean notebooks "
         f"({results.get('n_clean_real', 0)} real, reviewed; rest synthetic), "
@@ -142,7 +193,7 @@ def render_report(results: dict) -> str:
         lines += [
             "",
             f"Narrative-layer-only mutants (out of static-recall scope, measured "
-            f"by `wald eval --llm`): {n_narr} of {results['n_mutants']} — {classes}. "
+            f"by `waldean eval --llm`): {n_narr} of {results['n_mutants']} — {classes}. "
             "They are still checked here for spurious confident static flags "
             "(counted as cross-class FP above).",
         ]
@@ -365,7 +416,7 @@ def render_llm_report(results: dict) -> str:
 
     det, ver = results["detector"], results["verifier"]
     lines = [
-        f"# Wald LLM eval — {results['date']} "
+        f"# Waldean LLM eval — {results['date']} "
         f"(corpus built {results['corpus_built']}, split {results['split']})",
         "",
         f"Detector {det['provider']}/{det['model']} ({det['kind']}), "

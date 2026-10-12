@@ -1,4 +1,4 @@
-# Wald flaw taxonomy v1 — the API of the project.
+# Waldean flaw taxonomy v1 — the API of the project.
 # Adding a flaw class = a record here + a detector + a mutation. Code never
 # hardcodes flaw semantics; prompts and reports are generated from this file.
 

@@ -1,13 +1,13 @@
-- id: wald
-  name: wald (notebooks)
-  entry: wald check
+- id: waldean
+  name: waldean (notebooks)
+  entry: waldean check
   language: python
   types_or: [jupyter]
   pass_filenames: true
 
-- id: wald-scripts
-  name: wald (python scripts)
-  entry: wald check
+- id: waldean-scripts
+  name: waldean (python scripts)
+  entry: waldean check
   language: python
   files: \.py$
   pass_filenames: true

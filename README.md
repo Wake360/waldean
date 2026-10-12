@@ -1,24 +1,29 @@
-# Wald
+# Waldean
 
-**Code linters check style. Wald checks whether the analysis is a lie.**
+**Code linters check style. Waldean checks whether the analysis is a lie.**
 
-Wald is a statistical-integrity linter for data-analysis notebooks. It reads
-code, stored outputs and prose, and flags the finite, catalogued classes of
-error that invalidate an analysis: train/test leakage, uncorrected multiple
-testing, survivorship bias, accuracy-on-imbalanced-classes and friends.
-Every flag carries an exact location, mechanical evidence, a failure
-scenario, and a fix.
+Waldean is a deterministic statistical-integrity linter for Python analysis.
+It flags a defined set of methodological hazards in notebooks and scripts,
+with evidence, and needs no LLM to do it.
 
-Named after Abraham Wald, who armored the bullet holes that *weren't* in the
-returning planes. The tool's mentality is his: don't ask what the data says —
-ask what data is missing and what that does to the conclusion.
+Your model scores 0.99. Waldean asks whether the experiment that produced
+that number was valid: was the scaler fitted on the test rows, did the
+cross-validation shuffle a time series, were twenty tests run with no
+correction?
 
-Read the story: [I mutation-tested statistical malpractice](posts/2026-07-04-i-mutation-tested-statistical-malpractice.md).
+![waldean check on a time-series notebook](https://raw.githubusercontent.com/Wake360/waldean/v0.4.0/assets/demo.gif)
+
+```bash
+pip install waldean
+waldean check your_notebook.ipynb
+```
+
+A real report, on [`examples/leaky.ipynb`](https://github.com/Wake360/waldean/blob/v0.4.0/examples/leaky.ipynb):
 
 ```
-$ wald check examples/leaky.ipynb
+$ waldean check examples/leaky.ipynb
 
-# Wald report — examples/leaky.ipynb
+# Waldean report — examples/leaky.ipynb
 
 verdict: 1 high, 0 medium | static layer (no LLM)
 
@@ -30,124 +35,75 @@ verdict: 1 high, 0 medium | static layer (no LLM)
 - **Fix:** Fit the transformer on the training split only; apply transform to the test split.
 - **Confidence:** 0.92
 
-## CLEAN (checked): baserate-accuracy-imbalanced, testing-multiple-uncorrected
+## CLEAN (checked): baserate-accuracy-imbalanced, leakage-temporal-shuffle, testing-multiple-uncorrected
 
 ```
 
-Exit codes: `0` clean, `1` medium findings, `2` high findings — usable as a
-pre-merge gate.
+Exit codes: `0` clean, `1` medium findings, `2` high findings, `3` input
+error. Usable as a pre-merge gate.
 
-## How Wald proves it works: mutation testing for statistics
+[`examples/temporal-cv-before-after.ipynb`](https://github.com/Wake360/waldean/blob/v0.4.0/examples/temporal-cv-before-after.ipynb)
+shows the effect on a metric: the same model scored with shuffled CV and
+with `TimeSeriesSplit`, numbers computed in the notebook
+(run record:
+[`evals/2026-10-12-temporal-cv-demo.md`](https://github.com/Wake360/waldean/blob/v0.4.0/evals/2026-10-12-temporal-cv-demo.md)).
 
-The detector is not measured by demos. A **mutation corpus** exists before
-the detectors do: clean notebooks get named flaws programmatically injected
-(via libcst, format-preserving), and every mutant must *mechanically prove*
-the flaw is present before it enters the corpus — e.g. a leakage mutant is
-executed and the scaler's `n_samples_seen_` must equal the full row count
-(it saw the test set), not the train count.
+## Status
 
-Detection quality is then a confusion matrix per flaw class, not an opinion:
+| | What |
+|---|---|
+| **Available now** | `waldean check` on `.ipynb` and `.py` (plain and `# %%`); four static flaw classes (below); a survivorship candidate; Markdown, JSON and SARIF output; GitHub Action; pre-commit hooks; `waldean rules`; `waldean eval --predictions` for scoring other tools on the corpus |
+| **Experimental** | `--llm` / `--llm-subscription` narrative layer (prose claims vs computation). No validated precision or recall; its quality gates never ran |
+| **Planned** | Generated fixes: a reviewable patch plus a verification recipe for one canonical leakage shape (`waldean propose`), then opt-in sandboxed verification. Not shipped |
 
-| class (static layer) | mutants | TP | FN | FP | precision | recall |
-|---|---|---|---|---|---|---|
-| leakage-fit-before-split | 24 | 24 | 0 | 0 | 1.00 | 1.00 |
-| leakage-temporal-shuffle | 16 | 16 | 0 | 0 | 1.00 | 1.00 |
-| testing-multiple-uncorrected | 96 | 96 | 0 | 0 | 1.00 | 1.00 |
-| baserate-accuracy-imbalanced | 8 | 8 | 0 | 0 | 1.00 | 1.00 |
-| selection-survivorship-cohort (candidate) | 16 | 16 | 0 | — | — | 1.00 |
+Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
 
-False-positive rate on the 83-notebook clean corpus (56 synthetic + 27
-hand-reviewed real notebooks from Apache-2.0/MIT repositories): **0.0%**.
-The 27 real notebooks also shaped the static layer during dogfood (the
-rebuild described below), so this is not an out-of-sample test for them —
-the real-notebook share of the 0.0% leans optimistic.
-192/192 mutants passed mechanical verification at build; 0 discarded.
-32 of the 192 are narrative-only mutants (regression-to-mean-claim,
-significance-meaningless); they are scored by the `--llm` eval, not by
-this table, and no numbers are claimed for them until its gates run.
-(Eval 2026-07-05, `evals/2026-07-05-eval.json`.)
+## Rules
 
-Reproduce: `wald corpus build && wald eval`. Dated reports live in `evals/`.
-Set `WALD_BUILD_DATE=YYYY-MM-DD` to pin the manifest/report date for a byte-identical rebuild.
+| Flaw class | What triggers it |
+|---|---|
+| `leakage-fit-before-split` | A scaler, imputer, encoder, selector or vectorizer is fitted on data that later feeds `train_test_split` or cross-validation |
+| `leakage-temporal-shuffle` | Lag or rolling features on time-ordered data, evaluated with a shuffled split instead of `TimeSeriesSplit` or a time cutoff |
+| `testing-multiple-uncorrected` | Many statistical tests with no multiple-comparison correction; reports the implied family-wise error rate |
+| `baserate-accuracy-imbalanced` | Accuracy as the only metric while stored outputs show class imbalance |
+| `selection-survivorship-cohort` | Candidate only: a filter on a survival-correlated column before aggregation |
 
-**Dogfooded on real notebooks** (`evals/2026-07-04-dogfood.md`): the first
-run on 34 real notebooks produced a 50% file flag rate — 119 of 124 flags
-were false positives, hand-reviewed one by one. The detector was rebuilt
-from that data (flow-sensitive dataflow, transformer/estimator distinction,
-CV-aware sinks). After the fix: 3 confident flags on the same 34 notebooks,
-all three confirmed real leaks, 0 known false positives. The report keeps
-the full failure taxonomy; the 27 clean notebooks entered the corpus with
-licenses recorded per file.
+`waldean rules` prints the full list from `waldean/taxonomy/flaws.yaml`.
 
-**Wider dogfood — first recall and precision numbers**
-(`evals/2026-07-07-dogfood-wide.md`): 60 fresh GitHub notebooks, none
-from the teaching repos above. wald flagged 13; adversarial review
-confirmed 25 of 28 flags real (**0.89 flag precision**, 12 of 13 flagged
-notebooks genuinely leaky) and, over a seeded 30-notebook miss-hunt
-sample of the un-flagged set, found 8 leaks wald missed — **0.60
-notebook-level recall** across the 43-notebook audited subset. 33
-confirmed leak instances across 20 notebooks, all in the two leakage
-classes (28 `leakage-fit-before-split`, 5 `leakage-temporal-shuffle`).
+## Known limitations
 
-**Honest caveats:** the recall evidence is leakage-only — this sample
-produced zero confirmed real instances of the testing or base-rate
-classes, so no real-world recall is claimed for them. The one false
-positive (an RFECV scout-subsample pattern) shows the corpus's 0.0% FP
-does not carry to messy real code; 0.60 recall is a one-seed subset
-estimate, upper-leaning. Ground truth is multi-agent adversarial review,
-not expert human labeling.
+- On 60 fresh GitHub notebooks, 25 of 28 flags were real (0.89 precision)
+  and Waldean caught 12 of 20 leaky notebooks in the audited subset (0.60
+  recall; audited subset, one seed, likely lower over all 60). That
+  evidence covers the two leakage classes only
+  ([`evals/2026-07-07-dogfood-wide.md`](https://github.com/Wake360/waldean/blob/v0.4.0/evals/2026-07-07-dogfood-wide.md)).
+- On the 100 labeled notebooks of Yang et al. (ASE'22),
+  `leakage-fit-before-split` reached 0.58 precision and 0.37 recall
+  against the authors' `pre` label
+  ([`evals/2026-10-12-yang-pre.md`](https://github.com/Wake360/waldean/blob/v0.4.0/evals/2026-10-12-yang-pre.md)).
+- Misses cluster in pandas-arithmetic leaks with no syntactic anchor
+  (per-group imputation, `fillna(df[col].mean())` before the split), and
+  in named transformers whose fit Waldean does not connect to
+  `cross_val_score` or that are fit on a whole text corpus.
+- The 0.0% false-positive rate holds on the curated corpus, not on messy
+  real code.
+- Flaws with no imprint in code, outputs or prose are invisible to Waldean.
+- Waldean never executes your notebook.
 
-## What Wald sees (v1) and what it doesn't
+Full evaluation, corpus method and dogfood history:
+[`docs/EVALUATION.md`](https://github.com/Wake360/waldean/blob/v0.4.0/docs/EVALUATION.md).
 
-The static layer (deterministic, no API key, runs in CI) decides four
-classes on its own:
+## How Waldean is measured
 
-- `leakage-fit-before-split` — flow-sensitive def-use dataflow: a
-  *transformer* (not a model) is fitted on data whose transformed output
-  feeds `train_test_split`, or transforms a split part after a full-data
-  fit. Cross-validation counts as an evaluation sink: supervised selection
-  fitted on the CV data (`SelectKBest.fit(X, y)` → `cross_val_score`) is a
-  confident flag; unsupervised pre-CV fits (scaler/PCA) stay below the
-  floor as candidates. Pandas self-statistic imputation before the split
-  (`df[c].replace(0, df[c].median())`) is covered. Pipelines passed to CV,
-  fits on the train split, label encoding and estimator fits are not
-  flagged — each of those idioms was a measured false-positive class in
-  the dogfood report.
-- `leakage-temporal-shuffle` — time-ordered data with lag/rolling-window
-  features (`shift`, `rolling`, `diff`, `pct_change`, …) split by a
-  shuffled protocol — default `train_test_split`, shuffled `KFold` —
-  instead of `TimeSeriesSplit`, `shuffle=False`, or a temporal cutoff.
-  Signals are evaluated per evaluation sink on that sink's dependency
-  chain: a date column alone never fires, bare `scipy.ndimage.shift` /
-  `sklearn.utils.resample` / `np.diff` never fire, and a frame sorted on
-  a non-date key with neighbor-comparison features never fires.
-- `testing-multiple-uncorrected` — counts statistical test call sites
-  (loops weighted), checks for corrections, reports the implied FWER.
-- `baserate-accuracy-imbalanced` — accuracy as the only metric while class
-  imbalance is visible in stored `value_counts` outputs.
-
-It additionally emits a low-confidence **candidate** for
-`selection-survivorship-cohort` (a filter on a survival-correlated column
-followed by aggregation). Deciding that class requires the narrative layer
-— the flaw is the *pair* (filter, population claim); the filter alone is
-legitimate analysis.
-
-**What Wald does not see:** flaws with no imprint in code, outputs or
-prose. Survivorship bias that lives in data that never entered the notebook
-is invisible to any tool that reads notebooks. Wald claims only the
-detectable classes, and the taxonomy (`wald/taxonomy/flaws.yaml`) is the
-complete, versioned list of what it checks.
-
-`.py` scripts have no stored cell outputs, so `baserate-accuracy-imbalanced`
-(which reads a `value_counts` output) can only ever emit a below-floor
-candidate on a script, never a confident flag. `--llm` needs markdown cells
-to check claims against computation, so it is meaningful on percent-format
-scripts and not on plain scripts, which have none.
+Detectors are scored by mutation testing: clean notebooks get flaws
+injected, and every mutant must mechanically prove the flaw before it
+counts. Corpus tables, dogfood runs and detector scope:
+[`docs/EVALUATION.md`](https://github.com/Wake360/waldean/blob/v0.4.0/docs/EVALUATION.md).
 
 ## GitHub Action
 
-`Wake360/wald@v0.3.0` is a composite action that installs `wald-lint`, runs
-`wald check` on the paths you pass, writes a SARIF 2.1.0 log, and reports a
+`Wake360/waldean@v0.4.0` is a composite action that installs `waldean`, runs
+`waldean check` on the paths you pass, writes a SARIF 2.1.0 log, and reports a
 `gate-exit-code` mapped through `fail-on` (high, medium, or never). The
 action never fails the job itself — it exposes the code and lets your
 workflow upload SARIF before gating, so findings show up as inline PR
@@ -157,7 +113,7 @@ write` for the SARIF upload, put Python >= 3.10 on `PATH` (via
 bash).
 
 ```yaml
-name: wald
+name: waldean
 on: [pull_request]
 
 jobs:
@@ -182,10 +138,10 @@ jobs:
             origin/${{ github.base_ref }}...${{ github.sha }} -- '*.ipynb')
           echo "files=$files" >> "$GITHUB_OUTPUT"
 
-      - name: wald
-        id: wald
+      - name: waldean
+        id: waldean
         if: steps.changed.outputs.files != ''
-        uses: Wake360/wald@v0.3.0
+        uses: Wake360/waldean@v0.4.0
         with:
           paths: ${{ steps.changed.outputs.files }}
           fail-on: high
@@ -194,31 +150,31 @@ jobs:
         if: always() && steps.changed.outputs.files != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: ${{ steps.wald.outputs.sarif-file }}
+          sarif_file: ${{ steps.waldean.outputs.sarif-file }}
 
-      - name: Gate on wald
+      - name: Gate on waldean
         if: steps.changed.outputs.files != ''
-        run: exit ${{ steps.wald.outputs.gate-exit-code }}
+        run: exit ${{ steps.waldean.outputs.gate-exit-code }}
 ```
 
 ## Pre-commit
 
-`.pre-commit-hooks.yaml` ships two hooks: `wald` for `.ipynb` files,
-`wald-scripts` for `.py` files.
+`.pre-commit-hooks.yaml` ships two hooks: `waldean` for `.ipynb` files,
+`waldean-scripts` for `.py` files.
 
 ```yaml
 repos:
-  - repo: https://github.com/Wake360/wald
-    rev: v0.3.0
+  - repo: https://github.com/Wake360/waldean
+    rev: v0.4.0
     hooks:
-      - id: wald
-      - id: wald-scripts
+      - id: waldean
+      - id: waldean-scripts
 ```
 
 pre-commit fails the hook on any nonzero exit, so both exit 1 (a medium
 finding) and exit 2 (a high finding) block the commit — raise `--floor`
 via `args` if you want fewer low-confidence findings to count as
-confident. `wald-scripts` runs on every changed `.py` file, so if your
+confident. `waldean-scripts` runs on every changed `.py` file, so if your
 repo has many non-analysis scripts, scope it with `files:`/`exclude:`
 in your own pre-commit config.
 
@@ -238,48 +194,45 @@ notebook ──> ingest (nbformat) ──> layer A: static detectors ──> rep
 
 The hybrid split is the point: leakage is an AST pattern — an LLM has no
 business there. The LLM layer handles only what statics cannot: whether
-the prose claims match what the code computes. It is built and tested
-key-free against replay fixtures, but its quality gates (G2/G3) never
-ran — they need Anthropic + OpenAI keys, and the keys never arrived. Per
-the project's pre-planned termination rule, **v1 ships as the static
-linter only; no narrative-layer numbers are claimed here.**
+the prose claims match what the code computes. Its quality gates (G2/G3)
+never ran, so **no narrative-layer numbers are claimed; the static
+linter is the validated product.**
 
-The narrative layer stays in the repo as an experimental, unvalidated
-path: `--llm-subscription` runs it through the `claude`/`codex` CLIs
-(subscription billing, no API keys), and `--llm` runs it against the
-Anthropic/OpenAI APIs for anyone holding both keys. Neither path has
-passed a quality gate. An indicative, non-gate dev-split run over the
-subscription backend is at
-`evals/2026-07-09-llm-eval-dev-subscription-indicative.md` — unpinned
-models, not reproducible, and 17 of its files hit backend errors and
-were excluded, so read it as a snapshot, not evidence. Static-only is
-the default; without `--llm` or `--llm-subscription`, Wald calls no API.
+The narrative layer runs through the `claude`/`codex` CLIs on
+subscription billing: `waldean check --llm --llm-subscription <notebook>`.
+Its numbers are dev-split and indicative by construction
+(`gate_evidence: false`); it has not passed a quality gate. An
+indicative dev-split run is at
+`evals/2026-07-25-llm-eval-dev-subscription-indicative-rerun.md` —
+unpinned models, not reproducible (the prior 2026-07-09 run lost 17/45
+files to backend errors; the rerun after hook isolation completed all
+files). Static-only is the default; without `--llm`, Waldean calls no LLM.
 
 Taxonomy is data (`flaws.yaml`): 9 flaw classes with definition, book
-anchor, mutation recipe and severity (`wald rules` lists them). Adding a
+anchor, mutation recipe and severity (`waldean rules` lists them). Adding a
 class = a record + a detector + a mutation; prompts and reports generate
 from the same file, so documentation and detector cannot drift.
 
 ## Install & use
 
 ```bash
-pip install wald-lint
-wald check notebook.ipynb            # exit 0 clean / 1 medium / 2 high / 3 input or usage error
-wald check analysis.py               # plain script, or percent-format (# %% cell markers)
-wald check notebooks/ --keep-going   # continue past unreadable files; exit 3 if any file failed
-wald rules                           # list the flaw classes wald checks; --format json for machines
+pip install waldean
+waldean check notebook.ipynb            # exit 0 clean / 1 medium / 2 high / 3 input or usage error
+waldean check analysis.py               # plain script, or percent-format (# %% cell markers)
+waldean check notebooks/ --keep-going   # continue past unreadable files; exit 3 if any file failed
+waldean rules                           # list the flaw classes waldean checks; --format json for machines
 ```
 
-Contributing to Wald itself:
+Contributing to Waldean itself:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[corpus,dev]"       # or: uv sync --all-extras
 
-wald check examples/leaky.ipynb      # exit 0 clean / 1 medium / 2 high / 3 input or usage error
-wald check examples/leaky.ipynb --format json   # one object; a JSON array for multiple notebooks
-wald corpus build                    # build clean corpus + verified mutants
-wald eval                            # confusion matrix -> evals/<date>-eval.md
+waldean check examples/leaky.ipynb      # exit 0 clean / 1 medium / 2 high / 3 input or usage error
+waldean check examples/leaky.ipynb --format json   # one object; a JSON array for multiple notebooks
+waldean corpus build                    # build clean corpus + verified mutants
+waldean eval                            # confusion matrix -> evals/<date>-eval.md
 pytest                               # unit tests + golden gates G0/G1
 ```
 
@@ -292,30 +245,33 @@ explicitly. Reported lines for `.py` input are file-absolute (not
 relative to the cell); the markdown report keeps `cell N, line M`, where
 `N` is the percent-cell's ordinal position in the file.
 
-By default `wald check` aborts on the first unreadable file. `--keep-going`
+By default `waldean check` aborts on the first unreadable file. `--keep-going`
 continues instead: each unreadable file is reported to stderr and the run
 still exits 3 if any file failed — even alongside a high-severity finding
 elsewhere in the batch, which would otherwise exit 2. The multi-file TTY
 summary line gains a `, N failed` suffix.
 
-`wald rules` lists the flaw classes from the taxonomy (id, layer, severity,
+`waldean rules` lists the flaw classes from the taxonomy (id, layer, severity,
 definition); `--format json` emits the same data as a JSON array.
 
-Wald never executes *your* notebook (static analysis + stored outputs
+Waldean never executes *your* notebook (static analysis + stored outputs
 only). Only self-authored corpus notebooks are executed, at corpus build
 time, to verify mutations.
 
 ## Roadmap
 
 - **M2** — LLM narrative layer + cross-provider verifier + fusion: built,
-  tested key-free against replay fixtures (`plans/m2.md`). The G2/G3 gate
-  runs (F1 ≥ 0.7, verifier kills ≥ 80% of seeded false flags) never
-  happened — the two API keys never arrived. Per the termination rule,
-  v1 closes with the static layer only; the gate harness stays intact for
-  whoever runs it with keys.
+  tested against replay fixtures (`plans/m2.md`), and runs on
+  subscription CLIs (`waldean check --llm --llm-subscription`). The G2/G3
+  gates never ran; narrative numbers stay dev-split and indicative
+  (`gate_evidence: false`).
 - **M3** — table consistency checks (cohort sums vs. declared population).
-- **M4** — GitHub Action with PR annotations, severity calibration.
-  (Dogfood on real licensed notebooks: done, `evals/2026-07-04-dogfood.md`.)
+- **Benchmark** — the corpus is scoreable by external tools:
+  `waldean eval --predictions` (`docs/benchmark.md`).
+- **M4** — GitHub Action with PR annotations: shipped in 0.2.1
+  (`action.yml`). Severity calibration stays parked until flag volume
+  exists. (Dogfood on real licensed notebooks: done,
+  `evals/2026-07-04-dogfood.md`.)
 - Corpus contributions welcome: see `CONTRIBUTING.md` for the clean-corpus
   criteria, real-notebook licensing rules, and the flaw-class contribution
   shape (taxonomy record, detector, mutation with mechanical `verify()`).

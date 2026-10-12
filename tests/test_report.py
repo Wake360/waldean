@@ -1,10 +1,10 @@
 import json
 from pathlib import Path
 
-from wald.cli import main
-from wald.detect import Flag
-from wald.report import exit_code, parse_warning, to_json, to_markdown, to_sarif
-from wald.taxonomy import load_taxonomy
+from waldean.cli import main
+from waldean.detect import Flag
+from waldean.report import exit_code, parse_warning, to_json, to_markdown, to_sarif
+from waldean.taxonomy import load_taxonomy
 
 LEAKY = str(Path(__file__).parent.parent / "examples" / "leaky.ipynb")
 
@@ -44,7 +44,7 @@ def test_parse_warning_surfaced_in_reports():
 
 
 def test_cli_missing_file_exits_3(capsys):
-    assert main(["check", "/tmp/wald-does-not-exist-xyz.ipynb"]) == 3
+    assert main(["check", "/tmp/waldean-does-not-exist-xyz.ipynb"]) == 3
     assert "no such file" in capsys.readouterr().err
 
 
@@ -90,8 +90,8 @@ def test_cli_single_notebook_json_is_bare_object(capsys):
 def test_from_nbnode_tolerates_null_and_missing_fields():
     from nbformat import NotebookNode
 
-    from wald.detect import run_static
-    from wald.ingest import from_nbnode
+    from waldean.detect import run_static
+    from waldean.ingest import from_nbnode
 
     node = NotebookNode(cells=[
         NotebookNode(cell_type="code", source=None, outputs=None),  # both null
@@ -178,8 +178,8 @@ def test_sarif_structure():
     assert sarif["version"] == "2.1.0"
     assert len(sarif["runs"]) == 1
     driver = sarif["runs"][0]["tool"]["driver"]
-    assert driver["name"] == "wald"
-    assert driver["informationUri"] == "https://github.com/Wake360/wald"
+    assert driver["name"] == "waldean"
+    assert driver["informationUri"] == "https://github.com/Wake360/waldean"
     assert driver["version"]  # non-empty, from package metadata
 
 

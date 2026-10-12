@@ -1,6 +1,6 @@
 # leakage-temporal-shuffle: documented evasions
 
-Four notebook shapes evade the detector (`wald/detect.py`,
+Four notebook shapes evade the detector (`waldean/detect.py`,
 `detect_leakage_temporal_shuffle`). Each was confirmed during the
 adversarial round that shipped the class (commit 096606f) and ruled
 residual risk: the root fix re-adds a measured false-positive class or
@@ -22,7 +22,7 @@ Resolving the variable would need literal-propagation through
 `flow.last_assign`, and any unresolvable value (config dict, function
 argument, CLI flag) would have to default somewhere: defaulting to
 shuffled flags legitimate `shuffle=cfg.shuffle` set to False; defaulting
-to clean is the current behavior. Wald's threat model is the honest
+to clean is the current behavior. Waldean's threat model is the honest
 mistake, and honest notebooks pass shuffle as a literal — laundering the
 flag through a variable is evasion, not error.
 
@@ -95,3 +95,20 @@ Decision: accept. The degradation is to candidate, not silence, and
 cross-function resolution is explicitly owned by a later milestone —
 adding a special case here is the static-heuristic creep NEXT.md rules
 out.
+
+## 5. Datetime maker nested in a frame literal
+
+Trigger sketch:
+
+    df = pd.DataFrame({"date": pd.date_range("2021-01-01", periods=n), "y": y})
+    df["lag_1"] = df["y"].shift(1)
+    cross_validate(model, df[["lag_1"]].dropna(), ..., cv=KFold(5, shuffle=True))
+
+The assign event for `df` carries the `DataFrame` call, not `date_range`,
+so the chain has no datetime origin and the sink is skipped. Found
+2026-10-12 while building `examples/temporal-cv-before-after.ipynb`; the
+demo binds `dates = pd.date_range(...)` first.
+
+Decision: open. Resolving it means scanning nested call arguments of
+assign events for datetime makers. Revisit with real-notebook evidence
+before changing the detector.

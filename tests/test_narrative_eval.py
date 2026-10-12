@@ -9,24 +9,24 @@ from pathlib import Path
 import nbformat
 import pytest
 
-from wald.cli import _heldout_refusal
-from wald.detect import run_static
-from wald.eval import evaluate_narrative
-from wald.ingest import parse_notebook
-from wald.llm import (
+from waldean.cli import _heldout_refusal
+from waldean.detect import run_static
+from waldean.eval import evaluate_narrative
+from waldean.ingest import parse_notebook
+from waldean.llm import (
     PINNED_DETECTOR_MODEL,
     PINNED_VERIFIER_MODEL,
     AgentBackend,
     CodexBackend,
     ReplayBackend,
 )
-from wald.mutate import SurvivorshipMutation
+from waldean.mutate import SurvivorshipMutation
 
 CORPUS = Path(__file__).parent.parent / "corpus"
 
 pytestmark = pytest.mark.skipif(
     not (CORPUS / "MANIFEST.json").exists(),
-    reason="corpus not built (run: wald corpus build)",
+    reason="corpus not built (run: waldean corpus build)",
 )
 
 SCOPED_QUOTE = "These results describe customers in this dataset only."
@@ -222,7 +222,7 @@ def test_gate_evidence_false_for_stub_run(results):
 
 
 def test_evaluate_narrative_continues_past_backend_error(mini):
-    from wald.llm import BackendError
+    from waldean.llm import BackendError
 
     rtm_marker = mini["det_routes"][1][0]  # the RTM mutant's conclusion text
 

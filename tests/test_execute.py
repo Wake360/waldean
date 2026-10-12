@@ -1,4 +1,4 @@
-"""wald.execute: notebook cell append/parse helpers, plus one live-kernel
+"""waldean.execute: notebook cell append/parse helpers, plus one live-kernel
 integration test guarded by the same kernelspec-ensure pattern test_mutations.py
 uses (verify() calls execute() directly, no explicit skip needed unless the
 kernel truly can't be provisioned)."""
@@ -6,7 +6,7 @@ kernel truly can't be provisioned)."""
 import nbformat
 import pytest
 
-from wald.execute import execute, stdout_lines, with_appended_code_cell
+from waldean.execute import execute, stdout_lines, with_appended_code_cell
 
 
 def _one_cell_notebook(source: str):
@@ -36,9 +36,9 @@ def test_stdout_lines_parses_stream_outputs_and_ignores_others():
 
 def test_execute_runs_trivial_notebook():
     try:
-        nb = _one_cell_notebook("print('hello wald')")
+        nb = _one_cell_notebook("print('hello waldean')")
         out = execute(nb)
     except Exception as e:
         pytest.skip(f"no kernel available: {e}")
-    assert stdout_lines(out, "hello") == ["hello wald"]
+    assert stdout_lines(out, "hello") == ["hello waldean"]
     assert len(nb.cells[0].get("outputs", [])) == 0  # original left unexecuted

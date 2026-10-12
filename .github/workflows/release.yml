@@ -15,11 +15,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --locked --extra corpus --extra dev
-      - run: uv run wald corpus build --root corpus
+      - run: uv run waldean corpus build --root corpus
       # a release must never publish with G0/G1 silently skipped
       - run: test -f corpus/MANIFEST.json
       - run: uv run pytest tests/ -q
-      - run: uv run wald eval --corpus corpus --out evals
+      - run: uv run waldean eval --corpus corpus --out evals
 
   publish:
     needs: test

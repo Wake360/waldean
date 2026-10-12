@@ -28,14 +28,14 @@ from .mutate import MUTATIONS
 
 
 def _build_date() -> str:
-    """Pinned via WALD_BUILD_DATE so identical rebuilds don't churn on date alone."""
-    return os.environ.get("WALD_BUILD_DATE", date.today().isoformat())
+    """Pinned via WALDEAN_BUILD_DATE so identical rebuilds don't churn on date alone."""
+    return os.environ.get("WALDEAN_BUILD_DATE", date.today().isoformat())
 
 
-def _nb(cells, wald_meta):
+def _nb(cells, waldean_meta):
     nb = nbformat.v4.new_notebook()
     nb.cells = cells
-    nb.metadata["wald"] = wald_meta
+    nb.metadata["waldean"] = waldean_meta
     nb.metadata["kernelspec"] = {"name": "python3", "display_name": "Python 3", "language": "python"}
     return nb
 
@@ -716,7 +716,7 @@ def build_corpus(root: str | Path, seeds=DEV_SEEDS, heldout_seeds=HELDOUT_SEEDS,
         "clean": clean,
         "mutants": mutants,
         "discarded": discarded,
-        "provenance": "synthetic, self-authored (wald.corpus templates); MIT",
+        "provenance": "synthetic, self-authored (waldean.corpus templates); MIT",
     }
     (root / "MANIFEST.json").write_text(json.dumps(manifest, indent=2))
     log(f"corpus: {len(clean)} clean, {len(mutants)} verified mutants, "

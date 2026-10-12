@@ -1,18 +1,18 @@
 ---
 name: False positive
-about: Wald flagged legitimate code as a flaw
+about: Waldean flagged legitimate code as a flaw
 title: ""
 labels: false-positive
 ---
 
 **Flaw ID**
 
-Which rule fired. Run `wald rules` to list all flaw IDs (e.g. `leakage-fit-before-split`).
-See `wald/taxonomy/flaws.yaml` for flaw definitions.
+Which rule fired. Run `waldean rules` to list all flaw IDs (e.g. `leakage-fit-before-split`).
+See `waldean/taxonomy/flaws.yaml` for flaw definitions.
 
-**Wald version and mode**
+**Waldean version and mode**
 
-Output of `wald --version` (or `pip show wald-lint`).
+Output of `waldean --version` (or `pip show waldean`).
 
 Which mode you ran: static-only or `--llm`. If `--llm`, which provider(s).
 
@@ -23,7 +23,7 @@ large outputs, and imports to keep it minimal.
 
 **Full flag output**
 
-The complete wald output for this cell, not a trimmed excerpt.
+The complete waldean output for this cell, not a trimmed excerpt.
 Use `--format json` if that's easier to paste in full.
 
 **Why the code is legitimate**

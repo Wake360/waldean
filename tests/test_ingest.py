@@ -2,7 +2,7 @@ import warnings
 
 import pytest
 
-from wald.ingest import parse_notebook, parse_script
+from waldean.ingest import parse_notebook, parse_script
 
 
 def test_parse_script_plain_single_cell(tmp_path):

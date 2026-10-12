@@ -85,7 +85,7 @@ def to_markdown(path: str, flags: list[Flag], floor: float = DEFAULT_CONFIDENCE_
     )
     candidates = [f for f in flags if f.confidence < floor]
 
-    lines = [f"# Wald report — {path}", ""]
+    lines = [f"# Waldean report — {path}", ""]
     n_high = sum(1 for f in confident if f.severity == "high")
     n_med = sum(1 for f in confident if f.severity == "medium")
     verdict = f"{n_high} high, {n_med} medium" if n_high + n_med else "clean"
@@ -130,7 +130,7 @@ def to_sarif(entries: list[tuple[str, list[Flag]]], floor: float = DEFAULT_CONFI
     """One SARIF 2.1.0 log covering every notebook checked in this invocation."""
     taxonomy = load_taxonomy()
     try:
-        version = importlib.metadata.version("wald-lint")
+        version = importlib.metadata.version("waldean")
     except importlib.metadata.PackageNotFoundError:
         version = "unknown"
 
@@ -181,8 +181,8 @@ def to_sarif(entries: list[tuple[str, list[Flag]]], floor: float = DEFAULT_CONFI
         "runs": [{
             "tool": {
                 "driver": {
-                    "name": "wald",
-                    "informationUri": "https://github.com/Wake360/wald",
+                    "name": "waldean",
+                    "informationUri": "https://github.com/Wake360/waldean",
                     "version": version,
                     "rules": rules,
                 },

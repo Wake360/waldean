@@ -7,7 +7,7 @@ import re
 
 import pytest
 
-from wald.corpus import (
+from waldean.corpus import (
     FAMILIES,
     _build_date,
     abtest_notebook,
@@ -17,9 +17,9 @@ from wald.corpus import (
     fraud_notebook,
     program_notebook,
 )
-from wald.detect import DEFAULT_CONFIDENCE_FLOOR, run_static
-from wald.ingest import from_nbnode
-from wald.mutate import (
+from waldean.detect import DEFAULT_CONFIDENCE_FLOOR, run_static
+from waldean.ingest import from_nbnode
+from waldean.mutate import (
     BaserateAccuracyMutation,
     FitBeforeSplitMutation,
     MultipleTestingMutation,
@@ -174,7 +174,7 @@ def test_normalize_strips_execution_and_is_serialization_stable():
     # second build of an unchanged notebook is byte-identical
     import nbformat
 
-    from wald.corpus import _normalize
+    from waldean.corpus import _normalize
 
     nb = churn_notebook(7)
     nb.cells[1]["metadata"]["execution"] = {"iopub.status.busy": "2026-01-01T00:00:00Z"}
@@ -243,7 +243,7 @@ def test_forecast_mutants_are_confidently_flagged(seed):
 
 
 def test_render_report_survives_zero_clean_notebooks():
-    from wald.eval import render_report
+    from waldean.eval import render_report
 
     results = {
         "date": "2026-01-01", "corpus_built": "2026-01-01",
@@ -256,7 +256,7 @@ def test_render_report_survives_zero_clean_notebooks():
 
 
 def test_evaluate_missing_corpus_raises_systemexit(tmp_path):
-    from wald.eval import evaluate
+    from waldean.eval import evaluate
 
     with pytest.raises(SystemExit):
         evaluate(tmp_path / "nonexistent-corpus")
@@ -265,7 +265,7 @@ def test_evaluate_missing_corpus_raises_systemexit(tmp_path):
 def test_build_date_env_override(monkeypatch):
     from datetime import date
 
-    monkeypatch.setenv("WALD_BUILD_DATE", "2020-01-01")
+    monkeypatch.setenv("WALDEAN_BUILD_DATE", "2020-01-01")
     assert _build_date() == "2020-01-01"
-    monkeypatch.delenv("WALD_BUILD_DATE")
+    monkeypatch.delenv("WALDEAN_BUILD_DATE")
     assert _build_date() == date.today().isoformat()

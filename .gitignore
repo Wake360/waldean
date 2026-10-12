@@ -11,3 +11,5 @@ tmp/
 # Dogfood staging: raw pulled notebooks + the de-anonymizing SOURCES map.
 # Only the aggregate report and anonymized ledger under evals/ are committed.
 scratch/
+
+.env

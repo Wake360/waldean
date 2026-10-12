@@ -1,4 +1,4 @@
-# Wald as a mechanical gate for agent-written notebooks
+# Waldean as a mechanical gate for agent-written notebooks
 
 ## Why
 
@@ -11,9 +11,9 @@ then talk about "all users." These are not creativity failures. They are
 catalogued, mechanical errors — the kind a linter catches, not the kind
 that needs a second opinion.
 
-Wald is built to sit in that loop as a hard gate rather than a suggestion.
+Waldean is built to sit in that loop as a hard gate rather than a suggestion.
 It is deterministic (no LLM in the static layer, same input always
-produces the same flags), key-free (`wald check` calls no API unless you
+produces the same flags), key-free (`waldean check` calls no API unless you
 pass `--llm`), and exit-code gated: `0` clean, `1` medium-severity findings,
 `2` high-severity findings, `3` usage or input error (bad path, bad flag).
 That last distinction matters for automation — `3` means "the gate itself
@@ -26,8 +26,8 @@ merge.
 ## Recipe A: Claude Code PostToolUse hook
 
 Blocks Claude Code itself from leaving a leaky notebook on disk. The hook
-fires after every `Edit` or `Write`, runs `wald check` on the touched file,
-and — only on a HIGH finding (wald exit code `2`) — exits `2` with the
+fires after every `Edit` or `Write`, runs `waldean check` on the touched file,
+and — only on a HIGH finding (waldean exit code `2`) — exits `2` with the
 report on stderr. Claude Code's hook contract treats exit `2` as
 block-with-feedback: the tool call is blocked and stderr is fed back to the
 model, so the agent sees the exact flaw and fixes it instead of moving on.
@@ -46,7 +46,7 @@ continues and the message is just shown to the user.
         "hooks": [
           {
             "type": "command",
-            "command": "examples/hooks/wald-gate.sh"
+            "command": "examples/hooks/waldean-gate.sh"
           }
         ]
       }
@@ -55,7 +55,7 @@ continues and the message is just shown to the user.
 }
 ```
 
-The hook script (`examples/hooks/wald-gate.sh` in this repo, already
+The hook script (`examples/hooks/waldean-gate.sh` in this repo, already
 executable):
 
 ```bash
@@ -68,7 +68,7 @@ case "$file" in
   *) exit 0 ;;
 esac
 
-report=$(wald check "$file" 2>&1)
+report=$(waldean check "$file" 2>&1)
 code=$?
 
 if [ "$code" -eq 2 ]; then
@@ -88,7 +88,7 @@ erroring on `null`.
 ## Recipe B: pre-commit
 
 Blocks a commit that touches a notebook with an uncorrected HIGH or MEDIUM
-finding. `wald check` accepts multiple paths and returns the worst exit
+finding. `waldean check` accepts multiple paths and returns the worst exit
 code across all of them, so pre-commit can hand it every staged `.ipynb` in
 one call.
 
@@ -98,15 +98,15 @@ one call.
 repos:
   - repo: local
     hooks:
-      - id: wald
-        name: wald (statistical-integrity gate)
-        entry: wald check
+      - id: waldean
+        name: waldean (statistical-integrity gate)
+        entry: waldean check
         language: system
         files: \.ipynb$
 ```
 
-`pre-commit run wald` (or a normal `git commit`) fails the hook whenever
-`wald check` exits non-zero — `1` for a medium finding, `2` for a high one,
+`pre-commit run waldean` (or a normal `git commit`) fails the hook whenever
+`waldean check` exits non-zero — `1` for a medium finding, `2` for a high one,
 `3` if a staged file isn't a valid notebook.
 
 ## Recipe C: GitHub Actions
@@ -118,7 +118,7 @@ with `github/codeql-action/upload-sarif` to get findings as inline PR
 annotations in the Files Changed view, on top of the exit-code gate.
 
 ```yaml
-name: wald
+name: waldean
 on: [pull_request]
 
 jobs:
@@ -145,24 +145,24 @@ jobs:
             origin/${{ github.base_ref }}...${{ github.sha }} -- '*.ipynb')
           echo "files=$files" >> "$GITHUB_OUTPUT"
 
-      - name: wald check
-        id: wald
+      - name: waldean check
+        id: waldean
         if: steps.changed.outputs.files != ''
         run: |
           set +e
-          wald check ${{ steps.changed.outputs.files }} --format sarif \
-            > wald-report.sarif
+          waldean check ${{ steps.changed.outputs.files }} --format sarif \
+            > waldean-report.sarif
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Upload SARIF
         if: always() && steps.changed.outputs.files != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: wald-report.sarif
+          sarif_file: waldean-report.sarif
 
-      - name: Gate on wald exit code
+      - name: Gate on waldean exit code
         if: steps.changed.outputs.files != ''
-        run: exit ${{ steps.wald.outputs.exit_code }}
+        run: exit ${{ steps.waldean.outputs.exit_code }}
 ```
 
 The job fails (red X, blocks merge if the check is required) on exit `1`
@@ -185,7 +185,7 @@ remaining four classes in the taxonomy — `leakage-future-feature`,
 `regression-to-mean-claim`, `linearity-extrapolation` — need the narrative
 layer (`--llm`, an API key, and per the README the G2/G3 quality gates
 haven't run yet), so none of these recipes catch them. The full, versioned
-list of what Wald checks lives in `wald/taxonomy/flaws.yaml`.
+list of what Waldean checks lives in `waldean/taxonomy/flaws.yaml`.
 
 On measured quality: mutation testing gives precision 1.00 and recall 1.00
 on `leakage-fit-before-split` (24 mutants), `leakage-temporal-shuffle`
@@ -206,4 +206,4 @@ to fix the detector, too few to report as a recall number.
 What none of these recipes can catch, because no tool that reads notebooks
 can: a flaw with no imprint in code, stored outputs, or prose. Survivorship
 bias living in data that never entered the notebook is invisible by
-construction. Wald claims only the detectable classes.
+construction. Waldean claims only the detectable classes.
