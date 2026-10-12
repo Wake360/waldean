@@ -1,6 +1,6 @@
 # leakage-temporal-shuffle: documented evasions
 
-Four notebook shapes evade the detector (`wald/detect.py`,
+Four notebook shapes evade the detector (`waldean/detect.py`,
 `detect_leakage_temporal_shuffle`). Each was confirmed during the
 adversarial round that shipped the class (commit 096606f) and ruled
 residual risk: the root fix re-adds a measured false-positive class or
@@ -22,7 +22,7 @@ Resolving the variable would need literal-propagation through
 `flow.last_assign`, and any unresolvable value (config dict, function
 argument, CLI flag) would have to default somewhere: defaulting to
 shuffled flags legitimate `shuffle=cfg.shuffle` set to False; defaulting
-to clean is the current behavior. Wald's threat model is the honest
+to clean is the current behavior. Waldean's threat model is the honest
 mistake, and honest notebooks pass shuffle as a literal — laundering the
 flag through a variable is evasion, not error.
 

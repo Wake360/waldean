@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from wald.cli import _EmptyDir, _expand_notebooks, main
-from wald.llm import BackendError
+from waldean.cli import _EmptyDir, _expand_notebooks, main
+from waldean.llm import BackendError
 
 REPO = Path(__file__).parent.parent
 LEAKY = str(REPO / "examples" / "leaky.ipynb")
@@ -67,7 +67,7 @@ class _OkDet:
 def test_cli_llm_run_reports_narrative_provenance(monkeypatch, capsys, tmp_path):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
-    monkeypatch.setattr("wald.cli._llm_backends", lambda rd, subscription=False: (_OkDet(), _Ver()))
+    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: (_OkDet(), _Ver()))
     nb = {"cells": [
         {"cell_type": "code", "source": "x = 1\n", "outputs": [],
          "execution_count": None, "metadata": {}},
@@ -84,7 +84,7 @@ def test_cli_llm_backend_failure_exits_3_fail_loud(monkeypatch, capsys):
     # the dropped backend error propagates to the CLI, which exits 3.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
-    monkeypatch.setattr("wald.cli._llm_backends", lambda rd, subscription=False: (_Det(), _Ver()))
+    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: (_Det(), _Ver()))
     assert main(["check", "--llm", LEAKY]) == 3
     err = capsys.readouterr().err
     assert "narrative layer failed" in err
@@ -97,7 +97,7 @@ def test_valid_json_missing_cells_exits_3(tmp_path, capsys):
     p = _write(tmp_path, "nocells.ipynb", '{"hello": "world"}')
     assert main(["check", p]) == 3
     err = capsys.readouterr().err
-    assert err.startswith("wald: ")
+    assert err.startswith("waldean: ")
     assert "Traceback" not in err
 
 
@@ -110,14 +110,14 @@ def test_version_flag(capsys):
     with pytest.raises(SystemExit) as e:
         main(["--version"])
     assert e.value.code == 0
-    assert capsys.readouterr().out.startswith("wald ")
+    assert capsys.readouterr().out.startswith("waldean ")
 
 
 def test_version_short_flag(capsys):
     with pytest.raises(SystemExit) as e:
         main(["-V"])
     assert e.value.code == 0
-    assert capsys.readouterr().out.startswith("wald ")
+    assert capsys.readouterr().out.startswith("waldean ")
 
 
 def test_format_sarif_accepted_and_valid_json(tmp_path, capsys):
@@ -138,7 +138,7 @@ def test_format_sarif_accepted_and_valid_json(tmp_path, capsys):
 def test_check_color_absent_when_piped(capsys):
     rc = main(["check", LEAKY])
     out = capsys.readouterr().out
-    assert out.startswith("# Wald report")
+    assert out.startswith("# Waldean report")
     assert "\x1b[" not in out
     assert rc == 2
 
@@ -204,7 +204,7 @@ def test_py_json_line_is_file_absolute(capsys):
 
 
 def test_py_oversized_single_cell_warns_partial(tmp_path, capsys):
-    from wald.dataflow import MAX_CELL_SOURCE_BYTES
+    from waldean.dataflow import MAX_CELL_SOURCE_BYTES
 
     big = "a = 1  # " + "A" * (MAX_CELL_SOURCE_BYTES + 1) + "\n"
     p = _write(tmp_path, "big.py", big)
@@ -225,7 +225,7 @@ def test_expand_notebooks_ignores_py_in_dirs(tmp_path, capsys):
     (tmp_path / "a.py").write_text("x = 1\n")  # directory has .py but no .ipynb
     rc = main(["check", str(tmp_path)])
     assert rc == 3
-    assert capsys.readouterr().err == f"wald: {tmp_path}: no .ipynb files found\n"
+    assert capsys.readouterr().err == f"waldean: {tmp_path}: no .ipynb files found\n"
 
 
 # --- WS2: directory recursion ----------------------------------------------
@@ -246,7 +246,7 @@ def test_check_empty_dir_exits_3(tmp_path, capsys):
     d.mkdir()
     rc = main(["check", str(d)])
     assert rc == 3
-    assert capsys.readouterr().err == f"wald: {d}: no .ipynb files found\n"
+    assert capsys.readouterr().err == f"waldean: {d}: no .ipynb files found\n"
 
 
 def test_heldout_dir_refusal(tmp_path, capsys):
@@ -271,8 +271,8 @@ def test_check_dir_abort_on_unreadable(tmp_path, capsys):
     rc = main(["check", str(tmp_path)])
     out, err = capsys.readouterr()
     assert rc == 3
-    assert out.count("# Wald report") == 1
-    assert err.startswith("wald: ")
+    assert out.count("# Waldean report") == 1
+    assert err.startswith("waldean: ")
 
 
 def test_check_dir_recurse_reports_all_worst_exit(tmp_path, capsys):
@@ -281,7 +281,7 @@ def test_check_dir_recurse_reports_all_worst_exit(tmp_path, capsys):
     rc = main(["check", str(tmp_path)])
     out = capsys.readouterr().out
     assert rc == 2
-    assert out.count("# Wald report") == 2
+    assert out.count("# Waldean report") == 2
     assert out.index("a_leaky.ipynb") < out.index("b_clean.ipynb")
 
 
@@ -304,12 +304,12 @@ def test_rollup_on_tty_not_piped(monkeypatch, tmp_path, capsys):
 
 
 def test_rollup_buckets_by_severity_under_medium_gate(monkeypatch, tmp_path, capsys):
-    from wald.detect import Flag
+    from waldean.detect import Flag
 
     medium = Flag(flaw_id="testing-multiple-uncorrected", severity="medium",
                   confidence=0.9, cell=1, line=1, evidence="e",
                   failure_scenario="f", fix="x")
-    monkeypatch.setattr("wald.cli.run_static", lambda nb, flow: [medium])
+    monkeypatch.setattr("waldean.cli.run_static", lambda nb, flow: [medium])
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     _write(tmp_path, "a.ipynb", CLEAN_NB)
     _write(tmp_path, "b.ipynb", CLEAN_NB)
@@ -335,7 +335,7 @@ def test_rollup_never_for_json_even_on_tty(monkeypatch, tmp_path, capsys):
 def test_llm_progress_on_tty_stderr_only(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
-    monkeypatch.setattr("wald.cli._llm_backends", lambda rd, subscription=False: (_OkDet(), _Ver()))
+    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: (_OkDet(), _Ver()))
     monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
     _write(tmp_path, "a.ipynb", CLEAN_NB)
     _write(tmp_path, "b.ipynb", CLEAN_NB)
@@ -350,7 +350,7 @@ def test_llm_progress_on_tty_stderr_only(monkeypatch, tmp_path, capsys):
 def test_llm_progress_absent_when_piped(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
-    monkeypatch.setattr("wald.cli._llm_backends", lambda rd, subscription=False: (_OkDet(), _Ver()))
+    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: (_OkDet(), _Ver()))
     p = _write(tmp_path, "a.ipynb", CLEAN_NB)
     main(["check", "--llm", p])
     assert "checking" not in capsys.readouterr().err
@@ -359,12 +359,12 @@ def test_llm_progress_absent_when_piped(monkeypatch, tmp_path, capsys):
 def test_llm_progress_closed_before_backend_error(monkeypatch, capsys):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
-    monkeypatch.setattr("wald.cli._llm_backends", lambda rd, subscription=False: (_Det(), _Ver()))
+    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: (_Det(), _Ver()))
     monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
     rc = main(["check", "--llm", LEAKY])
     err = capsys.readouterr().err
     assert rc == 3
-    assert "\nwald: narrative layer failed" in err  # error starts on a fresh line
+    assert "\nwaldean: narrative layer failed" in err  # error starts on a fresh line
 
 
 # --- WS5: user-facing string pins -------------------------------------------
@@ -382,13 +382,13 @@ def test_help_pins_exit_code_line(capsys):
 def test_message_no_such_file(capsys):
     rc = main(["check", "missing.ipynb"])
     assert rc == 3
-    assert capsys.readouterr().err == "wald: missing.ipynb: no such file\n"
+    assert capsys.readouterr().err == "waldean: missing.ipynb: no such file\n"
 
 
 def test_message_directory_not_notebook():
     # unreachable from the CLI since directory expansion landed; pinned at
     # unit level so the wording stays stable for any future caller
-    from wald.cli import _input_error
+    from waldean.cli import _input_error
 
     assert _input_error(IsADirectoryError()) == "is a directory, not a notebook"
 
@@ -399,7 +399,7 @@ def test_message_llm_missing_keys(monkeypatch, capsys):
     rc = main(["check", "--llm", LEAKY])
     assert rc == 3
     assert capsys.readouterr().err == (
-        "wald: --llm needs ANTHROPIC_API_KEY and OPENAI_API_KEY set in the environment\n"
+        "waldean: --llm needs ANTHROPIC_API_KEY and OPENAI_API_KEY set in the environment\n"
     )
 
 
@@ -409,7 +409,7 @@ def test_eval_llm_missing_keys_exits_3(monkeypatch, capsys):
     rc = main(["eval", "--llm", "--split", "dev"])
     assert rc == 3
     assert capsys.readouterr().err == (
-        "wald: --llm needs ANTHROPIC_API_KEY and OPENAI_API_KEY set in the environment\n"
+        "waldean: --llm needs ANTHROPIC_API_KEY and OPENAI_API_KEY set in the environment\n"
     )
 
 
@@ -420,7 +420,7 @@ def test_eval_llm_subscription_heldout_refused_before_backends(monkeypatch, caps
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     called = []
-    monkeypatch.setattr("wald.cli._llm_backends", lambda rd, subscription=False: called.append(1))
+    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: called.append(1))
     rc = main(["eval", "--llm", "--llm-subscription", "--split", "heldout"])
     assert rc == 3
     assert "subscription runs cannot produce gate evidence" in capsys.readouterr().err
@@ -428,8 +428,8 @@ def test_eval_llm_subscription_heldout_refused_before_backends(monkeypatch, caps
 
 
 def test_llm_backends_subscription_ignores_replay_dir(monkeypatch, tmp_path):
-    from wald.cli import _llm_backends
-    from wald.llm import AgentBackend, CodexBackend
+    from waldean.cli import _llm_backends
+    from waldean.llm import AgentBackend, CodexBackend
 
     det, ver = _llm_backends(str(tmp_path / "replay"), subscription=True)
     assert isinstance(det, AgentBackend)
@@ -452,7 +452,7 @@ def test_heldout_refusal_has_prefix_and_exits_3(tmp_path, capsys):
         str(tmp_path / "clean" / "foo.ipynb"),
     ])
     assert rc == 3
-    assert capsys.readouterr().err.startswith("wald: ")
+    assert capsys.readouterr().err.startswith("waldean: ")
 
 
 # --- WS5: --keep-going ------------------------------------------------------
@@ -465,8 +465,8 @@ def test_keep_going_mixed_batch_reports_good_exits_3(tmp_path, capsys):
     rc = main(["check", "--keep-going", str(tmp_path)])
     out, err = capsys.readouterr()
     assert rc == 3
-    assert out.count("# Wald report") == 2
-    assert err.count("wald: ") == 1
+    assert out.count("# Waldean report") == 2
+    assert err.count("waldean: ") == 1
 
 
 def test_keep_going_all_fail_exits_3(tmp_path, capsys):
@@ -475,8 +475,8 @@ def test_keep_going_all_fail_exits_3(tmp_path, capsys):
     rc = main(["check", "--keep-going", str(tmp_path)])
     out, err = capsys.readouterr()
     assert rc == 3
-    assert out.count("# Wald report") == 0
-    assert err.count("wald: ") == 2
+    assert out.count("# Waldean report") == 0
+    assert err.count("waldean: ") == 2
 
 
 def test_keep_going_high_plus_failure_exits_3(tmp_path, capsys):
@@ -519,7 +519,7 @@ def test_keep_going_llm_backend_error_still_hard_aborts(monkeypatch, capsys):
     # the --llm backend-error abort must never soften, even with --keep-going.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
-    monkeypatch.setattr("wald.cli._llm_backends", lambda rd, subscription=False: (_Det(), _Ver()))
+    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: (_Det(), _Ver()))
     rc = main(["check", "--llm", "--keep-going", LEAKY])
     err = capsys.readouterr().err
     assert rc == 3
@@ -542,20 +542,20 @@ def test_keep_going_heldout_refusal_still_aborts(tmp_path, capsys):
         str(tmp_path / "clean" / "foo.ipynb"),
     ])
     assert rc == 3
-    assert capsys.readouterr().err.startswith("wald: ")
+    assert capsys.readouterr().err.startswith("waldean: ")
 
 
 def test_llm_subscription_missing_clis_exits_3(monkeypatch, capsys):
-    monkeypatch.setattr("wald.cli.shutil.which", lambda name: None)
+    monkeypatch.setattr("waldean.cli.shutil.which", lambda name: None)
     rc = main(["check", "--llm", "--llm-subscription", LEAKY])
     assert rc == 3
     assert capsys.readouterr().err == (
-        "wald: --llm-subscription needs the claude and codex CLIs on PATH\n"
+        "waldean: --llm-subscription needs the claude and codex CLIs on PATH\n"
     )
 
 
 def test_rules_lists_all_taxonomy_ids(capsys):
-    from wald.taxonomy import load_taxonomy
+    from waldean.taxonomy import load_taxonomy
 
     rc = main(["rules"])
     out = capsys.readouterr().out
@@ -609,7 +609,7 @@ def test_eval_predictions_malformed_json_exits_3(fake_corpus, capsys):
     rc = main(["eval", "--corpus", str(fake_corpus), "--predictions", str(preds)])
     err = capsys.readouterr().err
     assert rc == 3
-    assert err.startswith("wald: --predictions: ")
+    assert err.startswith("waldean: --predictions: ")
 
 
 def test_eval_predictions_unknown_corpus_path_exits_3(fake_corpus, capsys):
@@ -618,7 +618,7 @@ def test_eval_predictions_unknown_corpus_path_exits_3(fake_corpus, capsys):
     rc = main(["eval", "--corpus", str(fake_corpus), "--predictions", str(preds)])
     err = capsys.readouterr().err
     assert rc == 3
-    assert err.startswith("wald: --predictions: ")
+    assert err.startswith("waldean: --predictions: ")
     assert "typo" in err
 
 
@@ -637,7 +637,7 @@ def test_eval_predictions_malformed_shapes_exit_3(fake_corpus, capsys, preds_con
     rc = main(["eval", "--corpus", str(fake_corpus), "--predictions", str(preds)])
     err = capsys.readouterr().err
     assert rc == 3
-    assert err.startswith("wald: --predictions: ")
+    assert err.startswith("waldean: --predictions: ")
 
 
 def test_eval_predictions_missing_corpus_blames_corpus(tmp_path, capsys):
@@ -646,7 +646,7 @@ def test_eval_predictions_missing_corpus_blames_corpus(tmp_path, capsys):
     rc = main(["eval", "--corpus", str(tmp_path / "nocorpus"), "--predictions", str(preds)])
     err = capsys.readouterr().err
     assert rc == 3
-    assert err.startswith("wald: corpus not found")
+    assert err.startswith("waldean: corpus not found")
 
 
 def test_eval_predictions_missing_corpus_notebook_blames_corpus(fake_corpus, capsys):
@@ -656,7 +656,7 @@ def test_eval_predictions_missing_corpus_notebook_blames_corpus(fake_corpus, cap
     rc = main(["eval", "--corpus", str(fake_corpus), "--predictions", str(preds)])
     err = capsys.readouterr().err
     assert rc == 3
-    assert err.startswith("wald: corpus: ")
+    assert err.startswith("waldean: corpus: ")
 
 
 def test_eval_predictions_rejects_split(fake_corpus, capsys):

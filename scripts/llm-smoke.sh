@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -u
-log="$HOME/.wald-llm-smoke.log"
+log="$HOME/.waldean-llm-smoke.log"
 ts=$(date +%Y-%m-%dT%H:%M)
 cd "$(dirname "$0")/.." || { echo "$ts FAIL cd" >> "$log"; exit 1; }
-out=$(uv run wald check examples/leaky.ipynb --llm --llm-subscription 2>&1)
+out=$(uv run waldean check examples/leaky.ipynb --llm --llm-subscription 2>&1)
 rc=$?
-if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q '^# Wald report' && ! printf '%s' "$out" | grep -qi "backend error"; then
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q '^# Waldean report' && ! printf '%s' "$out" | grep -qi "backend error"; then
     echo "$ts OK rc=$rc" >> "$log"
     exit 0
 fi

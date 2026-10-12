@@ -5,7 +5,7 @@ the mutant (execution fingerprint or AST fact). A mutant without proof
 never enters the corpus — otherwise the whole eval stands on sand.
 
 One mutation per notebook (isolation of measurement). Cell indices in the
-notebook's wald metadata refer to the clean base; mutations either edit
+notebook's waldean metadata refer to the clean base; mutations either edit
 in place or insert cells and never rely on post-insertion indices.
 """
 
@@ -25,7 +25,7 @@ from .ingest import from_nbnode
 
 
 def meta(nb_node) -> dict:
-    return dict(nb_node.metadata.get("wald", {}))
+    return dict(nb_node.metadata.get("waldean", {}))
 
 
 def _cell_stmts(source: str) -> tuple[cst.Module, list]:
@@ -133,10 +133,10 @@ class FitBeforeSplitMutation(Mutation):
 
     def verify(self, mutated_node) -> tuple[bool, dict]:
         probe = (
-            "print('WALD_VERIFY_LEAK', int(getattr(scaler, 'n_samples_seen_', -1)), int(len(y)))"
+            "print('WALDEAN_VERIFY_LEAK', int(getattr(scaler, 'n_samples_seen_', -1)), int(len(y)))"
         )
         executed = ex.execute(ex.with_appended_code_cell(mutated_node, probe))
-        lines = ex.stdout_lines(executed, "WALD_VERIFY_LEAK")
+        lines = ex.stdout_lines(executed, "WALDEAN_VERIFY_LEAK")
         if not lines:
             return False, {"reason": "no verify output"}
         _, seen, total = lines[-1].split()
@@ -263,10 +263,10 @@ class BaserateAccuracyMutation(Mutation):
         probe = (
             "import pandas as _pd\n"
             "_maj = float(_pd.Series(y_te).value_counts(normalize=True).max())\n"
-            "print('WALD_VERIFY_BASERATE', _maj, float(acc))"
+            "print('WALDEAN_VERIFY_BASERATE', _maj, float(acc))"
         )
         executed = ex.execute(ex.with_appended_code_cell(mutated_node, probe))
-        lines = ex.stdout_lines(executed, "WALD_VERIFY_BASERATE")
+        lines = ex.stdout_lines(executed, "WALDEAN_VERIFY_BASERATE")
         if not lines:
             return False, {"reason": "no verify output"}
         _, maj, acc = lines[-1].split()
@@ -395,9 +395,9 @@ class SignificanceMeaninglessMutation(Mutation):
         return _replace_markdown(nb, m["conclusion_cell"], text)
 
     def verify(self, mutated_node) -> tuple[bool, dict]:
-        probe = "print('WALD_VERIFY_SIG', float(p), float(d))"
+        probe = "print('WALDEAN_VERIFY_SIG', float(p), float(d))"
         executed = ex.execute(ex.with_appended_code_cell(mutated_node, probe))
-        lines = ex.stdout_lines(executed, "WALD_VERIFY_SIG")
+        lines = ex.stdout_lines(executed, "WALDEAN_VERIFY_SIG")
         if not lines:
             return False, {"reason": "no verify output"}
         _, p, d = lines[-1].split()
@@ -478,12 +478,12 @@ class RegressionToMeanMutation(Mutation):
                            "selection_calls": len(selections)}
         p1, p2 = meta(mutated_node)["period_cols"]
         probe = (
-            f"print('WALD_VERIFY_RTM', float(flagged[{p1!r}].mean()), "
+            f"print('WALDEAN_VERIFY_RTM', float(flagged[{p1!r}].mean()), "
             f"float(flagged[{p2!r}].mean()), float(df[{p1!r}].mean()), "
             f"float(df[{p2!r}].mean()))"
         )
         executed = ex.execute(ex.with_appended_code_cell(mutated_node, probe))
-        lines = ex.stdout_lines(executed, "WALD_VERIFY_RTM")
+        lines = ex.stdout_lines(executed, "WALDEAN_VERIFY_RTM")
         if not lines:
             return False, {"reason": "no verify output"}
         _, s1, s2, g1, g2 = lines[-1].split()
@@ -557,11 +557,11 @@ class TemporalShuffleMutation(Mutation):
             probe = (
                 "_trd = df.loc[X_tr.index, 'date']\n"
                 "_ted = df.loc[X_te.index, 'date']\n"
-                "print('WALD_VERIFY_TEMPORAL', int(_trd.max() > _ted.min()), "
+                "print('WALDEAN_VERIFY_TEMPORAL', int(_trd.max() > _ted.min()), "
                 "_trd.max().date(), _ted.min().date())"
             )
             executed = ex.execute(ex.with_appended_code_cell(mutated_node, probe))
-            lines = ex.stdout_lines(executed, "WALD_VERIFY_TEMPORAL")
+            lines = ex.stdout_lines(executed, "WALDEAN_VERIFY_TEMPORAL")
             if not lines:
                 return False, {"reason": "no verify output"}
             _, flag, train_max, test_min = lines[-1].split()
@@ -570,12 +570,12 @@ class TemporalShuffleMutation(Mutation):
         else:
             probe = (
                 "_tr, _te = next(iter(cv.split(X)))\n"
-                "print('WALD_VERIFY_TEMPORAL_CV', "
+                "print('WALDEAN_VERIFY_TEMPORAL_CV', "
                 "int(df['date'].iloc[_tr].max() > df['date'].iloc[_te].min()), "
                 "df['date'].iloc[_tr].max().date(), df['date'].iloc[_te].min().date())"
             )
             executed = ex.execute(ex.with_appended_code_cell(mutated_node, probe))
-            lines = ex.stdout_lines(executed, "WALD_VERIFY_TEMPORAL_CV")
+            lines = ex.stdout_lines(executed, "WALDEAN_VERIFY_TEMPORAL_CV")
             if not lines:
                 return False, {"reason": "no verify output"}
             _, flag, train_max, test_min = lines[-1].split()

@@ -1,4 +1,4 @@
-# Scoring an external tool against the Wald corpus
+# Scoring an external tool against the Waldean corpus
 
 The mutation corpus is a benchmark: 192 mechanically verified flawed
 notebooks plus 83 clean ones (56 synthetic, 27 real and reviewed), each
@@ -21,39 +21,39 @@ clean + 192 mutants + 27 real clean). Values are lists of findings:
     }
 
 Omitted files mean "no findings". `confidence` defaults to 1.0; findings
-below the confidence floor (0.8, wald's own) are not counted for the
+below the confidence floor (0.8, waldean's own) are not counted for the
 static classes but do count for the candidate layer. `flaw_id` values
-come from `wald rules --format json`. Unknown file keys are an error.
+come from `waldean rules --format json`. Unknown file keys are an error.
 
 ## Scoring
 
-    wald eval --corpus corpus --predictions preds.json
+    waldean eval --corpus corpus --predictions preds.json
 
-Scoring reuses wald's own eval code path: a mutant is a TP only if a
+Scoring reuses waldean's own eval code path: a mutant is a TP only if a
 finding carries its exact `flaw_id`; any confident finding on a clean
 notebook is an FP; confident findings of a *different* class on a mutant
 are FPs too. Narrative-only mutants (32 of 192) are excluded from static
 recall — the static classes can't decide them — but not from scoring
 altogether: a confident static-class finding on one still counts as a
-cross-class FP, same as for wald itself.
+cross-class FP, same as for waldean itself.
 
 ## Corpus version
 
 Cite the `built` date plus the `provenance` string from
-`corpus/MANIFEST.json`. A rebuilt corpus (`wald corpus build`) with the
-same seeds and `WALD_BUILD_DATE` is byte-identical.
+`corpus/MANIFEST.json`. A rebuilt corpus (`waldean corpus build`) with the
+same seeds and `WALDEAN_BUILD_DATE` is byte-identical.
 
 The report prints to stdout only (nothing is written to disk). Both dev
 and held-out mutants are scored together; passing `--split` with
 `--predictions` is an error (exit 3).
 
 Exit 3 also covers bad input. A malformed or unreadable predictions file
-reports as `wald: --predictions: ...`; a missing or broken corpus reports
-as `wald: corpus ...`.
+reports as `waldean: --predictions: ...`; a missing or broken corpus reports
+as `waldean: corpus ...`.
 
 ## Worked example
 
-`scripts/self-score.sh` feeds wald's own `check --format json` output
-through the converter and reproduces `wald eval`'s numbers exactly —
+`scripts/self-score.sh` feeds waldean's own `check --format json` output
+through the converter and reproduces `waldean eval`'s numbers exactly —
 note it concatenates `flags` and `candidates`, since candidate-layer
 findings (survivorship) sit below the confidence floor by design.

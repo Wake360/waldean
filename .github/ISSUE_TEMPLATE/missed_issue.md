@@ -1,17 +1,17 @@
 ---
 name: Missed issue
-about: Wald stayed silent on a real flaw
+about: Waldean stayed silent on a real flaw
 title: ""
 labels: missed-issue
 ---
 
 **Which flaw class should have fired**
 
-Run `wald rules` for the list. If none fits, use the "Proposed rule" template instead.
+Run `waldean rules` for the list. If none fits, use the "Proposed rule" template instead.
 
-**Wald version**
+**Waldean version**
 
-Output of `wald --version`.
+Output of `waldean --version`.
 
 **Minimal code**
 

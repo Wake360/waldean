@@ -1,4 +1,4 @@
-"""wald CLI: check / eval / corpus."""
+"""waldean CLI: check / eval / corpus."""
 
 from __future__ import annotations
 
@@ -126,24 +126,24 @@ def _input_error(exc: Exception) -> str:
 
 def cmd_check(args) -> int:
     if not 0.0 <= args.floor <= 1.0:
-        print(f"wald: --floor must be between 0 and 1 (got {args.floor})", file=sys.stderr)
+        print(f"waldean: --floor must be between 0 and 1 (got {args.floor})", file=sys.stderr)
         return 3
     det = ver = None
     if args.llm:
         if args.llm_subscription and _missing_subscription_clis():
-            print("wald: --llm-subscription needs the claude and codex CLIs on PATH",
+            print("waldean: --llm-subscription needs the claude and codex CLIs on PATH",
                   file=sys.stderr)
             return 3
         det, ver = _llm_backends(args.replay_dir, subscription=args.llm_subscription)
         missing = _missing_llm_keys(det, ver)
         if missing:
-            print(f"wald: --llm needs {' and '.join(missing)} set in the environment",
+            print(f"waldean: --llm needs {' and '.join(missing)} set in the environment",
                   file=sys.stderr)
             return 3
     try:
         notebooks = _expand_notebooks(args.notebooks)
     except _EmptyDir as exc:
-        print(f"wald: {exc}: no .ipynb files found", file=sys.stderr)
+        print(f"waldean: {exc}: no .ipynb files found", file=sys.stderr)
         return 3
     # interactive-only chrome; the piped md/json/sarif bytes stay untouched
     color = args.format == "md" and sys.stdout.isatty() and not os.environ.get("NO_COLOR")
@@ -166,7 +166,7 @@ def cmd_check(args) -> int:
             refusal = _heldout_refusal(path, det, ver)
             if refusal:
                 close_progress()
-                print(f"wald: {refusal}", file=sys.stderr)
+                print(f"waldean: {refusal}", file=sys.stderr)
                 return 3
         try:
             nb = parse_notebook(path)
@@ -181,13 +181,13 @@ def cmd_check(args) -> int:
                 )
                 if backend_error is not None:
                     close_progress()
-                    print(f"wald: narrative layer failed: {backend_error}", file=sys.stderr)
+                    print(f"waldean: narrative layer failed: {backend_error}", file=sys.stderr)
                     return 3
             else:
                 flags = run_static(nb, flow)
         except Exception as exc:
             close_progress()
-            print(f"wald: {path}: {_input_error(exc)}", file=sys.stderr)
+            print(f"waldean: {path}: {_input_error(exc)}", file=sys.stderr)
             if args.keep_going:
                 n_failed += 1
                 continue
@@ -227,11 +227,11 @@ def cmd_check(args) -> int:
 def cmd_eval(args) -> int:
     if args.predictions:
         if args.llm:
-            print("wald: --predictions scores an external tool; drop --llm",
+            print("waldean: --predictions scores an external tool; drop --llm",
                   file=sys.stderr)
             return 3
         if args.split is not None:
-            print("wald: --split does not apply to --predictions; both splits are scored",
+            print("waldean: --split does not apply to --predictions; both splits are scored",
                   file=sys.stderr)
             return 3
         from .eval import evaluate_predictions, load_predictions, render_report
@@ -239,15 +239,15 @@ def cmd_eval(args) -> int:
         try:
             predictions = load_predictions(args.predictions)
         except (OSError, ValueError) as exc:
-            print(f"wald: --predictions: {_input_error(exc)}", file=sys.stderr)
+            print(f"waldean: --predictions: {_input_error(exc)}", file=sys.stderr)
             return 3
         try:
             results = evaluate_predictions(args.corpus, predictions)
         except SystemExit as exc:
-            print(f"wald: {exc}", file=sys.stderr)
+            print(f"waldean: {exc}", file=sys.stderr)
             return 3
         except Exception as exc:
-            print(f"wald: corpus: {_input_error(exc)}", file=sys.stderr)
+            print(f"waldean: corpus: {_input_error(exc)}", file=sys.stderr)
             return 3
         results["predictions_file"] = args.predictions
         print(render_report(results))
@@ -258,19 +258,19 @@ def cmd_eval(args) -> int:
 
         split = args.split or "dev"
         if args.llm_subscription and split == "heldout":
-            print("wald: subscription runs cannot produce gate evidence — set "
+            print("waldean: subscription runs cannot produce gate evidence — set "
                   "ANTHROPIC_API_KEY + OPENAI_API_KEY for the held-out gate",
                   file=sys.stderr)
             return 3
         if args.llm_subscription and _missing_subscription_clis():
-            print("wald: --llm-subscription needs the claude and codex CLIs on PATH",
+            print("waldean: --llm-subscription needs the claude and codex CLIs on PATH",
                   file=sys.stderr)
             return 3
 
         det, ver = _llm_backends(args.replay_dir, subscription=args.llm_subscription)
         missing = _missing_llm_keys(det, ver)
         if missing:
-            print(f"wald: --llm needs {' and '.join(missing)} set in the environment",
+            print(f"waldean: --llm needs {' and '.join(missing)} set in the environment",
                   file=sys.stderr)
             return 3
         results = run_llm_eval(args.corpus, det, ver, split=split, out_dir=args.out)
@@ -324,12 +324,12 @@ def cmd_rules(args) -> int:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="wald", description="Statistical-integrity linter for notebooks.")
+    parser = argparse.ArgumentParser(prog="waldean", description="Statistical-integrity linter for notebooks.")
     try:
-        _version = importlib.metadata.version("wald-lint")
+        _version = importlib.metadata.version("waldean")
     except importlib.metadata.PackageNotFoundError:
         _version = "unknown"
-    parser.add_argument("-V", "--version", action="version", version=f"wald {_version}")
+    parser.add_argument("-V", "--version", action="version", version=f"waldean {_version}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_check = sub.add_parser(
@@ -376,7 +376,7 @@ def main(argv=None) -> int:
     p_eval.add_argument("--predictions",
                         help="score an external tool: JSON of {corpus-relative "
                              "path: [{flaw_id, confidence}]} instead of running "
-                             "wald's own detectors")
+                             "waldean's own detectors")
     p_eval.set_defaults(func=cmd_eval)
 
     p_corpus = sub.add_parser("corpus", help="corpus operations")
@@ -389,7 +389,7 @@ def main(argv=None) -> int:
                               "per seed (default: %(default)s)")
     p_build.set_defaults(func=cmd_corpus_build)
 
-    p_rules = sub.add_parser("rules", help="list the flaw classes wald checks")
+    p_rules = sub.add_parser("rules", help="list the flaw classes waldean checks")
     p_rules.add_argument("--format", choices=["text", "json"], default="text",
                          help="json emits a JSON array of flaw objects (default: %(default)s)")
     p_rules.set_defaults(func=cmd_rules)

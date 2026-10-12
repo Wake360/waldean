@@ -1,6 +1,6 @@
 # Evaluation
 
-## How Wald proves it works: mutation testing for statistics
+## How Waldean proves it works: mutation testing for statistics
 
 The detector is not measured by demos. A **mutation corpus** exists before
 the detectors do: clean notebooks get named flaws programmatically injected
@@ -30,8 +30,8 @@ significance-meaningless); they are scored by the `--llm` eval, not by
 this table, and no numbers are claimed for them until its gates run.
 (Eval 2026-07-05, `evals/2026-07-05-eval.json`.)
 
-Reproduce: `wald corpus build && wald eval`. Dated reports live in `evals/`.
-Set `WALD_BUILD_DATE=YYYY-MM-DD` to pin the manifest/report date for a byte-identical rebuild.
+Reproduce: `waldean corpus build && waldean eval`. Dated reports live in `evals/`.
+Set `WALDEAN_BUILD_DATE=YYYY-MM-DD` to pin the manifest/report date for a byte-identical rebuild.
 
 **Dogfooded on real notebooks** (`evals/2026-07-04-dogfood.md`): the first
 run on 34 real notebooks produced a 50% file flag rate — 119 of 124 flags
@@ -44,10 +44,10 @@ licenses recorded per file.
 
 **Wider dogfood — first recall and precision numbers**
 (`evals/2026-07-07-dogfood-wide.md`): 60 fresh GitHub notebooks, none
-from the teaching repos above. wald flagged 13; adversarial review
+of them among the 34 notebooks of the first dogfood. waldean flagged 13; adversarial review
 confirmed 25 of 28 flags real (**0.89 flag precision**, 12 of 13 flagged
 notebooks genuinely leaky) and, over a seeded 30-notebook miss-hunt
-sample of the un-flagged set, found 8 leaks wald missed — **0.60
+sample of the un-flagged set, found 8 leaks waldean missed — **0.60
 notebook-level recall** across the 43-notebook audited subset. 33
 confirmed leak instances across 20 notebooks, all in the two leakage
 classes (28 `leakage-fit-before-split`, 5 `leakage-temporal-shuffle`).
@@ -60,7 +60,7 @@ does not carry to messy real code; 0.60 recall is a one-seed subset
 estimate, upper-leaning. Ground truth is multi-agent adversarial review,
 not expert human labeling.
 
-## What Wald sees (v1) and what it doesn't
+## What Waldean sees (v1) and what it doesn't
 
 The static layer (deterministic, no API key, runs in CI) decides four
 classes on its own:
@@ -95,10 +95,10 @@ followed by aggregation). Deciding that class requires the narrative layer
 — the flaw is the *pair* (filter, population claim); the filter alone is
 legitimate analysis.
 
-**What Wald does not see:** flaws with no imprint in code, outputs or
+**What Waldean does not see:** flaws with no imprint in code, outputs or
 prose. Survivorship bias that lives in data that never entered the notebook
-is invisible to any tool that reads notebooks. Wald claims only the
-detectable classes, and the taxonomy (`wald/taxonomy/flaws.yaml`) is the
+is invisible to any tool that reads notebooks. Waldean claims only the
+detectable classes, and the taxonomy (`waldean/taxonomy/flaws.yaml`) is the
 complete, versioned list of what it checks.
 
 `.py` scripts have no stored cell outputs, so `baserate-accuracy-imbalanced`

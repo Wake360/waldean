@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from wald.eval import evaluate_predictions, load_predictions
+from waldean.eval import evaluate_predictions, load_predictions
 
 
 def _preds(tmp_path, preds):

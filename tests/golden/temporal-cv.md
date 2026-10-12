@@ -1,4 +1,4 @@
-# Wald report — examples/temporal-cv-before-after.ipynb
+# Waldean report — examples/temporal-cv-before-after.ipynb
 
 verdict: 1 high, 0 medium | static layer (no LLM)
 

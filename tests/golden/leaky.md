@@ -1,4 +1,4 @@
-# Wald report — examples/leaky.ipynb
+# Waldean report — examples/leaky.ipynb
 
 verdict: 1 high, 0 medium | static layer (no LLM)
 

@@ -1,4 +1,4 @@
-"""Golden gates G0 + G1 (need a built corpus: `wald corpus build`)."""
+"""Golden gates G0 + G1 (need a built corpus: `waldean corpus build`)."""
 
 import json
 import re
@@ -7,17 +7,17 @@ from pathlib import Path
 import nbformat
 import pytest
 
-from wald.corpus import MUTATION_SEEDS
-from wald.detect import run_static
-from wald.eval import REAL_FP_CAVEAT, evaluate, render_report
-from wald.ingest import parse_notebook
+from waldean.corpus import MUTATION_SEEDS
+from waldean.detect import run_static
+from waldean.eval import REAL_FP_CAVEAT, evaluate, render_report
+from waldean.ingest import parse_notebook
 
 CORPUS = Path(__file__).parent.parent / "corpus"
 
 pytestmark = pytest.mark.skipif(
     not ((CORPUS / "MANIFEST.json").exists()
          and (CORPUS / "negative" / "MANIFEST.json").exists()),
-    reason="corpus not built (run: wald corpus build)",
+    reason="corpus not built (run: waldean corpus build)",
 )
 
 
@@ -198,7 +198,7 @@ def test_g1_temporal_zero_flags_on_real():
 
 
 def test_g1_report_date_pinned_by_env(monkeypatch):
-    monkeypatch.setenv("WALD_BUILD_DATE", "1999-12-31")
+    monkeypatch.setenv("WALDEAN_BUILD_DATE", "1999-12-31")
     results = evaluate(CORPUS)
     assert results["date"] == "1999-12-31"
 

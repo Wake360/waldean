@@ -1,11 +1,11 @@
 # ADR 0001: Waldean is the product brand, Wald stays the engine
 
 Date: 2026-10-12
-Status: accepted
+Status: superseded in part by ADR 0002 (decision 1: the repository is now renamed)
 
 ## Context
 
-`wald` (`wald-lint` on PyPI) is a statistical-integrity linter for notebooks and scripts. The strategy (`WALD_STRATEGIE_OSS_BUSINESS.md`, sections 0 and 2) already commits to growing it from "find the flaw" into an experiment loop: Detect, Explain, Propose, Verify, Preserve. `wald propose` v1 is planned (`plans/2026-10-12-06-wald-propose-v1.md`).
+`wald` (`wald-lint` on PyPI) is a statistical-integrity linter for notebooks and scripts. The strategy (`WALDEAN_STRATEGIE_OSS_BUSINESS.md`, sections 0 and 2) already commits to growing it from "find the flaw" into an experiment loop: Detect, Explain, Propose, Verify, Preserve. `wald propose` v1 is planned (`plans/2026-10-12-06-waldean-propose-v1.md`).
 
 Two things push toward a second name:
 

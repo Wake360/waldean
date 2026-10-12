@@ -16,15 +16,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --locked --extra corpus --extra dev
-      - run: uvx ruff@0.15.21 check wald/ tests/
-      - run: uvx pyright@1.1.411 wald/
+      - run: uvx ruff@0.15.21 check waldean/ tests/
+      - run: uvx pyright@1.1.411 waldean/
       # unit tests: fast, no kernel execution
       - run: uv run pytest tests/ --ignore=tests/test_gates.py -q
       # golden gates G0+G1: rebuild the corpus from scratch (mutation verify
       # executes notebooks) and assert precision/recall/FP thresholds
-      - run: uv run wald corpus build --root corpus
+      - run: uv run waldean corpus build --root corpus
       - run: uv run pytest tests/test_gates.py -q
-      - run: uv run wald eval --corpus corpus --out evals
+      - run: uv run waldean eval --corpus corpus --out evals
       - uses: actions/upload-artifact@v4
         with:
           name: eval-report-${{ matrix.python-version }}
@@ -38,7 +38,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: uv sync --locked --extra corpus --extra dev
-      - run: uvx ruff@0.15.21 check wald/ tests/
-      - run: uvx pyright@1.1.411 wald/
+      - run: uvx ruff@0.15.21 check waldean/ tests/
+      - run: uvx pyright@1.1.411 waldean/
       # unit tests only: no corpus build, gates, or eval (they need Jupyter kernel execution)
       - run: uv run pytest tests/ --ignore=tests/test_gates.py -q

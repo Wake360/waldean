@@ -16,7 +16,7 @@ if real.exists():
 preds = {}
 for f in files:
     out = subprocess.run(
-        ["uv", "run", "wald", "check", str(Path("corpus") / f), "--format", "json"],
+        ["uv", "run", "waldean", "check", str(Path("corpus") / f), "--format", "json"],
         capture_output=True, text=True,
     )
     report = json.loads(out.stdout)
@@ -27,4 +27,4 @@ for f in files:
 Path(sys.argv[1]).write_text(json.dumps(preds))
 print(f"wrote predictions for {len(preds)} files")
 EOF
-uv run wald eval --corpus corpus --predictions "$tmp/preds.json"
+uv run waldean eval --corpus corpus --predictions "$tmp/preds.json"

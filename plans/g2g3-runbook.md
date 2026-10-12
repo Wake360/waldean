@@ -5,7 +5,7 @@ Do not improvise a different order — the iteration/gate-attempt counts
 are the actual budget constraint, not the dollars.
 
 Sources: `plans/m2.md` (gates, cost ledger, iteration budget, R3),
-`wald/llm.py`, `wald/cli.py`, `wald/eval.py`, `NEXT.md`.
+`waldean/llm.py`, `waldean/cli.py`, `waldean/eval.py`, `NEXT.md`.
 
 ## 0. Prerequisites
 
@@ -17,7 +17,7 @@ Sources: `plans/m2.md` (gates, cost ledger, iteration budget, R3),
   (`AnthropicBackend` + `OpenAIBackend`, wired by `cli._llm_backends`)
   satisfies this automatically. Do not swap in two backends from the same
   provider.
-- Pinned model ids (verbatim from `wald/llm.py`):
+- Pinned model ids (verbatim from `waldean/llm.py`):
   - `PINNED_DETECTOR_MODEL = "claude-sonnet-4-6"`
   - `PINNED_VERIFIER_MODEL = "gpt-4.1-2025-04-14"`
   `gate_evidence` in every report is computed, not asserted: it is `True`
@@ -26,25 +26,25 @@ Sources: `plans/m2.md` (gates, cost ledger, iteration budget, R3),
   a different model, the report will silently show `gate_evidence: false`
   — check it after every run, don't assume the pinned ids stuck.
 - Confidence floor for all narrative gating is `0.8`
-  (`DEFAULT_CONFIDENCE_FLOOR` in `wald/detect.py`), pinned in every report.
+  (`DEFAULT_CONFIDENCE_FLOOR` in `waldean/detect.py`), pinned in every report.
 - Gotcha: `--replay-dir` makes `ReplayBackend.kind == "replay"`
   immediately, even before the first call. `cli._missing_llm_keys` only
   checks backends with `kind == "api"`, so **with `--replay-dir` set, the
   CLI's missing-key check is silently skipped.** If a key is unset, the
   first cache-miss crashes with an uncaught `RuntimeError` instead of the
-  clean `wald: --llm needs ... set` message. Confirm both env vars
+  clean `waldean: --llm needs ... set` message. Confirm both env vars
   yourself before any command below that uses `--replay-dir`.
 - Gotcha: `--replay-dir` also flips `kind` away from `"api"`, so
-  `wald check --llm --replay-dir ...` against a held-out or `corpus/real`
+  `waldean check --llm --replay-dir ...` against a held-out or `corpus/real`
   file will hit `_heldout_refusal` and refuse to run. Point
   `--replay-dir` runs at `corpus/clean/*.ipynb` or `corpus/mutated/*`
   dev-split notebooks only.
-- Gotcha: `wald eval --llm` has **no missing-key guard at all** — unlike
-  `wald check --llm`, `cmd_eval` never calls `_missing_llm_keys`. If a key
+- Gotcha: `waldean eval --llm` has **no missing-key guard at all** — unlike
+  `waldean check --llm`, `cmd_eval` never calls `_missing_llm_keys`. If a key
   is unset, the eval starts, spends detector tokens on however many
   notebooks precede the first cache-miss/verifier call, then dies with an
   uncaught `RuntimeError` (not a clean message) and writes no report. So
-  before every `wald eval --llm` (steps 2 and 4) confirm both env vars
+  before every `waldean eval --llm` (steps 2 and 4) confirm both env vars
   yourself: `test -n "$ANTHROPIC_API_KEY" && test -n "$OPENAI_API_KEY" &&
   echo keys-ok`.
 - Gotcha: **report filenames carry the split.** `run_llm_eval` writes
@@ -56,7 +56,7 @@ Sources: `plans/m2.md` (gates, cost ledger, iteration budget, R3),
 
 ## 0.5 Frozen prompt (book-extraction refinement, 2026-07-08)
 
-The three narrative flaw definitions in `wald/taxonomy/flaws.yaml`
+The three narrative flaw definitions in `waldean/taxonomy/flaws.yaml`
 (`selection-survivorship-cohort`, `significance-meaningless`,
 `regression-to-mean-claim`) were sharpened from the LifeOS book-extraction
 concepts (Ellenberg, ISLP) and **frozen** before any subscription-run
@@ -82,7 +82,7 @@ wrong — fix it there.
 ### Step 1 — fixture-recording smoke (~$1)
 
 ```
-wald check --llm corpus/mutated/cohort-s11__selection-survivorship-cohort__m0.ipynb --replay-dir evals/llm-fixtures/smoke
+waldean check --llm corpus/mutated/cohort-s11__selection-survivorship-cohort__m0.ipynb --replay-dir evals/llm-fixtures/smoke
 ```
 
 One dev-split **survivorship mutant** (not a clean notebook), both keys
@@ -107,14 +107,14 @@ before trusting the OpenAI path.
 
 ```
 test -n "$ANTHROPIC_API_KEY" && test -n "$OPENAI_API_KEY" && echo keys-ok || echo MISSING-KEY-STOP
-wald eval --llm --split dev --corpus corpus --out evals
+waldean eval --llm --split dev --corpus corpus --out evals
 # filename already carries the split (evals/<date>-llm-eval-dev.json/.md);
 # tag it with the checkpoint number so a second dev checkpoint doesn't clobber it:
 mv "evals/$(date +%F)-llm-eval-dev.json" "evals/$(date +%F)-llm-eval-dev-ckpt1.json"
 mv "evals/$(date +%F)-llm-eval-dev.md"   "evals/$(date +%F)-llm-eval-dev-ckpt1.md"
 ```
 
-Run the key check first — `wald eval --llm` will not stop for a missing
+Run the key check first — `waldean eval --llm` will not stop for a missing
 key on its own (see Prerequisites). No `--replay-dir` — this is the real
 API dev checkpoint the plan requires before further spend. The eval writes
 `evals/<date>-llm-eval-dev.json`/`.md` (split already in the name, so it
@@ -171,12 +171,12 @@ ls evals/*-llm-eval-heldout-attempt*.json 2>/dev/null | wc -l  # must be 0 or 1
 test -n "$ANTHROPIC_API_KEY" && test -n "$OPENAI_API_KEY" && echo keys-ok || echo MISSING-KEY-STOP
 
 # 5. Pinned models unchanged (a swapped model silently sets gate_evidence=false).
-grep -E 'PINNED_(DETECTOR|VERIFIER)_MODEL' wald/llm.py
+grep -E 'PINNED_(DETECTOR|VERIFIER)_MODEL' waldean/llm.py
 #   expect: claude-sonnet-4-6  and  gpt-4.1-2025-04-14
 ```
 
 ```
-wald eval --llm --split heldout --corpus corpus --out evals
+waldean eval --llm --split heldout --corpus corpus --out evals
 # filename already carries the split (evals/<date>-llm-eval-heldout.json/.md),
 # so it can't collide with the dev report; rename immediately so a second
 # held-out attempt on the same day doesn't clobber this one — bump
@@ -213,7 +213,7 @@ Only two attempts total, ever. See STOP box.
 ```
 mkdir -p evals/llm-dogfood
 for nb in corpus/real/*.ipynb; do
-  wald check --llm --format json "$nb" > "evals/llm-dogfood/$(basename "$nb").json"
+  waldean check --llm --format json "$nb" > "evals/llm-dogfood/$(basename "$nb").json"
 done
 ```
 

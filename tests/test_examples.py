@@ -6,7 +6,7 @@ from pathlib import Path
 import nbformat
 import pytest
 
-from wald.cli import main
+from waldean.cli import main
 
 REPO = Path(__file__).parent.parent
 DEMO_REL = "examples/temporal-cv-before-after.ipynb"
@@ -52,7 +52,7 @@ def test_demo_outputs_show_the_measured_gap():
 
 def test_demo_rebuild_matches_stored_metrics():
     pytest.importorskip("sklearn")
-    from wald.execute import execute
+    from waldean.execute import execute
 
     stored = _metrics(nbformat.read(DEMO, as_version=4))
     try:

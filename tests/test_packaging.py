@@ -27,9 +27,9 @@ def test_init_version_matches_package():
     assert match, "no version found in pyproject.toml"
     pkg_version = match.group(1)
 
-    init_text = (REPO / "wald" / "__init__.py").read_text()
+    init_text = (REPO / "waldean" / "__init__.py").read_text()
     init_match = re.search(r'__version__\s*=\s*"([^"]+)"', init_text)
-    assert init_match, "no __version__ in wald/__init__.py"
+    assert init_match, "no __version__ in waldean/__init__.py"
     assert init_match.group(1) == pkg_version
 
 
@@ -37,7 +37,7 @@ def test_readme_version_references_match_package():
     pyproject = (REPO / "pyproject.toml").read_text()
     pkg_version = re.search(r'(?m)^version\s*=\s*"([^"]+)"', pyproject).group(1)
     readme = (REPO / "README.md").read_text(encoding="utf-8")
-    refs = re.findall(r"Wake360/wald@v([0-9][^\s`]*)", readme)
+    refs = re.findall(r"Wake360/waldean@v([0-9][^\s`]*)", readme)
     refs += re.findall(r"rev:\s*v([0-9][^\s`]*)", readme)
     assert refs
     assert set(refs) == {pkg_version}

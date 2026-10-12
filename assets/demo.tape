@@ -8,7 +8,7 @@ Hide
 Type "source .venv/bin/activate && clear"
 Enter
 Show
-Type "wald check examples/temporal-cv-before-after.ipynb"
+Type "waldean check examples/temporal-cv-before-after.ipynb"
 Sleep 400ms
 Enter
 Sleep 6s

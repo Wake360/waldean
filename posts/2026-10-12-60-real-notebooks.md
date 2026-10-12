@@ -1,7 +1,7 @@
 # 60 real notebooks: what static analysis can and cannot do
 
-I ran Wald, a static leakage linter, on 60 notebooks it had never seen.
-Wald reads code and never executes it. This post covers what it caught,
+I ran Waldean, a static leakage linter, on 60 notebooks it had never seen.
+Waldean reads code and never executes it. This post covers what it caught,
 what it missed, and why the misses look the way they do. Every number
 here comes from two files in the repo, both linked at the end: the eval
 report and its anonymized ledger of confirmed leaks.
@@ -12,20 +12,20 @@ The 60 notebooks came from GitHub, spread across five buckets:
 supervised feature-selection code, Kaggle-style competition work, time
 series, accuracy on imbalanced classes, and broad ML tutorials. They were
 deduplicated by code-cell hash against the notebooks used in earlier
-runs and against Wald's own real-notebook corpus. There were 0
-duplicates. Running `wald check` over all 60 gave 0 crashes and 0 parse
+runs and against Waldean's own real-notebook corpus. There were 0
+duplicates. Running `waldean check` over all 60 gave 0 crashes and 0 parse
 failures.
 
 The eval is aggregate. No notebook or author is named, and 37 of the 60
 had no permissive license, so none of them is reproduced here. The
-[anonymized ledger](https://github.com/Wake360/wald/blob/main/evals/real-flaws.tsv)
+[anonymized ledger](https://github.com/Wake360/waldean/blob/main/evals/real-flaws.tsv)
 has one row per confirmed leak: an anonymized notebook id, the flaw
-class, the license, whether Wald flagged it or missed it, and why the
+class, the license, whether Waldean flagged it or missed it, and why the
 reviewer judged it real.
 
 Review had three parts. One reviewer judged every flag in every flagged
 notebook as true or false. Miss-hunters searched a stratified random
-sample of 30 of the 47 unflagged notebooks (seed 42) for leaks Wald did
+sample of 30 of the 47 unflagged notebooks (seed 42) for leaks Waldean did
 not report. Then an adversarial verifier went over every claimed true
 positive and every claimed miss. It defaulted to "refuted" unless the
 leak was airtight.
@@ -79,17 +79,17 @@ target-side `y.fillna` mistaken for a feature transform.
 scaler flag among the three that did not survive. It gives no further
 detail.
 
-Corpus evals give Wald a 0.0% false-positive rate on curated clean
-notebooks. That number does not transfer. On messy real code Wald is not
+Corpus evals give Waldean a 0.0% false-positive rate on curated clean
+notebooks. That number does not transfer. On messy real code Waldean is not
 perfect, and these three flags show where it slips.
 
 ## The eight misses
 
-Miss-hunting found 8 real leaks that Wald did not flag, each in a
+Miss-hunting found 8 real leaks that Waldean did not flag, each in a
 different notebook. The eval describes all eight as leaks with no
 name-level syntactic anchor the static layer keys on. Two of the
 idioms, the scaler feeding `cross_val_score` and the TF-IDF/SVD case, do
-use named transformers, and the eval does not say which part of the pattern Wald
+use named transformers, and the eval does not say which part of the pattern Waldean
 failed to connect. The snippets below are written fresh to show each
 idiom. They are not copied from any notebook.
 
@@ -146,7 +146,7 @@ cross_val_score(model, df[features], df["target"], cv=StratifiedKFold())
 
 ## What this says about static analysis
 
-Most of what Wald caught had a syntactic anchor: a named transformer
+Most of what Waldean caught had a syntactic anchor: a named transformer
 such as `StandardScaler`, a `fit_transform` call, and a
 `train_test_split` call later in the dataflow.
 
@@ -159,38 +159,38 @@ temporal leaks inside cross-validation or a training helper. The eval's view is 
 these gaps needs narrative fusion or new dataflow, not more static
 heuristics.
 
-The gap is not total. The ledger shows some pandas statistics that Wald
+The gap is not total. The ledger shows some pandas statistics that Waldean
 did flag, including a column-mean `fillna`. The eval does not say why
 one was caught and a similar one missed.
 
 The sample also produced zero confirmed real instances of the multiple
 testing and base-rate classes (uncorrected tests, accuracy on imbalanced
-classes). Wald has detectors for both, but this run cannot say how they
+classes). Waldean has detectors for both, but this run cannot say how they
 do on real code. No real-world recall is claimed for them.
 
-The practical reading for anyone using Wald: a flag is usually worth
+The practical reading for anyone using Waldean: a flag is usually worth
 reading, and a clean report is not evidence of a clean notebook. In the
 audited subset, 8 of the 20 leaky notebooks came back with no flag at
-all. Treat Wald as a check that finds some leaks, not a certificate.
+all. Treat Waldean as a check that finds some leaks, not a certificate.
 
 Sources skew toward small personal and competition repos. These are not
 production pipelines.
 
 ## What I would want from you
 
-A notebook where Wald is wrong. If it missed a leak you can point to,
-open a [missed-issue report](https://github.com/Wake360/wald/issues/new?template=missed_issue.md).
+A notebook where Waldean is wrong. If it missed a leak you can point to,
+open a [missed-issue report](https://github.com/Wake360/waldean/issues/new?template=missed_issue.md).
 If it flagged something that is not a leak, open a
-[false-positive report](https://github.com/Wake360/wald/issues/new?template=false_positive.md).
+[false-positive report](https://github.com/Wake360/waldean/issues/new?template=false_positive.md).
 A minimal snippet that reproduces the idiom is enough.
 
 ## Try it
 
 ```bash
-pip install wald-lint
-wald check notebook.ipynb
+pip install waldean
+waldean check notebook.ipynb
 ```
 
-The code is at [github.com/Wake360/wald](https://github.com/Wake360/wald).
+The code is at [github.com/Wake360/waldean](https://github.com/Wake360/waldean).
 The full eval this post is built from is
-[evals/2026-07-07-dogfood-wide.md](https://github.com/Wake360/wald/blob/main/evals/2026-07-07-dogfood-wide.md).
+[evals/2026-07-07-dogfood-wide.md](https://github.com/Wake360/waldean/blob/main/evals/2026-07-07-dogfood-wide.md).

@@ -1,4 +1,4 @@
-# Wald report — examples/leaky.py
+# Waldean report — examples/leaky.py
 
 verdict: 1 high, 0 medium | static layer (no LLM)
 

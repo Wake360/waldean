@@ -31,8 +31,8 @@ def score(rows: list[dict], outcomes: dict[str, str]) -> dict:
     }
 
 
-def run_wald(path: Path) -> str:
-    out = subprocess.run(["wald", "check", str(path), "--format", "json"],
+def run_waldean(path: Path) -> str:
+    out = subprocess.run(["waldean", "check", str(path), "--format", "json"],
                          capture_output=True, text=True)
     if out.returncode == 3 or not out.stdout.strip():
         return "error"
@@ -46,7 +46,7 @@ def render(s: dict, rows: list[dict]) -> str:
     recall = c["tp"] / (c["tp"] + c["fn"]) if c["tp"] + c["fn"] else float("nan")
     truth = {r["nb"]: r["pre"] for r in rows}
     lines = [
-        f"# Wald on Yang et al. ASE'22 (`pre` label) — {date.today().isoformat()}",
+        f"# Waldean on Yang et al. ASE'22 (`pre` label) — {date.today().isoformat()}",
         "",
         f"{len(rows)} labeled notebooks; static layer, confident flags only (>= 0.8), class `{FLAW}`.",
         "",
@@ -54,7 +54,7 @@ def render(s: dict, rows: list[dict]) -> str:
         "|---|---|---|---|---|---|",
         f"| {c['tp']} | {c['fp']} | {c['fn']} | {c['tn']} | {precision:.2f} | {recall:.2f} |",
         "",
-        f"Errors (wald exit 3, counted as not flagged): {len(s['errors'])}",
+        f"Errors (waldean exit 3, counted as not flagged): {len(s['errors'])}",
         *[f"- {nb}" for nb in s["errors"]],
         "",
         "## Flagged",
@@ -71,7 +71,7 @@ def render(s: dict, rows: list[dict]) -> str:
 def main(argv: list[str]) -> None:
     labels, notebooks_dir, out = argv
     rows = [r for r in csv.DictReader(open(labels)) if r["nb"]]
-    outcomes = {r["nb"]: run_wald(notebook_path(r["nb"], Path(notebooks_dir))) for r in rows}
+    outcomes = {r["nb"]: run_waldean(notebook_path(r["nb"], Path(notebooks_dir))) for r in rows}
     Path(out).write_text(render(score(rows, outcomes), rows))
     print(f"wrote {out}")
 

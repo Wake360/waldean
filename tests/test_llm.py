@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from wald import llm
+from waldean import llm
 
 
 class StubBackend:

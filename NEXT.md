@@ -5,8 +5,8 @@ State (2026-07-09): v1 is closed. Per the pre-planned termination rule
 `OPENAI_API_KEY`) needed for the LLM narrative layer's G2/G3 quality
 gates never arrived, so v1 ships as the static linter only — Milestones
 0, 1, and 2 (static layer + corpus + mutation harness) are the shipped
-product. `wald-lint 0.2.1` is on PyPI (install-proven in a clean venv)
-and the repo is public (github.com/Wake360/wald). The static layer is
+product. `waldean 0.2.1` is on PyPI (install-proven in a clean venv)
+and the repo is public (github.com/Wake360/waldean). The static layer is
 four classes at precision/recall 1.00 on 192 mutants, 0.0% FP on 83
 clean notebooks. The GitHub Action (`action.yml`) ships and was
 demonstrated end-to-end (a real PR annotation surfaced, then dismissed).
@@ -16,8 +16,8 @@ flag precision** over 60 fresh GitHub notebooks
 `plans/v1-completion.md`.
 
 0.3.0 adds, on top of that closed v1: `.py` input support (plain scripts
-and percent-format cells), `--keep-going` on `wald check` (continue past
-unreadable files, exit 3 if any failed), `wald rules` (list the taxonomy's
+and percent-format cells), `--keep-going` on `waldean check` (continue past
+unreadable files, exit 3 if any failed), `waldean rules` (list the taxonomy's
 flaw classes, `--format json` for machines), and pre-commit hooks
 (`.pre-commit-hooks.yaml`). The G2/G3 gate harness stays intact and
 unchanged for whoever runs it with keys later — nothing about the
@@ -103,14 +103,14 @@ run the gate; nothing here needs re-deriving.
   dogfood. Documented with disposition in `docs/fit-before-split-fps.md`
   (accept for 0.2.x; a precise fix needs reach analysis). Revisit if a
   wider dogfood shows the idiom recurring.
-- **`wald corpus build` hangs locally** on macOS — it executes mutant
+- **`waldean corpus build` hangs locally** on macOS — it executes mutant
   notebooks through Jupyter kernels, and one deadlocks under concurrent
   builds. Per-cell (180s) and startup (60s) timeouts already exist, so the
   phase at fault is not yet isolated. Operational fix for now: run one
   build at a time. CI is unaffected (fresh runners, green every release);
   do not patch the executor until a standalone single-build hang is
   reproduced.
-- **`SURVIVOR_QUERY_ASSIGN_RE` in `wald/detect.py` is O(n^2)** on long
+- **`SURVIVOR_QUERY_ASSIGN_RE` in `waldean/detect.py` is O(n^2)** on long
   single-line inputs just under the 200KB cell cap (found in the 0.3.0
   review; the over-cap path is already fixed via `skipped_cells`).
   Follow-up: bound the leading `\w+` or pre-filter to lines containing

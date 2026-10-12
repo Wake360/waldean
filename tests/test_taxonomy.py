@@ -1,4 +1,4 @@
-from wald.taxonomy import load_fusion_rules, load_taxonomy
+from waldean.taxonomy import load_fusion_rules, load_taxonomy
 
 
 def test_taxonomy_loads_all_classes():

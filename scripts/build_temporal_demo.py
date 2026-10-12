@@ -8,7 +8,7 @@ from pathlib import Path
 
 import nbformat
 
-from wald.execute import execute, stdout_lines
+from waldean.execute import execute, stdout_lines
 
 INTRO = """# Temporal CV leakage: impressive metric, wrong protocol
 
@@ -41,7 +41,7 @@ scoring = ("r2", "neg_mean_absolute_error")"""
 
 BEFORE_MD = """## Before: shuffled 5-fold CV
 
-Each fold trains on days that come after the days it is tested on.
+Each fold trains on days both before and after the days it is tested on.
 The lag features make neighbouring days near-duplicates, so the model interpolates instead of forecasting."""
 
 BEFORE = """kf = KFold(n_splits=5, shuffle=True, random_state=0)
@@ -59,7 +59,7 @@ print(f"TimeSeriesSplit: R2={temporal['test_r2'].mean():.3f} MAE={-temporal['tes
 OUTRO = """## What changed
 
 The data, features and model are identical. The difference between the two printed scores is the leakage.
-`wald check` flags the shuffled protocol statically, without running this notebook. The metric gap above is computed here, not claimed by Wald."""
+`waldean check` flags the shuffled protocol statically, without running this notebook. The metric gap above is computed here, not claimed by Waldean."""
 
 PACKAGES = ("numpy", "pandas", "scikit-learn")
 
@@ -86,7 +86,7 @@ def metric_lines(nb) -> list[str]:
 
 
 def write_eval(evals_dir: Path, lines: list[str], out: Path) -> Path:
-    day = os.environ.get("WALD_BUILD_DATE", date.today().isoformat())
+    day = os.environ.get("WALDEAN_BUILD_DATE", date.today().isoformat())
     versions = "\n".join(f"- {p} {importlib.metadata.version(p)}" for p in PACKAGES)
     path = evals_dir / f"{day}-temporal-cv-demo.md"
     path.write_text(

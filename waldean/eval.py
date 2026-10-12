@@ -1,6 +1,6 @@
 """Corpus eval: detectors vs. labeled mutants -> confusion matrix per class.
 
-This is the project's evidence. `wald eval` runs the static layer over the
+This is the project's evidence. `waldean eval` runs the static layer over the
 whole corpus and writes a dated report; gates G0/G1 assert on its output.
 """
 
@@ -22,10 +22,10 @@ def load_corpus_manifest(root: Path) -> tuple[dict, int]:
     manifest_path = root / "MANIFEST.json"
     if not manifest_path.exists():
         raise SystemExit(
-            f"corpus not found: {manifest_path} (run: wald corpus build --root {root})"
+            f"corpus not found: {manifest_path} (run: waldean corpus build --root {root})"
         )
     manifest = json.loads(manifest_path.read_text())
-    # reviewed real notebooks (corpus/real) join the clean set; wald corpus
+    # reviewed real notebooks (corpus/real) join the clean set; waldean corpus
     # build regenerates only the synthetic MANIFEST, so they live separately
     real_manifest = root / "real" / "MANIFEST.json"
     n_real = 0
@@ -46,7 +46,7 @@ def evaluate(corpus_root: str | Path, floor: float = DEFAULT_CONFIDENCE_FLOOR,
     clean_fp_files = []
     misses = []
     # mutants whose flaw is narrative-layer-only: the static layer cannot
-    # decide them (measured by `wald eval --llm`), but they are still checked
+    # decide them (measured by `waldean eval --llm`), but they are still checked
     # below for spurious confident static flags, and counted here so the
     # report reconciles with the headline mutant total instead of dropping them
     narrative_only = {}
@@ -154,7 +154,7 @@ def evaluate_predictions(corpus_root: str | Path, predictions: dict[str, list[_P
 
 def render_report(results: dict) -> str:
     lines = [
-        f"# Wald eval{' (external predictions)' if 'predictions_file' in results else ''}"
+        f"# Waldean eval{' (external predictions)' if 'predictions_file' in results else ''}"
         f" — {results['date']} (corpus built {results['corpus_built']})",
         "",
         f"{results['n_clean']} clean notebooks "
@@ -193,7 +193,7 @@ def render_report(results: dict) -> str:
         lines += [
             "",
             f"Narrative-layer-only mutants (out of static-recall scope, measured "
-            f"by `wald eval --llm`): {n_narr} of {results['n_mutants']} — {classes}. "
+            f"by `waldean eval --llm`): {n_narr} of {results['n_mutants']} — {classes}. "
             "They are still checked here for spurious confident static flags "
             "(counted as cross-class FP above).",
         ]
@@ -416,7 +416,7 @@ def render_llm_report(results: dict) -> str:
 
     det, ver = results["detector"], results["verifier"]
     lines = [
-        f"# Wald LLM eval — {results['date']} "
+        f"# Waldean LLM eval — {results['date']} "
         f"(corpus built {results['corpus_built']}, split {results['split']})",
         "",
         f"Detector {det['provider']}/{det['model']} ({det['kind']}), "

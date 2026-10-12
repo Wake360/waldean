@@ -1,4 +1,4 @@
-# Contributing to Wald
+# Contributing to Waldean
 
 ## Clean-corpus criteria
 
@@ -36,20 +36,20 @@ The notebook must also pass the clean-corpus criteria above and a manual review 
 
 A new flaw class needs all three parts:
 
-1. **Taxonomy record** — an entry in `wald/taxonomy/flaws.yaml`: `id`, `class`, `layer` (`static` or `static+narrative`), `severity`, `definition`, `book_anchor` (the statistics/ML reference that names the error), `failure_scenario`, `fix`. Detector code and generated prompts/reports read from this file; flaw semantics are never hardcoded elsewhere.
-2. **Detector** — a function in `wald/detect.py` (static layer) and/or `wald/narrative.py` (LLM layer) that emits a `Flag` for the flaw, registered in `DETECTORS`.
-3. **Mutation recipe** — a `Mutation` subclass in `wald/mutate.py` implementing `applicable`, `apply`, and `verify`. `verify` must mechanically prove the injected flaw is present (e.g. executing the mutated notebook and checking a fitted transformer's `n_samples_seen_`), not just assert the code pattern was inserted.
+1. **Taxonomy record** — an entry in `waldean/taxonomy/flaws.yaml`: `id`, `class`, `layer` (`static` or `static+narrative`), `severity`, `definition`, `book_anchor` (the statistics/ML reference that names the error), `failure_scenario`, `fix`. Detector code and generated prompts/reports read from this file; flaw semantics are never hardcoded elsewhere.
+2. **Detector** — a function in `waldean/detect.py` (static layer) and/or `waldean/narrative.py` (LLM layer) that emits a `Flag` for the flaw, registered in `DETECTORS`.
+3. **Mutation recipe** — a `Mutation` subclass in `waldean/mutate.py` implementing `applicable`, `apply`, and `verify`. `verify` must mechanically prove the injected flaw is present (e.g. executing the mutated notebook and checking a fitted transformer's `n_samples_seen_`), not just assert the code pattern was inserted.
 
 All four are required together: a detector without a mutation can't be measured, and a mutation without a book anchor isn't a cited flaw.
 
 ## LLM CLI canary (maintainer)
 
-The narrative layer's only runtime is the unpinned `claude` and `codex` CLIs. `scripts/llm-smoke.sh` runs `wald check examples/leaky.ipynb --llm --llm-subscription` and appends one `OK` or `FAIL` line to `~/.wald-llm-smoke.log`. It needs `uv`, `claude` and `codex` on `PATH`.
+The narrative layer's only runtime is the unpinned `claude` and `codex` CLIs. `scripts/llm-smoke.sh` runs `waldean check examples/leaky.ipynb --llm --llm-subscription` and appends one `OK` or `FAIL` line to `~/.waldean-llm-smoke.log`. It needs `uv`, `claude` and `codex` on `PATH`.
 
 Schedule it weekly with `crontab -e`, using the repo's absolute path and a `PATH` that covers all three tools (on Apple Silicon, `codex` and `uv` from Homebrew live in `/opt/homebrew/bin`; `claude` lives in `~/.local/bin`):
 
 ```
-0 9 * * 1 PATH=/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin $HOME/dev/wald/scripts/llm-smoke.sh
+0 9 * * 1 PATH=/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin $HOME/dev/waldean/scripts/llm-smoke.sh
 ```
 
 Limit: it catches hard breakage (envelope schema change, missing CLI), not silent narrative degradation. A schema-valid but empty LLM response still leaves the static high finding, exit 2, and logs `OK`.

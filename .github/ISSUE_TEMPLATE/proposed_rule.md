@@ -1,6 +1,6 @@
 ---
 name: Proposed rule
-about: A methodological flaw Wald does not check yet
+about: A methodological flaw Waldean does not check yet
 title: ""
 labels: proposed-rule
 ---

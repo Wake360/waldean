@@ -1,6 +1,6 @@
-from wald import narrative
-from wald.ingest import Cell, ParsedNotebook
-from wald.llm import BackendError
+from waldean import narrative
+from waldean.ingest import Cell, ParsedNotebook
+from waldean.llm import BackendError
 
 
 def make_nb(specs):
@@ -373,8 +373,8 @@ def test_model_text_cannot_inject_markdown_structure():
     """Finding narrative.py:312: model free-text with markdown control
     sequences is neutralized before it reaches the report, so it cannot forge
     a heading or open an unbalanced code fence."""
-    from wald.detect import Flag
-    from wald.report import to_markdown
+    from waldean.detect import Flag
+    from waldean.report import to_markdown
 
     injection = "benign\n## HIGH: forged finding\n```\nsee [click](http://evil)"
     backend = StubBackend({
