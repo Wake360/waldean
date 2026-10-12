@@ -2,18 +2,23 @@
 
 **Code linters check style. Wald checks whether the analysis is a lie.**
 
-Wald is a statistical-integrity linter for data-analysis notebooks. It reads
-code, stored outputs and prose, and flags the finite, catalogued classes of
-error that invalidate an analysis: train/test leakage, uncorrected multiple
-testing, survivorship bias, accuracy-on-imbalanced-classes and friends.
-Every flag carries an exact location, mechanical evidence, a failure
-scenario, and a fix.
+Wald is a deterministic statistical-integrity linter for Python analysis.
+It flags a defined set of methodological hazards in notebooks and scripts,
+with evidence, and needs no LLM to do it.
 
-Named after Abraham Wald, who armored the bullet holes that *weren't* in the
-returning planes. The tool's mentality is his: don't ask what the data says —
-ask what data is missing and what that does to the conclusion.
+Your model scores 0.99. Wald asks whether the experiment that produced
+that number was valid: was the scaler fitted on the test rows, did the
+cross-validation shuffle a time series, were twenty tests run with no
+correction?
 
-Read the story: [I mutation-tested statistical malpractice](posts/2026-07-04-i-mutation-tested-statistical-malpractice.md).
+![wald check on a time-series notebook](assets/demo.gif)
+
+```bash
+pip install wald-lint
+wald check your_notebook.ipynb
+```
+
+A real report, on [`examples/leaky.ipynb`](examples/leaky.ipynb):
 
 ```
 $ wald check examples/leaky.ipynb
@@ -34,15 +39,56 @@ verdict: 1 high, 0 medium | static layer (no LLM)
 
 ```
 
-Exit codes: `0` clean, `1` medium findings, `2` high findings — usable as a
-pre-merge gate.
+Exit codes: `0` clean, `1` medium findings, `2` high findings, `3` input
+error. Usable as a pre-merge gate.
 
-Try it:
+[`examples/temporal-cv-before-after.ipynb`](examples/temporal-cv-before-after.ipynb)
+shows the effect on a metric: the same model scored with shuffled CV and
+with `TimeSeriesSplit`, numbers computed in the notebook
+(run record: [`evals/`](evals/)).
 
-```bash
-pip install wald-lint
-wald check your_notebook.ipynb
-```
+## Status
+
+| | What |
+|---|---|
+| **Available now** | `wald check` on `.ipynb` and `.py` (plain and `# %%`); four static flaw classes (below); a survivorship candidate; Markdown, JSON and SARIF output; GitHub Action; pre-commit hooks; `wald rules`; `wald eval --predictions` for scoring other tools on the corpus |
+| **Experimental** | `--llm` / `--llm-subscription` narrative layer (prose claims vs computation). No validated precision or recall; its quality gates never ran |
+| **Planned** | Generated fixes: a reviewable patch plus a verification recipe for one canonical leakage shape (`wald propose`), then opt-in sandboxed verification. Not shipped |
+
+Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
+
+## Rules
+
+| Flaw class | What triggers it |
+|---|---|
+| `leakage-fit-before-split` | A scaler, imputer, encoder, selector or vectorizer is fitted on data that later feeds `train_test_split` or cross-validation |
+| `leakage-temporal-shuffle` | Lag or rolling features on time-ordered data, evaluated with a shuffled split instead of `TimeSeriesSplit` or a time cutoff |
+| `testing-multiple-uncorrected` | Many statistical tests with no multiple-comparison correction; reports the implied family-wise error rate |
+| `baserate-accuracy-imbalanced` | Accuracy as the only metric while stored outputs show class imbalance |
+| `selection-survivorship-cohort` | Candidate only: a filter on a survival-correlated column before aggregation |
+
+`wald rules` prints the full list from `wald/taxonomy/flaws.yaml`.
+
+## Known limitations
+
+- On 60 fresh GitHub notebooks, 25 of 28 flags were real (0.89 precision)
+  and Wald caught 12 of 20 leaky notebooks in the audited subset (0.60
+  recall). That evidence covers the two leakage classes only
+  ([`evals/2026-07-07-dogfood-wide.md`](evals/2026-07-07-dogfood-wide.md)).
+- On the 100 labeled notebooks of Yang et al. (ASE'22),
+  `leakage-fit-before-split` reached 0.58 precision and 0.37 recall
+  against the authors' `pre` label
+  ([`evals/2026-10-12-yang-pre.md`](evals/2026-10-12-yang-pre.md)).
+- Misses cluster in leaks with no syntactic anchor: per-group imputation,
+  `fillna(df[col].mean())` before the split, text vectorizers fitted on
+  the full corpus, scalers feeding `cross_val_score`.
+- The 0.0% false-positive rate holds on the curated corpus, not on messy
+  real code.
+- Flaws with no imprint in code, outputs or prose are invisible to Wald.
+- Wald never executes your notebook.
+
+Full evaluation, corpus method and dogfood history:
+[`docs/EVALUATION.md`](docs/EVALUATION.md).
 
 ## How Wald proves it works: mutation testing for statistics
 

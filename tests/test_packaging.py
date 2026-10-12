@@ -41,3 +41,15 @@ def test_readme_version_references_match_package():
     refs += re.findall(r"rev:\s*v([0-9][^\s`]*)", readme)
     assert refs
     assert set(refs) == {pkg_version}
+
+
+def test_readme_sample_matches_golden():
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    golden = (REPO / "tests" / "golden" / "leaky.md").read_text(encoding="utf-8")
+    assert golden.strip() in readme
+
+
+def test_readme_names_status_sections():
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    for label in ("Available now", "Experimental", "Planned", "Known limitations"):
+        assert label in readme
