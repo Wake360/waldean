@@ -41,6 +41,9 @@ def probe_fit_before_split(nb_node, flags: list[Flag], timeout: int = 180, cwd: 
         if flag.flaw_id != "leakage-fit-before-split" or not flag.extra.get("receiver"):
             out.append(flag)
             continue
+        if flag.extra.get("helper_local"):
+            out.append(_with(flag, flag.confidence, "skipped (helper-local receiver)"))
+            continue
         sink = int(flag.extra.get("sink_cell", flag.cell))
         nb = copy.deepcopy(nb_node)
         nb.cells = nb.cells[: sink + 1]

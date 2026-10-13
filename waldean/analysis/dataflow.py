@@ -117,6 +117,7 @@ class CallSite:
     kw_args: dict[str, set[str]] = field(default_factory=dict)  # names per keyword arg
     loop_vars: set[str] = field(default_factory=set)  # targets of enclosing for-loops
     end_line: int = 0
+    helper_local: bool = False
 
     @property
     def arg_names(self) -> set[str]:
@@ -551,6 +552,7 @@ def _rename_call(c: CallSite, rename: dict[str, set[str]], site: CallSite) -> Ca
         pos_args=[_rename_names(a, rename) for a in c.pos_args],
         kw_args={k: _rename_names(v, rename) for k, v in c.kw_args.items()},
         loop_vars=set(site.loop_vars), end_line=site.end_line,
+        helper_local=c.receiver_base is not None and c.receiver_base not in rename,
     )
 
 

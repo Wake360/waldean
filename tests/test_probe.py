@@ -68,3 +68,9 @@ def test_probe_never_raises_a_candidate():
     out = probe_fit_before_split(LEAKY, [candidate])
     assert out[0].confidence == 0.75
     assert "probe: n_samples_seen_ = 20 of 20 rows" in out[0].evidence
+
+
+def test_probe_skips_helper_local_receiver():
+    out = probe_fit_before_split(LEAKY, [flag(receiver="sc", arg="X", sink_cell=2, helper_local=True)])
+    assert out[0].confidence == 0.92
+    assert out[0].evidence.endswith("; probe: skipped (helper-local receiver)")

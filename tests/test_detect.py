@@ -940,3 +940,21 @@ def test_refit_on_test_whose_transform_feeds_a_scored_model_is_confident():
     ])
     flags = _refit_flags(notebook)
     assert flags and flags[0].confidence == 0.9
+
+
+def test_fit_on_helper_local_receiver_is_marked_helper_local():
+    notebook = nb([
+        ("code", "def prep(d):\n    sc = StandardScaler()\n    d = sc.fit_transform(d)\n    return d\n"),
+        ("code", "X = prep(X)\nX_train, X_test, y_train, y_test = train_test_split(X, y)"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert flags and flags[0].extra.get("helper_local") is True
+
+
+def test_fit_on_notebook_receiver_is_not_marked_helper_local():
+    notebook = nb([
+        ("code", "sc = StandardScaler()\nX = sc.fit_transform(X)"),
+        ("code", "X_train, X_test, y_train, y_test = train_test_split(X, y)"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert flags and "helper_local" not in flags[0].extra

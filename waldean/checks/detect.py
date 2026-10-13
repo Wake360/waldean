@@ -334,6 +334,8 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
         extra = {"leaked_names": sorted(leaked), **more}
         if sink_cell is not None:
             extra["sink_cell"] = sink_cell
+        if call.helper_local:
+            extra["helper_local"] = True
         best[key] = _make_flag(
             "leakage-fit-before-split",
             confidence=confidence,
