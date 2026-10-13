@@ -632,7 +632,7 @@ def _metric_functions(nb: ParsedNotebook) -> set[str]:
 def _compares_named_scores(text: str, targets: set[str]) -> bool:
     try:
         tree = ast.parse(textwrap.dedent(text))
-    except SyntaxError:
+    except (SyntaxError, RecursionError, MemoryError):
         return False
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.IfExp):
@@ -664,7 +664,7 @@ def _wrapper_labels(nb: ParsedNotebook, flow: NotebookDataflow) -> dict[str, tup
     for cell in nb.code_cells:
         try:
             tree = ast.parse(_strip_magics(cell.source))
-        except SyntaxError:
+        except (SyntaxError, RecursionError, MemoryError):
             continue
         for fn in tree.body:
             if not isinstance(fn, ast.FunctionDef):
