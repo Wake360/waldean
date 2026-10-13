@@ -8,6 +8,8 @@ import nbformat
 import pytest
 
 from waldean.cli import main
+from waldean.detect import _make_flag
+from waldean.report import to_markdown
 from waldean.repair import counterfactual, metric_values, propose, render_brief, scrubbed_env, supported, verify
 from waldean.taxonomy import load_taxonomy
 
@@ -321,3 +323,87 @@ def test_cli_verify_execute_on_script_exits_3(tmp_path, capsys):
     written, _ = propose(script, out_root=tmp_path / "repairs")
     assert main(["verify", str(written[0]), "--execute", "--metric", r"R2=(\S+)"]) == 3
     assert ".ipynb notebooks only" in capsys.readouterr().err
+
+
+TTS_IMPORTS = IMPORTS + "\nfrom sklearn.model_selection import train_test_split"
+TTS = """X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=0)
+print(Ridge().fit(X_tr, y_tr).score(X_te, y_te))"""
+
+
+def test_disguised_shuffle_false_on_train_test_split_is_rejected(tmp_path):
+    nb = write_nb(tmp_path / "tts.ipynb", [TTS_IMPORTS, DATA, FEATURES, TTS])
+    written, _ = propose(nb, out_root=tmp_path / "repairs")
+    fixed = _fixed(tmp_path, [TTS_IMPORTS, DATA, FEATURES, TTS.replace("random_state=0", "shuffle=not False")])
+    evidence = verify(written[0], fixed)
+    assert evidence["status"] == "rejected"
+    assert ("`train_test_split` in the edit scope does not pass the literal shuffle=False"
+            in evidence["static"]["reasons"])
+    honest = _fixed(tmp_path, [TTS_IMPORTS, DATA, FEATURES, TTS.replace("random_state=0", "shuffle=False")],
+                    name="honest.ipynb")
+    assert verify(written[0], honest)["status"] == "static-pass"
+
+
+def test_aliased_splitter_import_is_rejected(leaky, tmp_path):
+    disguised = ("from sklearn.model_selection import KFold as TimeSeriesSplit\n"
+                 + SHUFFLED.replace("kf = KFold", "kf = TimeSeriesSplit"))
+    evidence = verify(_repair(leaky, tmp_path), _fixed(tmp_path, [IMPORTS, DATA, FEATURES, disguised]))
+    assert evidence["status"] == "rejected"
+    assert "import renames `KFold` to `TimeSeriesSplit`" in evidence["static"]["reasons"]
+
+
+def test_statement_after_import_outside_scope_is_rejected(leaky, tmp_path):
+    features = FEATURES + "\nimport os; y = y.sample(frac=1)"
+    evidence = verify(_repair(leaky, tmp_path), _fixed(tmp_path, [IMPORTS, DATA, features, TEMPORAL]))
+    assert "cell 3 changed outside the edit scope" in evidence["static"]["reasons"]
+
+
+def test_multiline_import_outside_scope_is_allowed(leaky, tmp_path):
+    imports = IMPORTS + "\nfrom sklearn.model_selection import (\n    TimeSeriesSplit,\n)"
+    temporal = TEMPORAL.replace("from sklearn.model_selection import TimeSeriesSplit\n", "")
+    fixed = _fixed(tmp_path, [imports, DATA, FEATURES, temporal])
+    assert verify(_repair(leaky, tmp_path), fixed)["status"] == "static-pass"
+
+
+def test_widened_scope_in_protocol_is_refused(leaky, tmp_path, capsys):
+    repair_dir = _repair(leaky, tmp_path)
+    path = repair_dir / "protocol.json"
+    protocol = json.loads(path.read_text())
+    protocol["edit_scope"] = [1, 2, 3, 4]
+    path.write_text(json.dumps(protocol))
+    with pytest.raises(ValueError, match="the contract was edited"):
+        verify(repair_dir, leaky)
+    assert main(["verify", str(repair_dir)]) == 3
+    assert "the contract was edited" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("argv", [["verify"], ["verify", "x", "--timeout", "abc"], ["propose"]])
+def test_usage_errors_exit_3(argv):
+    assert main(argv) == 3
+
+
+def test_propose_does_not_write_through_symlinks(leaky, tmp_path):
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep")
+    repair_dir = tmp_path / "repairs" / "demand--leakage-temporal-shuffle"
+    repair_dir.mkdir(parents=True)
+    (repair_dir / "protocol.json").symlink_to(victim)
+    propose(leaky, out_root=tmp_path / "repairs")
+    assert victim.read_text() == "keep"
+    assert json.loads((repair_dir / "protocol.json").read_text())["status"] == "proposed"
+
+
+def test_propose_refuses_a_symlinked_repair_dir(leaky, tmp_path):
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    (tmp_path / "repairs").mkdir()
+    (tmp_path / "repairs" / "demand--leakage-temporal-shuffle").symlink_to(target)
+    with pytest.raises(ValueError, match="symlink"):
+        propose(leaky, out_root=tmp_path / "repairs")
+    assert list(target.iterdir()) == []
+
+
+def test_repair_line_only_for_flags_at_the_default_floor():
+    flag = _make_flag("leakage-temporal-shuffle", confidence=0.75, cell=4, line=2, evidence="e", sink="cross_val_score")
+    assert "**Repair:**" not in to_markdown("nb.ipynb", [flag], floor=0.5)
+    flag.confidence = 0.9
+    assert "**Repair:**" in to_markdown("nb.ipynb", [flag], floor=0.5)

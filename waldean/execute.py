@@ -1,6 +1,6 @@
 """Notebook execution for corpus building and mutation verification.
 
-Only trusted, self-authored corpus notebooks are executed here. User notebooks are executed only by `waldean verify --execute`, in a separate waldean-verify kernel.
+User notebooks are executed only by `waldean verify --execute`, in a separate waldean-verify kernel.
 """
 
 from __future__ import annotations

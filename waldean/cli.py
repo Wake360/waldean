@@ -477,7 +477,12 @@ def main(argv=None) -> int:
                           help="seconds per cell when executing (default: %(default)s)")
     p_verify.set_defaults(func=cmd_verify)
 
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        if exc.code == 2:
+            return 3
+        raise
     return args.func(args)
 
 

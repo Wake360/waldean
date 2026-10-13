@@ -113,7 +113,7 @@ def to_markdown(path: str, flags: list[Flag], floor: float = DEFAULT_CONFIDENCE_
             f"- **Fix:** {f.fix}",
             f"- **Confidence:** {f.confidence:.2f}",
         ]
-        if d.repair_invariant:
+        if d.repair_invariant and f.confidence >= DEFAULT_CONFIDENCE_FLOOR:
             lines.append(f"- **Repair:** `waldean propose {path}` writes a repair contract "
                          "that an agent or a person can apply and Waldean can verify")
         lines.append("")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import contextlib
 import difflib
 import hashlib
@@ -14,8 +15,8 @@ from pathlib import Path
 
 import nbformat
 
-from .dataflow import NotebookDataflow, analyze
-from .detect import DEFAULT_CONFIDENCE_FLOOR, Flag, run_static
+from .dataflow import NotebookDataflow, _strip_magics, analyze
+from .detect import _TEMPORAL_SPLITTERS, CV_SINKS, DEFAULT_CONFIDENCE_FLOOR, Flag, run_static
 from .ingest import ParsedNotebook, parse_notebook
 from .taxonomy import load_taxonomy
 
@@ -24,12 +25,13 @@ DEFAULT_OUT = Path(".waldean") / "repairs"
 PROVENANCE_PACKAGES = ("numpy", "pandas", "scikit-learn")
 KERNEL_NAME = "waldean-verify"
 SECRET_ENV_RE = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL", re.IGNORECASE)
+GUARDED_NAMES = _TEMPORAL_SPLITTERS | CV_SINKS | {"train_test_split"}
 RULES = (
     "Edit only the cells in the edit scope.",
     "Outside the edit scope, only add import lines.",
     "Do not add, delete, split or merge cells.",
     "Do not change the data, the features, the model or the metric.",
-    "Keep the evaluation call. Change how it splits the data.",
+    "Keep the evaluation call.",
 )
 
 
@@ -136,7 +138,11 @@ def propose(path: str | Path, out_root: Path = DEFAULT_OUT,
     for flags in by_flaw.values():
         protocol = build_protocol(nb, flow, flags, path)
         repair_dir = out_root / protocol["id"]
+        if repair_dir.is_symlink():
+            raise ValueError(f"{repair_dir} is a symlink; refusing to write through it")
         repair_dir.mkdir(parents=True, exist_ok=True)
+        for name in (f"original{path.suffix}", "protocol.json", "brief.md"):
+            (repair_dir / name).unlink(missing_ok=True)
         shutil.copyfile(path, repair_dir / f"original{path.suffix}")
         (repair_dir / "protocol.json").write_text(json.dumps(protocol, indent=2) + "\n", encoding="utf-8")
         (repair_dir / "brief.md").write_text(render_brief(protocol, repair_dir), encoding="utf-8")
@@ -145,13 +151,52 @@ def propose(path: str | Path, out_root: Path = DEFAULT_OUT,
 
 
 def _import_only(old: str, new: str) -> bool:
-    for line in difflib.ndiff(old.splitlines(), new.splitlines()):
-        if line.startswith("- "):
-            return False
-        added = line[2:].strip()
-        if line.startswith("+ ") and added and not added.startswith(("import ", "from ")):
-            return False
-    return True
+    diff = list(difflib.ndiff(old.splitlines(), new.splitlines()))
+    if any(line.startswith("- ") for line in diff):
+        return False
+    added = "\n".join(line[2:] for line in diff if line.startswith("+ "))
+    try:
+        tree = ast.parse(added)
+    except SyntaxError:
+        return False
+    return all(isinstance(node, (ast.Import, ast.ImportFrom)) for node in tree.body)
+
+
+def _parse(source: str) -> ast.Module | None:
+    try:
+        return ast.parse(_strip_magics(source))
+    except SyntaxError:
+        return None
+
+
+def _literal_no_shuffle(sources: list[str]) -> bool:
+    for source in sources:
+        tree = _parse(source)
+        for node in ast.walk(tree) if tree else ():
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+            if name == "train_test_split" and any(
+                k.arg == "shuffle" and isinstance(k.value, ast.Constant) and k.value.value is False
+                for k in node.keywords
+            ):
+                return True
+    return False
+
+
+def _renamed_imports(nb: ParsedNotebook) -> list[str]:
+    reasons = []
+    for cell in nb.code_cells:
+        tree = _parse(cell.source)
+        for node in ast.walk(tree) if tree else ():
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                reasons += [
+                    f"import renames `{a.name}` to `{a.asname}`"
+                    for a in node.names
+                    if a.asname in GUARDED_NAMES and a.asname != a.name.rsplit(".", 1)[-1]
+                ]
+    return reasons
 
 
 def static_checks(protocol: dict, original: ParsedNotebook, fixed: ParsedNotebook) -> list[str]:
@@ -168,6 +213,11 @@ def static_checks(protocol: dict, original: ParsedNotebook, fixed: ParsedNoteboo
     for sink in sorted({t["sink"] for t in protocol["targets"]}):
         if not any(c.name == sink and c.cell in scope for c in flow.calls):
             reasons.append(f"the evaluation call `{sink}` is no longer in the edit scope")
+    if any(t["sink"] == "train_test_split" for t in protocol["targets"]) and not _literal_no_shuffle(
+        [c.source for c in fixed.code_cells if c.index in scope]
+    ):
+        reasons.append("`train_test_split` in the edit scope does not pass the literal shuffle=False")
+    reasons += _renamed_imports(fixed)
     fixed_flags = run_static(fixed, flow)
     reasons += [
         f"{f.flaw_id} is still reported at cell {f.cell}, line {f.line} (confidence {f.confidence:.2f})"
@@ -190,6 +240,16 @@ def load_repair(repair_dir: Path) -> tuple[dict, Path]:
     snapshot = repair_dir / f"original{Path(protocol['file']).suffix}"
     if sha256(snapshot) != protocol["original_sha256"]:
         raise ValueError(f"{snapshot} no longer matches the proposed original")
+    nb = parse_notebook(snapshot)
+    flow = analyze(nb)
+    floor = min([DEFAULT_CONFIDENCE_FLOOR, *(t["confidence"] for t in protocol["targets"])])
+    flags = [f for f in run_static(nb, flow) if f.flaw_id == protocol["flaw_id"] and f.confidence >= floor]
+    scope = sorted(set().union(*(edit_scope(flow, f) for f in flags)))
+    targets = sorted((f.cell, f.line, f.extra["sink"]) for f in flags)
+    if scope != protocol["edit_scope"] or targets != sorted(
+        (t["cell"], t["line"], t["sink"]) for t in protocol["targets"]
+    ):
+        raise ValueError("protocol.json does not match the snapshot; the contract was edited")
     return protocol, snapshot
 
 
@@ -237,6 +297,7 @@ def verify(repair_dir: str | Path, fixed_path: str | Path | None = None,
         run = counterfactual(snapshot, fixed, metric, timeout)
         evidence["execution"] = run
         evidence["status"] = "verified" if run["complete"] else "inconclusive"
+    (repair_dir / "evidence.json").unlink(missing_ok=True)
     (repair_dir / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
     return evidence
 
