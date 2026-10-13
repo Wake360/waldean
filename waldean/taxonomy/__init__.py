@@ -22,6 +22,8 @@ class FlawDef:
     book_anchor: str = ""
     narrative_enabled: bool = False
     disqualifiers: tuple[str, ...] = ()
+    repair_instruction: str = ""
+    repair_invariant: str = ""
 
 
 @lru_cache(maxsize=1)
@@ -40,6 +42,8 @@ def load_taxonomy() -> dict[str, FlawDef]:
             book_anchor=r.get("book_anchor", ""),
             narrative_enabled=r.get("narrative_enabled", False),
             disqualifiers=tuple(r.get("disqualifiers", ())),
+            repair_instruction=r.get("repair", {}).get("instruction", "").strip(),
+            repair_invariant=r.get("repair", {}).get("invariant", "").strip(),
         )
     return defs
 

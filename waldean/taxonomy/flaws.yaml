@@ -51,6 +51,15 @@
   fix: >
     Split by time: an explicit cutoff date, train_test_split(shuffle=False)
     on time-sorted rows, or TimeSeriesSplit for cross-validation.
+  repair:
+    instruction: >
+      Replace the shuffled split at the evaluation call with a temporal
+      one. Keep the data, features, model and scoring unchanged, so the
+      original and the repaired run differ only in the split protocol.
+    invariant: >
+      Every evaluation split trains only on rows dated before the rows it
+      tests on: TimeSeriesSplit for cross-validation, or
+      train_test_split(shuffle=False) on time-sorted rows.
 
 # Static promotion parked (2026-07-06): the flaw is the PAIR (filter,
 # population-scoped claim). The static half sees only the filter — a
