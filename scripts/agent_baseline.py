@@ -21,9 +21,11 @@ from datetime import date
 from pathlib import Path
 
 import nbformat
+import numpy as np
 import pandas as pd
 
 from nbclient import NotebookClient
+from scipy.stats import boschloo_exact, mannwhitneyu
 
 from waldean.runtime.execute import scrubbed_env, stdout_lines, with_appended_code_cell
 
@@ -494,6 +496,7 @@ def render_arms(m: dict, rows: list[dict]) -> str:
             out += ["", f"Primary: {a} minus {b} failure rate lower bound {low:+.1%}, "
                     f"median gap {a} {'-' if ma is None else format(ma, '.3f')} vs {b} {'-' if mb is None else format(mb, '.3f')}, "
                     f"completion {a} {ca:.0%} vs {b} {cb:.0%}: {verdict}."]
+            out += secondary(m, rows, a, b)
     out += ["", "## Runs", "", "| run | arm | cli | " + " | ".join(crits) + " | headline | future AUC | waldean check |",
             "|---|---|---|" + "---|" * len(crits) + "---|---|---|"]
     out += [f"| {r['run']} | {r['variant']} | {r['cli_version']} | " + " | ".join(r.get(c) or "n/a" for c in crits)
@@ -501,6 +504,62 @@ def render_arms(m: dict, rows: list[dict]) -> str:
     out += ["", "## Prompt", "", f"`{m['prompt']}`", ""]
     out += [f"Arm {a} appends `{arm['suffix']}`." for a, arm in m["arms"].items() if arm.get("suffix")]
     return "\n".join(out) + "\n"
+
+
+def failed_count(row: dict, d: dict) -> int:
+    return sum(row.get(c) != "pass" for c in d["criteria"])
+
+
+def mantel_haenszel(tables: list[tuple[int, int, int, int]]) -> tuple[float, float, float] | None:
+    r = sum(a * d / (a + b + c + d) for a, b, c, d in tables if a + b + c + d)
+    s = sum(b * c / (a + b + c + d) for a, b, c, d in tables if a + b + c + d)
+    if r == 0 or s == 0:
+        return None
+    var = 0.0
+    for a, b, c, d in tables:
+        n = a + b + c + d
+        if not n:
+            continue
+        pi, qi, ri, si = (a + d) / n, (b + c) / n, a * d / n, b * c / n
+        var += pi * ri / (2 * r * r) + (pi * si + qi * ri) / (2 * r * s) + qi * si / (2 * s * s)
+    centre = math.log(r / s)
+    return (r / s, math.exp(centre - 1.96 * math.sqrt(var)), math.exp(centre + 1.96 * math.sqrt(var)))
+
+
+def secondary(m: dict, rows: list[dict], a: str, b: str) -> list[str]:
+    by_name = {d["name"]: d for d in m["datasets"]}
+    ra = [r for r in rows if r["variant"] == a]
+    rb = [r for r in rows if r["variant"] == b]
+    ka = sum(not valid(r, by_name[r["dataset"]]) for r in ra)
+    kb = sum(not valid(r, by_name[r["dataset"]]) for r in rb)
+    out = ["", "## Secondary analyses (amendment 1, registered before scoring)", ""]
+    pv = boschloo_exact([[ka, len(ra) - ka], [kb, len(rb) - kb]], alternative="two-sided").pvalue
+    out.append(f"1. Boschloo exact, two-sided, {a} {ka}/{len(ra)} vs {b} {kb}/{len(rb)}: p = {pv:.4f}.")
+    ca = [failed_count(r, by_name[r["dataset"]]) for r in ra]
+    cb = [failed_count(r, by_name[r["dataset"]]) for r in rb]
+    pu = mannwhitneyu(ca, cb, alternative="two-sided").pvalue
+    out.append(f"2. Criteria not passed per run, Mann-Whitney two-sided: mean {a} {statistics.mean(ca):.3f} "
+               f"vs {b} {statistics.mean(cb):.3f}, p = {pu:.4f}.")
+    rng = np.random.default_rng(20261020)
+    pa = rng.beta(1 + ka, 1 + len(ra) - ka, 200000)
+    pb = rng.beta(1 + kb, 1 + len(rb) - kb, 200000)
+    out.append(f"3. Beta(1,1) posterior P(failure rate {b} < {a}) = {float(np.mean(pb < pa)):.4f}.")
+    tables = []
+    strata = []
+    for d in m["datasets"]:
+        da = [r for r in ra if r["dataset"] == d["name"]]
+        db = [r for r in rb if r["dataset"] == d["name"]]
+        fa = sum(not valid(r, d) for r in da)
+        fb = sum(not valid(r, d) for r in db)
+        tables.append((fa, len(da) - fa, fb, len(db) - fb))
+        strata.append(f"{d['name']} {a} {fa}/{len(da)} {b} {fb}/{len(db)}")
+    mh = mantel_haenszel(tables)
+    mh_text = "undefined (an arm has no failures or no passes in every dataset)" if mh is None else \
+        f"{mh[0]:.2f} (95% CI {mh[1]:.2f} to {mh[2]:.2f})"
+    out.append(f"4. Mantel-Haenszel odds ratio of failure {a} vs {b}, stratified by dataset: {mh_text}; "
+               + "; ".join(strata) + ".")
+    out.append("5. Failure counts per criterion per arm: see the arm table above.")
+    return out
 
 
 def code_lines(path: Path) -> list[str]:

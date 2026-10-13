@@ -174,3 +174,24 @@ def test_render_arms_primary_needs_completion():
     text = ab.render_arms(m, rows)
     assert "completion B 100% vs C 80%" in text
     assert "no evidence that C is better" in text
+
+
+def test_secondary_reports_all_five():
+    m = {"arms": {"B": {}, "C": {}}, "criteria": {"selection": {}}, "comparisons": [], "primary": ["B", "C"],
+         "prompt": "p", "datasets": [{"name": "s", "criteria": {"selection": ""}},
+                                     {"name": "t", "criteria": {"selection": ""}}]}
+    rows = [{"run": f"{ds}-claude-{a}-{i}", "variant": a, "dataset": ds, "sha256": "x", "cli_version": "1",
+             "selection": "fail" if a == "B" and i < 3 else "pass", "headline": "", "future_auc": "", "check": ""}
+            for ds in ("s", "t") for a in ("B", "C") for i in range(10)]
+    text = ab.render_arms(m, rows)
+    assert "1. Boschloo exact, two-sided, B 6/20 vs C 0/20: p = 0." in text
+    assert "mean B 0.300 vs C 0.000" in text
+    assert "3. Beta(1,1) posterior P(failure rate C < B) = 0.99" in text
+    assert "4. Mantel-Haenszel odds ratio of failure B vs C, stratified by dataset: undefined" in text
+    assert "5. Failure counts per criterion" in text
+
+
+def test_mantel_haenszel_two_strata():
+    odds, low, high = ab.mantel_haenszel([(4, 16, 1, 19), (3, 17, 1, 19)])
+    assert 4.0 < odds < 4.5
+    assert low < odds < high
