@@ -958,3 +958,12 @@ def test_fit_on_notebook_receiver_is_not_marked_helper_local():
     ])
     flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
     assert flags and "helper_local" not in flags[0].extra
+
+
+def test_groupby_apply_fillna_gives_one_flag_naming_the_frame():
+    notebook = nb([
+        ("code", "df = pd.read_csv('d.csv')\ndf['x'] = df.groupby('g')['x'].apply(lambda s: s.fillna(s.mean()))\nX_train, X_test, y_train, y_test = train_test_split(df[['x']], df['y'])"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert len(flags) == 1
+    assert flags[0].extra["leaked_names"] == ["df"]

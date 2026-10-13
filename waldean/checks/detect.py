@@ -482,6 +482,17 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                     ), key=f"impute:{base}", sink_cell=sink.cell, sink=sink.name)
                 break
 
+    impute_at: dict[tuple[int, int], str] = {}
+    for key in [k for k in best if isinstance(k, str) and k.startswith("impute:")]:
+        at = (best[key].cell, best[key].line)
+        other = impute_at.setdefault(at, key)
+        if other == key:
+            continue
+        ranked = sorted((other, key), key=lambda k: (
+            flow.binding(k.removeprefix("impute:"), at)[1] is not None, best[k].confidence))
+        del best[ranked[0]]
+        impute_at[at] = ranked[1]
+
     return list(best.values())
 
 
