@@ -34,7 +34,7 @@ the edit scope, and the clean base with the evaluation call deleted.
 | forecast-s24__leakage-temporal-shuffle__m2.ipynb | heldout | static-pass | rejected | rejected | rejected | [5.079, -5.222] | [5.201, -5.222] |
 | forecast-s24__leakage-temporal-shuffle__m3.ipynb | heldout | static-pass | rejected | rejected | rejected | [5.201, -5.215] | [5.201, -5.222] |
 
-The largest change in the first metric is 0.672 on `forecast-s21__leakage-temporal-shuffle__m2.ipynb` (MAE 4.727 before, 5.399 after), about 14% of the before value, which is small next to the demo gap of R2 0.992 to 0.465 in `evals/2026-10-12-temporal-cv-demo.md`, a drop of 0.527 on a different metric.
+The largest MAE change across the corpus is 0.672 on `forecast-s21__leakage-temporal-shuffle__m2.ipynb` (4.727 before, 5.399 after, about 14%). On the same metric, the demo in `evals/2026-10-12-temporal-cv-demo.md` moves from MAE 2.98 with shuffled KFold to MAE 9.82 with TimeSeriesSplit, a much larger shift.
 
 The corpus is synthetic and self-authored. These counts show that the verifier tells a true
 repair from three known bad ones on notebooks of this shape. They do not measure how often an
