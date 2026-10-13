@@ -838,3 +838,35 @@ def test_frame_mixing_train_and_test_split_rows_is_not_a_test_fill():
         ("code", "both = pd.concat([a, b])\nboth['f'] = both['f'].fillna(both['f'].median())"),
     ])
     assert not any("test split output" in f.evidence for f in run_static(notebook))
+
+
+def test_rolling_window_slices_after_full_fit_are_silent():
+    notebook = nb([
+        ("code", "s = scaler.fit_transform(s)"),
+        ("code", "hist = s[:i]\nwin = s[i-k:i]"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_bounded_overlap_slices_after_full_fit_are_silent():
+    notebook = nb([
+        ("code", "X = scaler.fit_transform(X)"),
+        ("code", "a = X[:n]\nb = X[n-1:m]"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_fit_before_open_lookback_slice_split_is_flagged():
+    notebook = nb([
+        ("code", "X = scaler.fit_transform(X)"),
+        ("code", "train = X[:n, :]\ntest = X[n-60:, :]"),
+    ])
+    assert "leakage-fit-before-split" in flag_ids(notebook)
+
+
+def test_min_max_inside_helper_before_split_is_flagged():
+    notebook = nb([
+        ("code", "def prep(d):\n    d['a'] = (d['a'] - d['a'].min()) / (d['a'].max() - d['a'].min())\n    X_tr, X_te, y_tr, y_te = train_test_split(d[feats], d.y)\n    return X_tr"),
+        ("code", "prep(df)"),
+    ])
+    assert "leakage-fit-before-split" in flag_ids(notebook)

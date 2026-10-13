@@ -401,7 +401,7 @@ class NotebookDataflow:
             heads = [e for e in events if e.upper and not e.lower]
             tails = [e for e in events if e.lower]
             pairs = [(h, t) for h in heads for t in tails
-                     if t.lower == h.upper or t.lower.startswith(h.upper + "-")]
+                     if t.lower == h.upper or (not t.upper and t.lower.startswith(h.upper + "-"))]
             if not pairs:
                 continue
             last = max(pairs[0], key=lambda e: (e.cell, e.line))
