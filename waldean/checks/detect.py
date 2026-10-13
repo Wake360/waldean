@@ -606,6 +606,7 @@ SORT_RE = re.compile(r"\.(?:sort_values|nlargest|nsmallest|sort_index)\(|\bsorte
 FIRST_TRUE_RE = re.compile(r"\([^()]*(?:>=|<=|==|!=|>|<)[^()]*\)\s*\.(?:argmax|idxmax|argmin|idxmin)\(")
 ROW_SELECT_RE = re.compile(r"\.iloc\[0\]\s*$|\.loc\[[^\n]*\.(?:idxmax|idxmin|argmax|argmin)\(")
 IFEXP_RE = re.compile(r"\bif\b[^\n]*\belse\b")
+IFCMP_RE = re.compile(r"\bif\b[^\n]*?(?:>=|<=|>|<)[^\n]*?\belse\b")
 LABEL_PASSTHROUGH = {"to_numpy", "values", "copy", "astype", "reset_index", "ravel", "squeeze"}
 DEF_RE = re.compile(r"^def (\w+)\(", re.MULTILINE)
 
@@ -679,7 +680,7 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
     for sel in flow.assigns:
         text = span_text(sel)
         if not SELECT_RE.search(text) and not (
-            IFEXP_RE.search(text) and sum(c.name in metric_names for c in calls_in(sel)) >= 2
+            IFEXP_RE.search(text) and (sum(c.name in metric_names for c in calls_in(sel)) >= 2 or IFCMP_RE.search(text))
         ):
             continue
         if FIRST_TRUE_RE.search(text) and not re.search(r"\b(?:max|min|sorted)\([^\n]*\bkey\s*=", text):
@@ -743,7 +744,13 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
             "leakage-test-selection", confidence=confidence, cell=sel.cell, line=sel.line,
             evidence=evidence, selected=sorted(t for t, _ in selected),
         ))
-    return flags
+    seen: set[tuple[int, int]] = set()
+    unique = []
+    for f in flags:
+        if (f.cell, f.line) not in seen:
+            seen.add((f.cell, f.line))
+            unique.append(f)
+    return unique
 
 
 DETECTORS = [

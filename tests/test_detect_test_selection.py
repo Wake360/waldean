@@ -93,3 +93,27 @@ def test_first_index_meeting_a_condition_is_silent():
         "print(recall_score(y, y_scores >= t))",
     ]
     assert not selection_flags(cells)
+
+
+SCORED = (
+    "P = {n: m.fit(X_tr, y_tr).predict_proba(X_te)[:, 1] for n, m in models.items()}\n"
+    "res = pd.DataFrame({n: {'auc': roc_auc_score(y_te, p)} for n, p in P.items()}).T"
+)
+
+
+def test_ifelse_comparing_score_lookups_is_selection():
+    cells = [SCORED, "best = 'lr' if res.loc['lr', 'auc'] >= res.loc['gb', 'auc'] else 'gb'", "print(res.loc[best])"]
+    flags = confident(cells)
+    assert len(flags) == 1 and flags[0].extra["selected"] == ["best"]
+
+
+def test_ifelse_on_row_count_is_silent():
+    cells = [SCORED, "best = 'lr' if len(X_tr) < 5000 else 'gb'", "print(res.loc[best])"]
+    assert not selection_flags(cells)
+
+
+def test_two_statements_on_selection_line_give_one_flag():
+    cells = [FIT, "best = max(probs, key=lambda n: roc_auc_score(y_te, probs[n])); p = probs[best]",
+             "print(average_precision_score(y_te, p))"]
+    flags = confident(cells)
+    assert len(flags) == 1 and flags[0].extra["selected"] == ["best"]
