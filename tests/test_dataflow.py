@@ -212,3 +212,32 @@ def test_head_and_tail_peeks_are_not_a_split():
 def test_shifted_slices_are_not_a_split():
     flow = analyze(nb_from_sources("inputs = s[:-1]\ntargets = s[1:]"))
     assert flow.slice_splits() == []
+
+
+def test_function_body_is_inlined_at_call_site():
+    flow = analyze(nb_from_sources(
+        "def prep(d):\n    d['a'] = d['a'].fillna(d['a'].median())\n    return d",
+        "df = prep(df)",
+    ))
+    inlined = [c for c in flow.calls if c.cell == 1 and c.name == "fillna"]
+    assert inlined and inlined[0].receiver_base == "df"
+    assert inlined[0].arg_names == {"df"}
+    assert any(ev.cell == 1 and "df" in ev.targets for ev in flow.assigns if ev.call is None)
+
+
+def test_pipe_inlines_like_a_call():
+    flow = analyze(nb_from_sources(
+        "def prep(d):\n    d['a'] = d['a'] / d['a'].max()\n    return d",
+        "df = df.pipe(prep)",
+    ))
+    assert any(c.cell == 1 and c.name == "max" and c.receiver_base == "df" for c in flow.calls)
+
+
+def test_inlined_function_called_twice_binds_per_call_site():
+    flow = analyze(nb_from_sources(
+        "def prep(d):\n    d['a'] = d['a'] / d['a'].max()\n    return d",
+        "a = prep(a)",
+        "b = prep(b)",
+    ))
+    bases = sorted((c.cell, c.receiver_base) for c in flow.calls if c.name == "max")
+    assert bases == [(1, "a"), (2, "b")]

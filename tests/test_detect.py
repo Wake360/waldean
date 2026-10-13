@@ -774,3 +774,22 @@ def test_fit_before_iloc_split_is_flagged():
         ("code", "model.fit(X_train, y[:800])"),
     ])
     assert "leakage-fit-before-split" in flag_ids(notebook)
+
+
+def test_statistic_inside_helper_before_split_is_flagged():
+    notebook = nb([
+        ("code", "def prep(d):\n    d['a'] = d['a'].fillna(d['a'].median())\n    return d"),
+        ("code", "df = prep(df)"),
+        ("code", "X_tr, X_te, y_tr, y_te = train_test_split(df[feats], df.y)"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert flags and flags[0].cell == 1 and flags[0].confidence >= 0.8
+
+
+def test_helper_applied_to_train_split_only_is_silent():
+    notebook = nb([
+        ("code", "def prep(d):\n    d['a'] = d['a'].fillna(d['a'].median())\n    return d"),
+        ("code", "X_tr, X_te, y_tr, y_te = train_test_split(df[feats], df.y)"),
+        ("code", "X_tr = prep(X_tr)"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)

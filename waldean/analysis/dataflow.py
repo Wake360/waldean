@@ -151,6 +151,14 @@ class SliceEvent:
     upper: str
 
 
+@dataclass
+class FuncDef:
+    name: str
+    params: list[str]
+    calls: list[CallSite] = field(default_factory=list)
+    assigns: list[AssignEvent] = field(default_factory=list)
+
+
 class _CellVisitor(cst.CSTVisitor):
     METADATA_DEPENDENCIES = (PositionProvider,)
 
@@ -162,6 +170,8 @@ class _CellVisitor(cst.CSTVisitor):
         self.assigns: list[AssignEvent] = []
         self.mutations: list[AssignEvent] = []
         self.slices: list[SliceEvent] = []
+        self.functions: list[FuncDef] = []
+        self._func: FuncDef | None = None
         self._pending: dict[int, AssignEvent] = {}  # id(call node) -> its assign event
         self._loop_vars: list[set[str]] = []  # target names per enclosing for-loop
 
@@ -187,9 +197,15 @@ class _CellVisitor(cst.CSTVisitor):
 
     def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
         self.scope_depth += 1
+        if self.scope_depth == 1:
+            params = [p.name.value for p in node.params.params]
+            self._func = FuncDef(name=node.name.value, params=params)
+            self.functions.append(self._func)
 
     def leave_FunctionDef(self, original_node: cst.FunctionDef) -> None:
         self.scope_depth -= 1
+        if self.scope_depth == 0:
+            self._func = None
 
     def visit_Lambda(self, node: cst.Lambda) -> None:
         self.scope_depth += 1
@@ -235,7 +251,10 @@ class _CellVisitor(cst.CSTVisitor):
         site = self._call_site(node, self._line(node))
         if site is None:
             return
-        self.calls.append(site)
+        if self._func is None:
+            self.calls.append(site)
+        elif self.scope_depth == 1:
+            self._func.calls.append(site)
         base = site.receiver_base
         if site.name in MUTATING_METHODS and base is not None and base == site.receiver and self.scope_depth == 0:
             self.mutations.append(AssignEvent(
@@ -251,6 +270,13 @@ class _CellVisitor(cst.CSTVisitor):
                        extra_sources: Collection[str] = frozenset(),
                        ordered: list[str] | None = None) -> None:
         if self.scope_depth > 0:
+            if self._func is not None and self.scope_depth == 1:
+                self._func.assigns.append(AssignEvent(
+                    targets=targets, sources=expr_names(value) | set(extra_sources),
+                    cell=self.cell, line=self._line(node), end_line=self._end_line(node),
+                    col=cast(CodeRange, self.get_metadata(PositionProvider, node)).start.column,
+                    ordered_targets=ordered or [],
+                ))
             return  # function/class locals do not rebind notebook names
         ev = AssignEvent(
             targets=targets,
@@ -345,6 +371,7 @@ class NotebookDataflow:
     assigns: list[AssignEvent] = field(default_factory=list)
     mutations: list[AssignEvent] = field(default_factory=list)  # x.append(v)-style in-place updates
     slices: list[SliceEvent] = field(default_factory=list)
+    functions: dict[str, FuncDef] = field(default_factory=dict)
     parse_errors: list[int] = field(default_factory=list)  # cell indices that failed to parse
     skipped_cells: list[int] = field(default_factory=list)  # cell indices skipped by a size/depth cap
     _by_name: dict[str, list[AssignEvent]] | None = field(default=None, repr=False)
@@ -466,6 +493,46 @@ def _structural_depth(source: str) -> int:
     return peak
 
 
+def _rename_names(names: set[str], rename: dict[str, set[str]]) -> set[str]:
+    out: set[str] = set()
+    for n in names:
+        out |= rename.get(n, {n})
+    return out
+
+
+def _rename_dotted(text: str | None, rename: dict[str, set[str]]) -> str | None:
+    if text is None:
+        return None
+    head, sep, rest = text.partition(".")
+    head, bracket, idx = head.partition("[")
+    target = rename.get(head)
+    if not target or len(target) != 1:
+        return text
+    return next(iter(target)) + bracket + idx + sep + rest
+
+
+def _rename_call(c: CallSite, rename: dict[str, set[str]], site: CallSite) -> CallSite:
+    return CallSite(
+        func=_rename_dotted(c.func, rename) or c.func,
+        name=c.name,
+        receiver=_rename_dotted(c.receiver, rename),
+        cell=site.cell, line=site.line, loop_depth=site.loop_depth,
+        pos_args=[_rename_names(a, rename) for a in c.pos_args],
+        kw_args={k: _rename_names(v, rename) for k, v in c.kw_args.items()},
+        loop_vars=set(site.loop_vars), end_line=site.end_line,
+    )
+
+
+def _call_target(site: CallSite, functions: dict[str, FuncDef]) -> tuple[FuncDef | None, list[set[str]]]:
+    if site.receiver is None and site.name in functions:
+        return functions[site.name], site.pos_args
+    if site.name == "pipe" and site.receiver is not None and site.pos_args:
+        fname = next(iter(site.pos_args[0]), None)
+        if fname in functions:
+            return functions[fname], [{site.receiver_base or ""}] + site.pos_args[1:]
+    return None, []
+
+
 def analyze(nb: ParsedNotebook) -> NotebookDataflow:
     flow = NotebookDataflow()
     for cell in nb.code_cells:
@@ -498,4 +565,18 @@ def analyze(nb: ParsedNotebook) -> NotebookDataflow:
         flow.assigns.extend(visitor.assigns)
         flow.mutations.extend(visitor.mutations)
         flow.slices.extend(visitor.slices)
+        flow.functions.update({f.name: f for f in visitor.functions})
+    for site in list(flow.calls):
+        fn, args = _call_target(site, flow.functions)
+        if fn is None:
+            continue
+        rename = {p: a for p, a in zip(fn.params, args) if a}
+        for c in fn.calls:
+            flow.calls.append(_rename_call(c, rename, site))
+        for ev in fn.assigns:
+            flow.assigns.append(AssignEvent(
+                targets=_rename_names(ev.targets, rename), sources=_rename_names(ev.sources, rename),
+                cell=site.cell, line=site.line, end_line=site.end_line or site.line, col=0,
+            ))
+    flow.assigns.sort(key=lambda e: (e.cell, e.line, e.col))
     return flow
