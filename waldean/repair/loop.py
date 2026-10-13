@@ -98,9 +98,23 @@ def patch_for(nb: ParsedNotebook, flag: Flag) -> str | None:
     split_at, split = splits[0]
     if sink_cell.index == fit_cell.index and split_at < flag.line - 1:
         return None
-    recv, train, test = fit.group(2), split.group(1), split.group(2)
+    name, recv, train, test = fit.group(1), fit.group(2), split.group(1), split.group(2)
+    if sink_cell.index == fit_cell.index:
+        between = fit_lines[flag.line:split_at]
+    else:
+        between = fit_lines[flag.line:] + [
+            ln for c in nb.code_cells if fit_cell.index < c.index < sink_cell.index for ln in c.source.splitlines()
+        ] + sink_lines[:split_at]
+    touches = re.compile(rf"\b{name}\b|\b{recv}\s*\.")
+    if any(touches.search(ln) for ln in between):
+        return None
+    tree = _parse(sink_cell.source)
+    ends = [n.end_lineno for n in (tree.body if tree else []) if n.lineno == split_at + 1]
+    if not ends or ends[0] is None:
+        return None
+    split_end = ends[0]
     new_lines = [f"{train} = {recv}.fit_transform({train})", f"{test} = {recv}.transform({test})"]
-    new_sink = sink_lines[: split_at + 1] + new_lines + sink_lines[split_at + 1:]
+    new_sink = sink_lines[:split_end] + new_lines + sink_lines[split_end:]
     if sink_cell.index == fit_cell.index:
         del new_sink[flag.line - 1]
         edits = [(fit_cell.index, fit_lines, new_sink)]
@@ -176,7 +190,7 @@ def propose(path: str | Path, out_root: Path = DEFAULT_OUT,
             (repair_dir / name).unlink(missing_ok=True)
         shutil.copyfile(path, repair_dir / f"original{path.suffix}")
         (repair_dir / "protocol.json").write_text(json.dumps(protocol, indent=2) + "\n", encoding="utf-8")
-        patch = patch_for(nb, flags[0]) if diff else None
+        patch = patch_for(nb, flags[0]) if diff and len(flags) == 1 else None
         if patch is not None:
             (repair_dir / "patch.diff").write_text(patch, encoding="utf-8")
         (repair_dir / "brief.md").write_text(render_brief(protocol, repair_dir, patch is not None), encoding="utf-8")

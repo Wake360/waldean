@@ -121,6 +121,13 @@ def render(rows: list[dict], day: str, execute: bool) -> str:
         if execute:
             cells += [str(r.get("before", "-")), str(r.get("after", "-"))]
         lines.append("| " + " | ".join(cells) + " |")
+    if execute:
+        for c in CLASSES:
+            executed = [r for r in by_class[c] if "before" in r]
+            if executed and all(r["before"] == r["after"] for r in executed):
+                lines += ["", f"On every `{c}` mutant the metric is identical before and after the repair. The leakage",
+                          "does not move these synthetic metrics, so execution shows that both notebooks run, not",
+                          "that the leakage was removed."]
     lines += [
         "",
         "The corpus is synthetic and self-authored. These counts show that the verifier tells a true",

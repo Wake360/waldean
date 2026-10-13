@@ -86,6 +86,12 @@ mutant with `patch` and the result is judged as a fifth candidate.
 | forecast-s24__leakage-temporal-shuffle__m2.ipynb | heldout | static-pass | rejected | rejected | rejected | - | [5.079, -5.222] | [5.201, -5.222] |
 | forecast-s24__leakage-temporal-shuffle__m3.ipynb | heldout | static-pass | rejected | rejected | rejected | - | [5.201, -5.215] | [5.201, -5.222] |
 
+The largest MAE change across the corpus is 0.672 on `forecast-s21__leakage-temporal-shuffle__m2.ipynb` (4.727 before, 5.399 after, about 14%). On the same metric, the demo in `evals/2026-10-12-temporal-cv-demo.md` moves from MAE 2.98 with shuffled KFold to MAE 9.82 with TimeSeriesSplit, a much larger shift.
+
+On every `leakage-fit-before-split` mutant the metric is identical before and after the repair. The leakage
+does not move these synthetic metrics, so execution shows that both notebooks run, not
+that the leakage was removed.
+
 The corpus is synthetic and self-authored. These counts show that the verifier tells a true
 repair from three known bad ones on notebooks of this shape. They do not measure how often an
 agent writes an acceptable repair on real notebooks.

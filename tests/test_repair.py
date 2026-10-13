@@ -105,6 +105,33 @@ def test_patch_for_canonical_fit_transform(tmp_path):
     assert "patch.diff" in (written[0] / "brief.md").read_text()
 
 
+def patched_cell(written) -> str | None:
+    patch = written[0] / "patch.diff"
+    if not patch.exists():
+        return None
+    hunk = patch.read_text().split("@@\n", 1)[1].splitlines()
+    return "\n".join(ln[1:] for ln in hunk if ln[:1] in (" ", "+"))
+
+
+@pytest.mark.parametrize("split", [
+    "X_train, X_test, y_train, y_test = train_test_split(X, y,\n    random_state=0,\n)",
+    "X_train, X_test, y_train, y_test = train_test_split(X, y, \\\n    random_state=0)",
+])
+def test_patch_for_multiline_split_compiles(tmp_path, split):
+    cell = "scaler = StandardScaler()\nX = scaler.fit_transform(X)\n" + split
+    written, _ = propose(write_code(tmp_path / "fbs.ipynb", [FBS[0], cell, FBS[2]]), out_root=tmp_path / "r", diff=True)
+    source = patched_cell(written)
+    assert source is not None
+    compile(source, "cell", "exec")
+    assert source.splitlines()[-2:] == ["X_train = scaler.fit_transform(X_train)", "X_test = scaler.transform(X_test)"]
+
+
+def test_patch_absent_when_name_is_used_between_fit_and_split(tmp_path):
+    cell = "scaler = StandardScaler()\nX = scaler.fit_transform(X)\nprint(X.shape)\nX_train, X_test, y_train, y_test = train_test_split(X, y)"
+    written, _ = propose(write_code(tmp_path / "fbs.ipynb", [FBS[0], cell, FBS[2]]), out_root=tmp_path / "r", diff=True)
+    assert not (written[0] / "patch.diff").exists()
+
+
 def test_patch_absent_for_hand_written_statistic(tmp_path):
     cells = [FBS[0], "X = (X - X.mean()) / X.std()\nX_train, X_test, y_train, y_test = train_test_split(X, y)", FBS[2]]
     written, _ = propose(write_code(tmp_path / "fbs.ipynb", cells), out_root=tmp_path / "r", diff=True)
