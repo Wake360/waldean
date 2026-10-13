@@ -1,0 +1,29 @@
+run	dataset	agent	variant	cli_version	model	sha256	check	probe
+control-claude-default-0	control	claude	default	2.1.296 (Claude Code)	sonnet	236642dd7dd9558190aed96153bbd8652a43d401dd6ea4b5322f2517ba0c2ca1		n/a
+control-claude-default-1	control	claude	default	2.1.296 (Claude Code)	sonnet	b2db660db6d9743165682c8828dd5e6bfaff3993346bd62f4dace81c740a6b9a		n/a
+control-codex-default-0	control	codex	default	codex-cli 0.160.1	gpt-5.6-sol	0c17e03f37a7b6434bd765aaa4320357ebadba198a1f247be6c1ed2d5a1a0e3e		n/a
+control-codex-default-1	control	codex	default	codex-cli 0.160.1	gpt-5.6-sol	88643b082d6fd7eba5b93510848b61e652b357c49deae974eb9526954c8ed45e		n/a
+group-claude-default-0	group	claude	default	2.1.296 (Claude Code)	sonnet	790bde4f4db26846699a08e3aa04902316d33655428132b68f3896845188c33e		pass
+group-claude-default-1	group	claude	default	2.1.296 (Claude Code)	sonnet	89460b458e5b382afde2dfb460161d1aeed68a101429d7be3ccccb8f5b6ee757		pass
+group-claude-hinted-0	group	claude	hinted	2.1.296 (Claude Code)	sonnet	f4cd459b00fe4a5f2a76d34dbb6ed9b3c08c3d91bea9acf769b20f8918b9d24f		pass
+group-codex-default-0	group	codex	default	codex-cli 0.160.1	gpt-5.6-sol	99895dda55cf7780bfe7476407bd35c9d1bac33d6af0afb7810e8ff8304dc14f		pass
+group-codex-default-1	group	codex	default	codex-cli 0.160.1	gpt-5.6-sol	b395e33c9510e12e17e3d72c91a2c5453784ad13b093b3f368b50f8e01393e61		pass
+group-codex-hinted-0	group	codex	hinted	codex-cli 0.160.1	gpt-5.6-sol	774ee58ec816f71e0512a6cd2e22505efb81494df547b22debd6a2517911c34d		pass
+imbalance-claude-default-0	imbalance	claude	default	2.1.296 (Claude Code)	sonnet	2919dd8dfb8897204cd73532c011f0704225d53a7a7e8beb8eecc14b8bd7a0c1		pass
+imbalance-claude-default-1	imbalance	claude	default	2.1.296 (Claude Code)	sonnet	11e8cc778f538226dc0c2a84e42e390450a93835beafc4b7ff2d8b0a1a09294b		pass
+imbalance-claude-hinted-0	imbalance	claude	hinted	2.1.296 (Claude Code)	sonnet	519c95c1f37b915017b1c5e466f7155b22e7e854e89207e1b3680bf87d008b9f		pass
+imbalance-codex-default-0	imbalance	codex	default	codex-cli 0.160.1	gpt-5.6-sol	dde5c67aa5fe926e80dcecb9006476c97fda7355774fbcd8eee0ab0e58122472		pass
+imbalance-codex-default-1	imbalance	codex	default	codex-cli 0.160.1	gpt-5.6-sol	ab6e5367cf13b11ea01760fcd41a90a6138f19e9461ff6f5e4066f62b5815226		pass
+imbalance-codex-hinted-0	imbalance	codex	hinted	codex-cli 0.160.1	gpt-5.6-sol	c793e56d3f769e57e48b64d4167444da203f50bcaad79e4cffd6e09bc337387e		pass
+leak-claude-default-0	leak	claude	default	2.1.296 (Claude Code)	sonnet	913092ab1f5996987f2c3edfb08cd2159a368502d19c187199cf636dddf8235d		pass
+leak-claude-default-1	leak	claude	default	2.1.296 (Claude Code)	sonnet	056053978c7e9a372571852c9de585516937b7afdbbfed562bbf15bedfd82a47		pass
+leak-claude-hinted-0	leak	claude	hinted	2.1.296 (Claude Code)	sonnet	29c1ab7aad0727dfbb914ae66ab90d390b1124c9105a429f79a3f34ff79fd617		pass
+leak-codex-default-0	leak	codex	default	codex-cli 0.160.1	gpt-5.6-sol	e4a5725fe6d06783eecaae71865f0d5beefec7da3ebffd3ef251f0d05389fb08		fail
+leak-codex-default-1	leak	codex	default	codex-cli 0.160.1	gpt-5.6-sol	c407d1edb194f0bd195b126905f1f8891436eb2111523ee02df4daaab9f3fe43		pass
+leak-codex-hinted-0	leak	codex	hinted	codex-cli 0.160.1	gpt-5.6-sol	8b39aa3312c5cf5b1d468a49e1de44007e77045d384908724f338f025870c287		pass
+temporal-claude-default-0	temporal	claude	default	2.1.296 (Claude Code)	sonnet	afac67e28e03a822715eb4f485a7153647285ecb32385ab8e96aa5b46fef93fc		pass
+temporal-claude-default-1	temporal	claude	default	2.1.296 (Claude Code)	sonnet	acba620e8a995c6f06d07d523f8cd9c1b190bcc969f74b1ea9e8707e38bd2e8c		pass
+temporal-claude-hinted-0	temporal	claude	hinted	2.1.296 (Claude Code)	sonnet	64e5db8e5d9667a3a57a37c04873c6ad8f6fec8a43e31591f54c71e8a1b055b2		pass
+temporal-codex-default-0	temporal	codex	default	codex-cli 0.160.1	gpt-5.6-sol	d4260933ef2191d543a6fe431e99fd79f8a1c9695a525b9ab5a4c16a6fe3f79c		pass
+temporal-codex-default-1	temporal	codex	default	codex-cli 0.160.1	gpt-5.6-sol	bf6cb8a51afe7b243cf123eb803b2ee5b10ff80f52783000625b6d5e5aea6c68		pass
+temporal-codex-hinted-0	temporal	codex	hinted	codex-cli 0.160.1	gpt-5.6-sol	12b5dd2e8b828e6f5bd6a88b9af7c38e5d2680c2ed977ccf723b6e35289ed889		pass

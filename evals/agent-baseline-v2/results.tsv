@@ -1,0 +1,36 @@
+run	dataset	agent	variant	cli_version	model	sha256	check	group	selection	headline	temporal	leak
+clinic-claude-default-0	clinic	claude	default	2.1.296 (Claude Code)	sonnet	464f46070ea2aa92191b25e44497457b5295eddad8176199bb797ef5b1ffb6ff		pass	fail	('roc_auc', 0.6211)		
+clinic-claude-default-1	clinic	claude	default	2.1.296 (Claude Code)	sonnet	a19fb0dc95e78e212c980819d6c28506fb1c22beee1f2bf73b536fca62a4a74a		pass	pass	('roc_auc', 0.648)		
+clinic-claude-default-2	clinic	claude	default	2.1.296 (Claude Code)	sonnet	b3e924d37ccff106e960b3ea429f1b74c579c2df6327f4c9bdc9ce37e6987a24		pass	fail	('roc_auc', 0.648)		
+clinic-claude-default-3	clinic	claude	default	2.1.296 (Claude Code)	sonnet	ed8ba1faef9b615b15a13ab88db4b6c0d541322429887d456f113ba2d9a5dfa2		pass	pass	('roc_auc', 0.6484)		
+clinic-claude-default-4	clinic	claude	default	2.1.296 (Claude Code)	sonnet	015af669c1293419b0985db24498415b20139596366ac5f3e99f1136e5871216		pass	pass	('roc_auc', 'text: 0.63-0.65 across models')		
+clinic-codex-default-0	clinic	codex	default	codex-cli 0.160.1	gpt-5.6-sol	3abb7c8b69cd2bf1b14da9bb1209962b7fd15d94378aad1313e7e669d7d32bf7		pass	fail	('roc_auc', 0.624)		
+clinic-codex-default-1	clinic	codex	default	codex-cli 0.160.1	gpt-5.6-sol	0da848508a94c8b86ea9a480ba1e0aef99d02f421df5c47cfdbd90f5b24c3c14		pass	fail	('roc_auc', 0.624)		
+clinic-codex-default-2	clinic	codex	default	codex-cli 0.160.1	gpt-5.6-sol	e6abc1ca07dcbbb5562affb51077b1a8734447c825250c75a641794bdf5c9b3b		pass	pass	('roc_auc', 0.611)		
+clinic-codex-default-3	clinic	codex	default	codex-cli 0.160.1	gpt-5.6-sol	24c6af57cddd19fc95bd9581ac97e10ed865f6db72a28ed10e5fc6ad21d7e511		pass	fail	('roc_auc', 0.63)		
+clinic-codex-default-4	clinic	codex	default	codex-cli 0.160.1	gpt-5.6-sol	8a677855a5a488a36e41f92b3d49cefd76d23e28bd3e8f8a8755e869da1ff2a0		pass	pass	('average_precision', 0.291)		
+control-claude-default-0	control	claude	default	2.1.296 (Claude Code)	sonnet	f6359b1d4f11dcd69901b018b41dda9fc7531d20e1d04df9bb27533127367a48			pass	('roc_auc', 0.775)		
+control-claude-default-1	control	claude	default	2.1.296 (Claude Code)	sonnet	4db3e0454c3b22650b4b10d270ac23de5a957cd547273ba0c299d6297d0dd9f4			fail	('roc_auc', 0.775)		
+control-claude-default-2	control	claude	default	2.1.296 (Claude Code)	sonnet	45eb88cce4464c126597e06d118dc6a9931be7a496ab37062c7e3afde6babd95			pass	('roc_auc', 0.782)		
+control-claude-default-3	control	claude	default	2.1.296 (Claude Code)	sonnet	fb4a835ad49ce74f8b03e67fa0c0cbeb37188d2ab79df4f735397d7040de209d			fail	('roc_auc', 0.782)		
+control-claude-default-4	control	claude	default	2.1.296 (Claude Code)	sonnet	31344ba9966a7189283ee025f4d8f6215506b882d3d39e965bb14dd95847413b			pass	('roc_auc', 0.775)		
+maintenance-claude-default-0	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	54c833d0cddf9dbdb1b1c3b8a815365aadc95b954734679f66b35a65320d0ca5			fail	('roc_auc', 0.757)	pass	pass
+maintenance-claude-default-1	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	77a3fa6649a231dbf1ef49272e7338345f9357f3efddec0c2591c9161808caaa			fail	('roc_auc', 'core features, text: ~0.68')	pass	pass
+maintenance-claude-default-2	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	ab4a8723949800d0ebfafa1a402d0998f2c851d941b44f5c672f30c566fdc010			pass	('roc_auc', 0.778)	pass	pass
+maintenance-claude-default-3	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	8ad7204073be36173377fd614fd099deacf029f5baea36b0f2fbd97c9a8e968b			fail	('roc_auc', 0.757)	fail	pass
+maintenance-claude-default-4	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	313916374a2496002560744b14074140ca5d96b9389cc6ed9d9f27f0e2a1873f			fail	('roc_auc', 0.795)	pass	pass
+maintenance-codex-default-0	maintenance	codex	default	codex-cli 0.160.1	gpt-5.6-sol	4c8c6507f47cd9094e85c783a846b844efe981e63f0aab1266b5212e03277657			pass	('average_precision', 0.08)	pass	pass
+maintenance-codex-default-1	maintenance	codex	default	codex-cli 0.160.1	gpt-5.6-sol	d477e5e802b8fa7962b7915b42adf531f816d0c5d888b1b8174151f858e05dcf			fail	('roc_auc', 0.807)	pass	pass
+maintenance-codex-default-2	maintenance	codex	default	codex-cli 0.160.1	gpt-5.6-sol	f9cfa2c5665c9d6122579f8c44728dcef9a119bdd5c80c3d82de532ef45c0544			fail	('roc_auc', 0.768)	pass	pass
+maintenance-codex-default-3	maintenance	codex	default	codex-cli 0.160.1	gpt-5.6-sol	3ff632a9f8d58b57d649d622398a684e279ccb24426a5664132346ca30fc1eff			fail	('roc_auc', 0.828)	pass	pass
+maintenance-codex-default-4	maintenance	codex	default	codex-cli 0.160.1	gpt-5.6-sol	b279ed923bd1b9602691682630481fe875b39f87978768eb4627d69952176079			pass	('average_precision', 0.036)	pass	pass
+subscriptions-claude-default-0	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	3a739202f023a8908b614007c5d8e5e4fc91b4bf1de4248e286549526fa6ce45			pass	('roc_auc', 0.6773193246853989)	fail	pass
+subscriptions-claude-default-1	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	00b53929eec6bd066588122ded2635d2d45248e9440e2ceced087c7892af7f60			pass	('roc_auc', 'text: about 0.68')	pass	pass
+subscriptions-claude-default-2	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	de64a723ab8c0f315b9eb758f94e1811c0b2da6e52209230bd0b360b26bd898b			pass	('roc_auc', 'text: 0.66-0.69')	fail	pass
+subscriptions-claude-default-3	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	e56c4271aa7783736b83bc8cca3353fb05ff72a316c3b7c525a7ad400d4fcf57			pass	('roc_auc', 'text: 0.69-0.71')	pass	pass
+subscriptions-claude-default-4	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	65d67ff3cfa5e39e315a113d8171c1407d6b2438a8a292a16a11ac2d927e582c			pass	('roc_auc', 'text: about 0.69')	pass	pass
+subscriptions-codex-default-0	subscriptions	codex	default	codex-cli 0.160.1	gpt-5.6-sol	ebd6f04b8ba69f72a995b0e968556ad885b7d6d8bb17abc15deb773cf730bb4a			pass	('average_precision', 0.3)	pass	pass
+subscriptions-codex-default-1	subscriptions	codex	default	codex-cli 0.160.1	gpt-5.6-sol	69839a4368a711fd25e3af0bf5ea5c726e9837add159903e67d0abc39f990bf9			pass	('average_precision', 0.285)	pass	pass
+subscriptions-codex-default-2	subscriptions	codex	default	codex-cli 0.160.1	gpt-5.6-sol	dedf629bfe292df4fab4c7a6b3ecfd99974c3a7eb0ccdee5ac57d01094f7c4b0			pass	('roc_auc', 0.713)	pass	pass
+subscriptions-codex-default-3	subscriptions	codex	default	codex-cli 0.160.1	gpt-5.6-sol	91505ca3083b83430ca83ef50d88e04107ee97cfa2b1e13894adbc4f9b8cca4e			pass	('average_precision', 0.206)	pass	pass
+subscriptions-codex-default-4	subscriptions	codex	default	codex-cli 0.160.1	gpt-5.6-sol	989eb19bbb1aebff22fd2fe74fdcd126eb1a58c8348c418e487389368759c0ea			pass	('average_precision', 0.289)	pass	pass
