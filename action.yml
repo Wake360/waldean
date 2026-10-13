@@ -10,7 +10,7 @@ inputs:
     default: "."
   version:
     description: waldean version to install from PyPI.
-    default: "0.4.0"
+    default: "0.5.0"
   fail-on:
     description: Severity that fails the gate — high, medium, or never.
     default: "medium"
