@@ -106,3 +106,64 @@ def test_single_value_target_is_refused(tmp_path):
     pd.DataFrame({"x": range(30), "y": [1] * 30}).to_csv(path, index=False)
     with pytest.raises(ValueError, match="at least 2"):
         profile(path, "y")
+
+
+def suspects(prof):
+    return {s["column"]: s["kind"] for s in prof["suspects"]}
+
+
+def test_constant_and_id_columns_are_suspects(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    found = suspects(profile(path, target))
+    assert found["const"] == "constant" and found["customer_id"] == "id"
+    assert "x1" not in found and "store" not in found and "plan" not in found
+
+
+def test_all_null_column_is_constant(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    df = pd.read_csv(path)
+    df["empty"] = None
+    df.to_csv(path, index=False)
+    assert suspects(profile(path, target))["empty"] == "constant"
+
+
+def test_high_cardinality_text_is_a_suspect(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    df = pd.read_csv(path)
+    df["note"] = [f"note {i // 2}" for i in range(len(df))]
+    df.to_csv(path, index=False)
+    prof = profile(path, target)
+    assert suspects(prof)["note"] == "high_cardinality"
+    assert "600 distinct values in 1200 rows" in next(s["reason"] for s in prof["suspects"] if s["column"] == "note")
+
+
+def test_pure_category_is_a_target_leak_for_classification(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    prof = profile(path, target)
+    assert suspects(prof)["status"] == "target_leak"
+    assert "every value maps to one target class" in next(s["reason"] for s in prof["suspects"] if s["column"] == "status")
+    path, target = make_csv(tmp_path / "m.csv", "multiclass")
+    assert suspects(profile(path, target))["tier_code"] == "target_leak"
+
+
+def test_correlated_number_is_a_target_leak_for_regression(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "regression")
+    prof = profile(path, target)
+    assert suspects(prof)["spend_copy"] == "target_leak"
+    assert "x1" not in suspects(prof)
+    assert "spearman correlation 1.00" in next(s["reason"] for s in prof["suspects"] if s["column"] == "spend_copy")
+
+
+def test_float_feature_distinct_per_row_is_not_an_id(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    assert "x1" not in suspects(profile(path, target))
+
+
+def test_time_columns_are_not_suspects(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    df = pd.read_csv(path)
+    df["day"] = pd.date_range("2024-01-01", periods=len(df), freq="h").strftime("%Y-%m-%d %H:%M")
+    df.to_csv(path, index=False)
+    prof = profile(path, target)
+    assert "day" in [t["column"] for t in prof["time_columns"]]
+    assert "day" not in suspects(prof)

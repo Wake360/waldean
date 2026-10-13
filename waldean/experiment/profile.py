@@ -13,6 +13,9 @@ NUMBER_RE = r"-?\d+(?:\.\d+)?"
 YEAR_FIRST_RE = r"\d{4}\D"
 MAX_CLASSES = 20
 TASKS = ("binary", "multiclass", "regression")
+HIGH_CARDINALITY_SHARE = 0.5
+LEAK_CORRELATION = 0.95
+MAX_PURITY_LEVELS = 50
 
 
 def sha256(path: str | Path) -> str:
@@ -80,6 +83,45 @@ def target_info(y: pd.Series, task: str) -> dict:
     return info
 
 
+def leak_reason(df: pd.DataFrame, col: str, target: str, task: str) -> str | None:
+    labelled = df[df[target].notna() & df[col].notna()]
+    if len(labelled) < 2:
+        return None
+    if pd.api.types.is_numeric_dtype(df[col]) and task != "multiclass":
+        y = labelled[target]
+        if task == "binary":
+            y = (y == sorted(y.unique().tolist())[1]).astype(int)
+        rho = labelled[col].corr(y, method="spearman")
+        if pd.notna(rho) and abs(rho) >= LEAK_CORRELATION:
+            return f"spearman correlation {abs(rho):.2f} with the target"
+        return None
+    if task != "regression" and not pd.api.types.is_numeric_dtype(df[col]):
+        levels = labelled[col].nunique()
+        if 2 <= levels <= MAX_PURITY_LEVELS and labelled.groupby(col)[target].nunique().max() == 1:
+            return "every value maps to one target class"
+    return None
+
+
+def suspect_columns(df: pd.DataFrame, target: str, task: str, skip: set[str]) -> list[dict]:
+    found = []
+    for col in df.columns:
+        if col == target or col in skip:
+            continue
+        values = df[col].dropna()
+        n, rows = values.nunique(), len(values)
+        if n <= 1:
+            found.append({"column": str(col), "kind": "constant", "reason": "constant: one value in every row"})
+        elif n == rows and not pd.api.types.is_float_dtype(values):
+            found.append({"column": str(col), "kind": "id",
+                          "reason": "looks like an identifier: a different value in every row"})
+        elif not pd.api.types.is_numeric_dtype(values) and n >= HIGH_CARDINALITY_SHARE * rows:
+            found.append({"column": str(col), "kind": "high_cardinality",
+                          "reason": f"{n} distinct values in {rows} rows; one-hot encoding would keep almost none"})
+        elif (reason := leak_reason(df, col, target, task)) is not None:
+            found.append({"column": str(col), "kind": "target_leak", "reason": reason})
+    return found
+
+
 def profile(csv_path: str | Path, target: str, task: str | None = None) -> dict:
     path = Path(csv_path)
     df = pd.read_csv(path)
@@ -89,6 +131,7 @@ def profile(csv_path: str | Path, target: str, task: str | None = None) -> dict:
     if task not in TASKS:
         raise ValueError(f"task must be one of {list(TASKS)}, got {task!r}")
     labelled = df[df[target].notna()]
+    times = time_columns(df, target)
     return {
         "rows": int(len(df)),
         "columns": [str(c) for c in df.columns],
@@ -97,6 +140,7 @@ def profile(csv_path: str | Path, target: str, task: str | None = None) -> dict:
         "task": task,
         "target_distinct": int(labelled[target].nunique()),
         **target_info(labelled[target], task),
-        "time_columns": time_columns(df, target),
+        "time_columns": times,
+        "suspects": suspect_columns(df, target, task, {t["column"] for t in times}),
         "sha256": sha256(path),
     }
