@@ -66,11 +66,10 @@ def test_few_distinct_dates_are_not_a_time_column(tmp_path):
     assert profile(path, "y")["time_columns"] == []
 
 
-def test_non_binary_target_is_refused(tmp_path):
+def test_three_value_target_is_multiclass(tmp_path):
     path = tmp_path / "d.csv"
     pd.DataFrame({"x": range(30), "y": [0, 1, 2] * 10}).to_csv(path, index=False)
-    with pytest.raises(ValueError, match="exactly 2 values"):
-        profile(path, "y")
+    assert profile(path, "y")["task"] == "multiclass"
 
 
 def test_missing_target_is_refused(tmp_path):
