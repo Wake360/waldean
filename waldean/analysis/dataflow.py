@@ -314,7 +314,7 @@ class _CellVisitor(cst.CSTVisitor):
                 mutated |= _target_names(t.target)
             targets |= _target_names(t.target)
             if isinstance(t.target, (cst.Tuple, cst.List)):
-                ordered = [el.value.value for el in t.target.elements if isinstance(el.value, cst.Name)]
+                ordered = [el.value.value if isinstance(el.value, cst.Name) else "" for el in t.target.elements]
         self._record_assign(targets, node.value, node, extra_sources=mutated, ordered=ordered)
         self._record_slices(node.value)
 

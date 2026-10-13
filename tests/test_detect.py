@@ -883,3 +883,11 @@ def fit_flag_arg(fit_source):
 def test_probe_arg_is_single_name_or_empty():
     assert fit_flag_arg("X = scaler.fit_transform(X)") == "X"
     assert fit_flag_arg("X = scaler.fit_transform(df[features])") == ""
+
+
+def test_attribute_target_in_split_keeps_test_positions():
+    notebook = nb([
+        ("code", "X_train, self.X_test, y_train, y_test = train_test_split(X, y)"),
+        ("code", "sc = StandardScaler().fit(y_train)"),
+    ])
+    assert not any("test split output" in f.evidence for f in run_static(notebook))
