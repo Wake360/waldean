@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from ..analysis.dataflow import NotebookDataflow, analyze
+from ..analysis.dataflow import AssignEvent, NotebookDataflow, analyze
 from ..analysis.ingest import ParsedNotebook
 from ..core.flag import Flag
 from ..core.taxonomy import load_taxonomy
@@ -265,7 +265,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
             test_binds |= {(t, id(ev)) for t in ev.ordered_targets[1::2]}
     # every .transform call, for binding-aware receiver checks
     transform_calls = [c for c in flow.calls if c.name == "transform" and c.receiver]
-    assign_event_of: dict[int, "object"] = {
+    assign_event_of: dict[int, AssignEvent] = {
         id(ev.call): ev for ev in flow.assigns if ev.call is not None
     }
 
@@ -373,7 +373,8 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
             _, arg_chain = flow.chain(call.arg_names, pos)
             touched_test = {n for n, _ in arg_chain & test_binds}
             if touched_test:
-                reached = {(t, id(my_event)) for t in my_event.targets} if my_event is not None else set()
+                reached: set[tuple[str, int | None]] = (
+                    {(t, id(my_event)) for t in my_event.targets} if my_event is not None else set())
                 if call.receiver_base and call.receiver_base.isidentifier():
                     reached.add(flow.binding(call.receiver_base, pos))
                 scored = reaches_score(call, reached)
