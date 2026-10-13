@@ -707,3 +707,42 @@ def test_temporal_flagged_parse_dates_survives_value_sort():
         ("code", "X_tr, X_te, y_tr, y_te = train_test_split(df[cols], df['y'])"),
     ])
     assert "leakage-temporal-shuffle" in flag_ids(notebook, floor=0.8)
+
+
+SPLIT4 = "X_train, X_holdout, y_train, y_holdout = train_test_split(X, y)"
+
+
+def test_refit_on_split_output_by_position():
+    notebook = nb([
+        ("code", SPLIT4),
+        ("code", "X_train = scaler.fit_transform(X_train)\nX_holdout = scaler.fit_transform(X_holdout)"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert len(flags) == 1
+    assert flags[0].line == 2
+    assert flags[0].confidence >= 0.8
+    assert "X_holdout" in flags[0].evidence
+
+
+def test_fit_on_train_only_is_silent():
+    notebook = nb([
+        ("code", SPLIT4),
+        ("code", "X_train = scaler.fit_transform(X_train)\nX_holdout = scaler.transform(X_holdout)"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_tokenizer_fit_on_texts_before_split():
+    notebook = nb([
+        ("code", "tok = Tokenizer(num_words=5000)\ntok.fit_on_texts(texts)\nX = tok.texts_to_sequences(texts)"),
+        ("code", "X_train, X_test, y_train, y_test = train_test_split(X, y)"),
+    ])
+    assert "leakage-fit-before-split" in flag_ids(notebook)
+
+
+def test_fit_on_concat_of_train_and_test():
+    notebook = nb([
+        ("code", SPLIT4),
+        ("code", "both = pd.concat([X_train, X_holdout])\nenc = OneHotEncoder()\nenc.fit(both)"),
+    ])
+    assert "leakage-fit-before-split" in flag_ids(notebook)

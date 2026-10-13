@@ -139,6 +139,7 @@ class AssignEvent:
     call: CallSite | None = None  # the exact CallSite object when the value is a call
     end_line: int = 0
     col: int = 0
+    ordered_targets: list[str] = field(default_factory=list)
 
 
 class _CellVisitor(cst.CSTVisitor):
@@ -237,7 +238,8 @@ class _CellVisitor(cst.CSTVisitor):
             ev.call = site  # identity-shared: detect can test `ev.call is call`
 
     def _record_assign(self, targets: set[str], value: cst.BaseExpression, node: cst.CSTNode,
-                       extra_sources: Collection[str] = frozenset()) -> None:
+                       extra_sources: Collection[str] = frozenset(),
+                       ordered: list[str] | None = None) -> None:
         if self.scope_depth > 0:
             return  # function/class locals do not rebind notebook names
         ev = AssignEvent(
@@ -247,6 +249,7 @@ class _CellVisitor(cst.CSTVisitor):
             line=self._line(node),
             end_line=self._end_line(node),
             col=cast(CodeRange, self.get_metadata(PositionProvider, node)).start.column,
+            ordered_targets=ordered or [],
         )
         self.assigns.append(ev)
         if isinstance(value, cst.Call):
@@ -255,11 +258,14 @@ class _CellVisitor(cst.CSTVisitor):
     def visit_Assign(self, node: cst.Assign) -> None:
         targets: set[str] = set()
         mutated: set[str] = set()  # df["x"] = ... mutates df: keep df's history
+        ordered: list[str] = []
         for t in node.targets:
             if isinstance(t.target, (cst.Subscript, cst.Attribute)):
                 mutated |= _target_names(t.target)
             targets |= _target_names(t.target)
-        self._record_assign(targets, node.value, node, extra_sources=mutated)
+            if isinstance(t.target, (cst.Tuple, cst.List)):
+                ordered = [el.value.value for el in t.target.elements if isinstance(el.value, cst.Name)]
+        self._record_assign(targets, node.value, node, extra_sources=mutated, ordered=ordered)
 
     def visit_AnnAssign(self, node: cst.AnnAssign) -> None:
         if node.value is not None:

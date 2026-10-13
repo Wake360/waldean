@@ -62,7 +62,9 @@ TRANSFORMER_CLASSES = {
     "OneHotEncoder", "OrdinalEncoder",
     "CountVectorizer", "TfidfVectorizer", "TfidfTransformer",
     "SelectKBest", "SelectPercentile", "RFE", "VarianceThreshold",
+    "Tokenizer",
 }
+FIT_METHODS = {"fit", "fit_transform", "fit_on_texts"}
 # fitting a label encoding on full y is standard practice, not leakage
 NON_LEAKY_TRANSFORMERS = {"LabelEncoder", "LabelBinarizer"}
 
@@ -254,9 +256,11 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
 
     # names assigned from a train_test_split call (X_train, X_test, ...)
     split_outputs: set[str] = set()
+    test_outputs: set[str] = set()
     for ev in flow.assigns:
         if ev.call is not None and ev.call.name == "train_test_split":
             split_outputs |= ev.targets
+            test_outputs |= set(ev.ordered_targets[1::2])
     # every .transform call, for binding-aware receiver checks
     transform_calls = [c for c in flow.calls if c.name == "transform" and c.receiver]
     assign_event_of: dict[int, "object"] = {
@@ -323,7 +327,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
         pos = (call.cell, call.line)
 
         # -- transformer fitted on data that reaches an evaluation sink --
-        if call.name in {"fit", "fit_transform"} and call.receiver is not None:
+        if call.name in FIT_METHODS and call.receiver is not None:
             if "[?]" in call.receiver:
                 continue  # dynamic container element: object identity unknown
             cls = recv_class(call)
@@ -331,6 +335,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                 continue
             is_transformer = (
                 call.name == "fit_transform"
+                or call.name == "fit_on_texts"
                 or cls in TRANSFORMER_CLASSES
                 or any(same_receiver(call, t) for t in transform_calls)
             )
@@ -343,6 +348,14 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                 same_receiver(call, t) and t.arg_names & split_outputs
                 for t in transform_calls
             )
+            _, arg_chain = flow.chain(call.arg_names, pos)
+            touched_test = {n for n, _ in arg_chain if n in test_outputs}
+            if touched_test:
+                emit(call, 0.9, touched_test, (
+                    f"`{call.func}(...)` is fitted on {_join_names(touched_test)}, "
+                    f"a test split output; the transformer learns from the rows it is scored on"
+                ))
+                continue
             for sink, chain_ids, bindings in chains:
                 leaked = {name for name, ev_id in arg_binds if (name, ev_id) in bindings}
                 if not leaked:

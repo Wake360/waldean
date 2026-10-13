@@ -179,3 +179,8 @@ def test_bang_line_inside_triple_quoted_string_keeps_cell_parseable():
     flow = analyze(nb_from_sources('%matplotlib inline\ns = """\n! not code\n"""\nb = 2'))
     assert not flow.parse_errors
     assert any("b" in ev.targets for ev in flow.assigns)
+
+
+def test_tuple_assign_keeps_target_order():
+    flow = analyze(nb_from_sources("a, b, c, d = train_test_split(X, y)"))
+    assert flow.assigns[0].ordered_targets == ["a", "b", "c", "d"]
