@@ -425,6 +425,7 @@ class NotebookDataflow:
     def last_assign(self, name: str, before: tuple[int, ...], mutations: bool = False) -> AssignEvent | None:
         """Latest assignment to `name` strictly before (cell, line), in
         document order — the notebook's v1 linear-execution assumption."""
+        before = (*before, 0)[:3]
         for ev in reversed(self._index(mutations).get(name, [])):
             if (ev.cell, ev.line, ev.col) < before:
                 return ev
@@ -588,10 +589,11 @@ def analyze(nb: ParsedNotebook) -> NotebookDataflow:
         rename = {p: a for p, a in zip(fn.params, args) if a}
         for c in fn.calls:
             flow.calls.append(_rename_call(c, rename, site))
-        for ev in fn.assigns:
+        for i, ev in enumerate(fn.assigns):
             flow.assigns.append(AssignEvent(
                 targets=_rename_names(ev.targets, rename), sources=_rename_names(ev.sources, rename),
-                cell=site.cell, line=site.line, end_line=site.end_line or site.line, col=0,
+                cell=site.cell, line=site.line, end_line=site.end_line or site.line,
+                col=i - len(fn.assigns),
             ))
     flow.assigns.sort(key=lambda e: (e.cell, e.line, e.col))
     return flow

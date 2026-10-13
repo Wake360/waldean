@@ -793,3 +793,14 @@ def test_helper_applied_to_train_split_only_is_silent():
         ("code", "X_tr = prep(X_tr)"),
     ])
     assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_helper_locals_do_not_leak_between_inlined_helpers():
+    notebook = nb([
+        ("code", "tr, val = train_test_split(df)"),
+        ("code", "def fit_enc(d):\n    rows = d[cols]\n    enc = DictVectorizer()\n    X = enc.fit_transform(rows)\n    return enc"),
+        ("code", "def score(d, enc):\n    rows = d[cols]\n    return enc.transform(rows)"),
+        ("code", "p = score(val, enc)"),
+        ("code", "enc = fit_enc(tr)"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)
