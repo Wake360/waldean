@@ -324,7 +324,7 @@ class _CellVisitor(cst.CSTVisitor):
         exprs = [el.value for el in value.elements] if isinstance(value, cst.Tuple) else [value]
         code = cst.Module(body=[]).code_for_node
         for expr in exprs:
-            if not isinstance(expr, cst.Subscript) or len(expr.slice) != 1:
+            if not isinstance(expr, cst.Subscript):
                 continue
             sl = expr.slice[0].slice
             if not isinstance(sl, cst.Slice):
@@ -334,10 +334,11 @@ class _CellVisitor(cst.CSTVisitor):
                 head = head.value
             if not isinstance(head, cst.Name):
                 continue
+            lower = code(sl.lower).replace(" ", "") if sl.lower is not None else ""
             self.slices.append(SliceEvent(
                 base=head.value, cell=self.cell, line=self._line(expr),
-                lower=code(sl.lower) if sl.lower is not None else "",
-                upper=code(sl.upper) if sl.upper is not None else "",
+                lower="" if lower == "0" else lower,
+                upper=code(sl.upper).replace(" ", "") if sl.upper is not None else "",
             ))
 
     def visit_AnnAssign(self, node: cst.AnnAssign) -> None:
@@ -398,8 +399,9 @@ class NotebookDataflow:
             by_base.setdefault(s.base, []).append(s)
         for base, events in by_base.items():
             heads = [e for e in events if e.upper and not e.lower]
-            tails = [e for e in events if e.lower and not e.upper]
-            pairs = [(h, t) for h in heads for t in tails if h.upper == t.lower]
+            tails = [e for e in events if e.lower]
+            pairs = [(h, t) for h in heads for t in tails
+                     if t.lower == h.upper or t.lower.startswith(h.upper + "-")]
             if not pairs:
                 continue
             last = max(pairs[0], key=lambda e: (e.cell, e.line))

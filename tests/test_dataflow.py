@@ -241,3 +241,28 @@ def test_inlined_function_called_twice_binds_per_call_site():
     ))
     bases = sorted((c.cell, c.receiver_base) for c in flow.calls if c.name == "max")
     assert bases == [(1, "a"), (2, "b")]
+
+
+def test_bounded_tail_slice_forms_a_split_sink():
+    flow = analyze(nb_from_sources("train = X[:n]\ntest = X[n:m]"))
+    assert len(flow.slice_splits()) == 1
+
+
+def test_zero_lower_bound_is_a_head_slice():
+    flow = analyze(nb_from_sources("train = X[0:n]\ntest = X[n:]"))
+    assert len(flow.slice_splits()) == 1
+
+
+def test_two_dim_row_slices_form_a_split_sink():
+    flow = analyze(nb_from_sources("train = X[:n, :]\ntest = X[n:, :]"))
+    assert len(flow.slice_splits()) == 1
+
+
+def test_column_slices_are_not_a_split():
+    flow = analyze(nb_from_sources("a = X[:, :n]\nb = X[:, n:]"))
+    assert flow.slice_splits() == []
+
+
+def test_tail_with_lookback_window_forms_a_split_sink():
+    flow = analyze(nb_from_sources("train = X[:n]\ntest = X[n - 60:]"))
+    assert len(flow.slice_splits()) == 1
