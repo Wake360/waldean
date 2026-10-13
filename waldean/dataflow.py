@@ -22,7 +22,7 @@ from .ingest import ParsedNotebook
 
 # a magic/shell line is %name, %%name or !cmd — never "% b)" (formatting
 # continuation) or "!= x"
-_MAGIC_RE = re.compile(r"^(%%?[A-Za-z]|![A-Za-z./~])")
+_MAGIC_RE = re.compile(r"^(%%?[A-Za-z]|!\s*[A-Za-z./~])")
 
 # line magics that wrap a statement: the payload is real code and must stay
 # visible to dataflow (`%time X = fit(...)` must not vanish). Payloads that

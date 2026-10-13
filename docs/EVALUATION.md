@@ -24,6 +24,12 @@ hand-reviewed real notebooks from Apache-2.0/MIT repositories): **0.0%**.
 The 27 real notebooks also shaped the static layer during dogfood (the
 rebuild described below), so this is not an out-of-sample test for them —
 the real-notebook share of the 0.0% leans optimistic.
+One of the 27, `00__ageron_handson-ml3__03_classification.ipynb`, is
+clean only at the 0.8 floor. It fits stateful preprocessing on the full
+training set before `cross_val_score`, which a later review judged a real
+leak (`evals/2026-07-08-llm-dogfood-subscription.md`). The static layer
+reports those sites as 0.75 candidates, so they do not count against the
+0.0%.
 192/192 mutants passed mechanical verification at build; 0 discarded.
 32 of the 192 are narrative-only mutants (regression-to-mean-claim,
 significance-meaningless); they are scored by the `--llm` eval, not by
@@ -48,7 +54,10 @@ of them among the 34 notebooks of the first dogfood. waldean flagged 13; adversa
 confirmed 25 of 28 flags real (**0.89 flag precision**, 12 of 13 flagged
 notebooks genuinely leaky) and, over a seeded 30-notebook miss-hunt
 sample of the un-flagged set, found 8 leaks waldean missed — **0.60
-notebook-level recall** across the 43-notebook audited subset. 33
+notebook-level recall** across the 43-notebook audited subset. Two of the
+8 were reported as below-floor candidates (a scaler fit on full data
+feeding `cross_val_score`); the other six left no flag or candidate at the
+missed site. 33
 confirmed leak instances across 20 notebooks, all in the two leakage
 classes (28 `leakage-fit-before-split`, 5 `leakage-temporal-shuffle`).
 

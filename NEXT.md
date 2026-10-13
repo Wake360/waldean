@@ -12,8 +12,7 @@ clean notebooks. The GitHub Action (`action.yml`) ships and was
 demonstrated end-to-end (a real PR annotation surfaced, then dismissed).
 First real-world numbers are on main: **0.60 notebook-level recall, 0.89
 flag precision** over 60 fresh GitHub notebooks
-(`evals/2026-07-07-dogfood-wide.md`), leakage classes only. Roadmap:
-`plans/v1-completion.md`.
+(`evals/2026-07-07-dogfood-wide.md`), leakage classes only.
 
 0.3.0 adds, on top of that closed v1: `.py` input support (plain scripts
 and percent-format cells), `--keep-going` on `waldean check` (continue past
@@ -49,8 +48,7 @@ run the gate; nothing here needs re-deriving.
   (cross-provider is a hard constraint, enforced in `fuse.py`). Projected
   spend ~$19–21 of the $150 budget; the binding limit is the 2-iteration /
   2-attempt count, not dollars.
-- Sequence and exact gate thresholds: `plans/v1-completion.md` §3A and
-  `plans/g2g3-runbook.md`. In short: ~$1 fixture smoke → ≤2 dev checkpoints
+- Sequence and gate thresholds: ~$1 fixture smoke → ≤2 dev checkpoints
   (dev bar: recall ≥ 0.6, FP ≤ 10%, dropped ≤ 10% per class) → decide the
   `[output]`-quote grounding seam → ≤2 held-out attempts (gate: all three
   F1 ≥ 0.7, clean FP ≤ 0.10, pooled G3 kill ≥ 0.80, survival ≥ 0.75,
@@ -77,8 +75,7 @@ run the gate; nothing here needs re-deriving.
   count: batch 1 produced zero confirmed real instances of
   `testing-multiple-uncorrected` and `baserate-accuracy-imbalanced`, so the
   0.60 recall is leakage-only. A targeted batch aimed at those two classes
-  would turn "unmeasured" into a real number. Sourcing mechanics and the
-  confirmation-workflow spec are in `plans/v1-completion.md` (WS-A).
+  would turn "unmeasured" into a real number.
 - **Quiet re-run of the indicative subscription eval.** The 2026-07-09
   dev-split run (`evals/2026-07-09-llm-eval-dev-subscription-indicative.md`)
   had 17 files hit backend errors (agent session failures, several citing

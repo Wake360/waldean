@@ -14,8 +14,7 @@
   GitHub Action is `Wake360/waldean@v0.4.0` and the pre-commit hook ids are
   `waldean` and `waldean-scripts`. Environment variables use the
   `WALDEAN_` prefix, and corpus notebook metadata uses the `waldean` key.
-  Detection behavior and report content are unchanged. See
-  `docs/adr/0002-rename-project-to-waldean.md`.
+  Detection behavior and report content are unchanged.
 
 ## 0.3.1
 

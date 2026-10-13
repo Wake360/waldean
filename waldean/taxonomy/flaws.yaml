@@ -65,7 +65,7 @@
 # population-scoped claim). The static half sees only the filter — a
 # scoped-claim notebook emits the identical 0.55 candidate, so raising it
 # above the floor would flag legitimate analysis. Deciding needs the
-# narrative layer's claim signal (fusion). plans/v1-completion.md WS-C.
+# narrative layer's claim signal (fusion).
 - id: selection-survivorship-cohort
   class: selection
   layer: static+narrative

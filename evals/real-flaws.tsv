@@ -2,7 +2,7 @@ notebook_id	class	license	kind	why_real
 nb01	leakage-fit-before-split	NONE	flagged-TP	imputer fitted on the full development frame before the train/test split
 nb01	leakage-fit-before-split	NONE	flagged-TP	scaler fitted on the full imputed frame before the train/test split
 nb01	leakage-fit-before-split	NONE	flagged-TP	feature selector fitted with the full label vector before the train/test split
-nb02	leakage-fit-before-split	NONE	miss	scaler fitted on the full feature frame, then applied to produce the training matrix
+nb02	leakage-fit-before-split	NONE	miss	scaler fitted on the full feature frame, then applied to produce the matrix scored by cross_val_score; reported as a 0.75 candidate
 nb03	leakage-fit-before-split	NONE	flagged-TP	missing values filled with whole-column mean and mode statistics before the split
 nb04	leakage-fit-before-split	NONE	flagged-TP	per-column mode computed on all rows before the split and used to fill missing values
 nb05	leakage-fit-before-split	mit	flagged-TP	Same leak mechanism: mms.fit_transform on the full df4['estimated_salary'] column before the split a
@@ -21,14 +21,14 @@ nb10	leakage-fit-before-split	mit	miss	Mean imputation statistic df.LotFrontage.
 nb11	leakage-fit-before-split	mit	flagged-TP	The ColumnTransformer contains real statistical transformers (median/mode imputers, StandardScaler) 
 nb12	leakage-temporal-shuffle	NONE	miss	time-ordered rolling, moving-average and lag indicator features evaluated with a shuffled split
 nb13	leakage-temporal-shuffle	NONE	flagged-TP	lag feature on time-ordered per-group data evaluated with a shuffled split
-nb14	leakage-fit-before-split	NONE	flagged-TP	duplicate of an earlier pipeline: scaler fitted on the full feature frame before the split
+nb14	leakage-fit-before-split	NONE	flagged-TP	same pipeline repeated in a second cell: scaler fitted on the full feature frame before the split
 nb14	leakage-fit-before-split	NONE	flagged-TP	scaler fitted on the full feature frame, including rows later used for testing
 nb14	leakage-temporal-shuffle	NONE	flagged-TP	shift-based lag features on time-ordered data evaluated with a shuffled split
 nb14	leakage-temporal-shuffle	NONE	flagged-TP	same construction as the previous cell: shift-based lag features evaluated with a shuffled split
 nb15	leakage-temporal-shuffle	NONE	miss	helper builds shift-based lag and rolling-mean features on time-ordered data evaluated with a shuffled split
 nb16	leakage-fit-before-split	NONE	flagged-TP	column transformer with a one-hot encoder fitted on the full frame before the split
 nb17	leakage-fit-before-split	MIT	miss	TfidfVectorizer (cell 8) and TruncatedSVD(n_components=100) (cell 10) are fit_transform'd on the ent
-nb18	leakage-fit-before-split	NONE	miss	scaler fitted on the entire dataset before the split
+nb18	leakage-fit-before-split	NONE	miss	scaler fitted on the entire dataset before cross_val_score; reported as a 0.75 candidate
 nb19	leakage-fit-before-split	mit	miss	The one-hot encoder vocabulary is fitted on data including the test set: column_keys = pd.get_dummie
 nb20	leakage-fit-before-split	mit	flagged-TP	StandardScaler().fit_transform(X) is called on the full feature matrix in cell 22, one cell before X
 nb20	leakage-fit-before-split	mit	flagged-TP	X.mean() is computed over the entire feature matrix (cell 18), which at that point still contains th

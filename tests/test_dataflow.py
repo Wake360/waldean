@@ -167,3 +167,15 @@ def test_oversized_cell_records_skipped():
     flow = analyze(nb_from_sources(big))
     assert flow.skipped_cells == [0]  # surfaced as a partial-results warning
     assert flow.parse_errors == []  # a cap skip is not a parse failure
+
+
+def test_shell_magic_with_space_after_bang_is_stripped():
+    flow = analyze(nb_from_sources("! python convert.py --x 1\na = 1"))
+    assert not flow.parse_errors
+    assert any("a" in ev.targets for ev in flow.assigns)
+
+
+def test_bang_line_inside_triple_quoted_string_keeps_cell_parseable():
+    flow = analyze(nb_from_sources('%matplotlib inline\ns = """\n! not code\n"""\nb = 2'))
+    assert not flow.parse_errors
+    assert any("b" in ev.targets for ev in flow.assigns)
