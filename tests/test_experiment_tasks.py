@@ -1,9 +1,18 @@
+import ast
+import json
+
+import nbformat
 import numpy as np
 import pandas as pd
 import pytest
 
+from waldean.analysis.dataflow import analyze
+from waldean.analysis.ingest import parse_notebook
+from waldean.checks.detect import run_static
 from waldean.experiment.plan import TASKS, PlanError, contradictions, design, design_md
 from waldean.experiment.profile import infer_task, profile
+from waldean.experiment.render import render
+from waldean.runtime.execute import execute, stdout_lines
 
 
 def make_csv(path, task, n=1200, seed=0):
@@ -312,3 +321,101 @@ def test_task_mismatch_is_a_contradiction(tmp_path):
     plan, prof = designed(tmp_path, "binary")
     plan["task"] = "regression"
     assert "task" in contradictions(plan, prof)
+
+
+def rendered(tmp_path, task, **kw):
+    plan, prof = designed(tmp_path, task, **kw)
+    (tmp_path / "exp").mkdir(exist_ok=True)
+    return render(plan), plan
+
+
+def run_rendered(tmp_path, nb, probe=""):
+    if probe:
+        nb.cells.append(nbformat.v4.new_code_cell(probe))
+    return execute(nb, cwd=str(tmp_path / "exp"))
+
+
+def metrics_of(tmp_path, nb):
+    line = stdout_lines(run_rendered(tmp_path, nb), "WALDEAN_METRICS ")[-1]
+    return json.loads(line.removeprefix("WALDEAN_METRICS "))
+
+
+@pytest.mark.parametrize("task, kw", [
+    ("binary", {}), ("multiclass", {}), ("regression", {}),
+    ("binary", {"group_column": "none"}), ("regression", {"group_column": "none"}),
+])
+def test_rendered_notebook_parses_and_is_clean_under_check(tmp_path, task, kw):
+    nb, plan = rendered(tmp_path, task, **kw)
+    for cell in nb.cells:
+        if cell.cell_type == "code":
+            assert cell.metadata["waldean"]["plan_field"]
+            ast.parse(cell.source)
+    assert nb.metadata["waldean"]["task"] == task
+    path = tmp_path / "exp" / "experiment.ipynb"
+    nbformat.write(nb, path)
+    parsed = parse_notebook(path)
+    assert [f.flaw_id for f in run_static(parsed, analyze(parsed)) if f.confidence >= 0.8] == []
+    assert nbformat.writes(nb) == nbformat.writes(render(plan))
+
+
+@pytest.mark.parametrize("task", ["binary", "multiclass", "regression"])
+def test_metrics_line_matches_the_plan(tmp_path, task):
+    nb, plan = rendered(tmp_path, task)
+    metrics = metrics_of(tmp_path, nb)
+    assert set(metrics["holdout"]) == {"baseline", "candidate"}
+    assert set(metrics["holdout"]["candidate"]) == set(plan["metrics"])
+    assert len(metrics["cv"]["candidate"]) == 5 and metrics["skipped_folds"] == 0
+
+
+def test_candidate_beats_baseline_on_every_task(tmp_path):
+    for task, metric, better in [("binary", "roc_auc", 1), ("multiclass", "macro_f1", 1), ("regression", "rmse", -1)]:
+        nb, _ = rendered(tmp_path, task)
+        m = metrics_of(tmp_path, nb)["holdout"]
+        assert better * (m["candidate"][metric] - m["baseline"][metric]) > 0
+
+
+def test_no_group_crosses_any_split(tmp_path):
+    nb, _ = rendered(tmp_path, "binary")
+    probe = (
+        "_g = df['store']\n"
+        "_ok = not (set(_g[train]) & set(_g[test])) and all(not (set(_g.iloc[a]) & set(_g.iloc[b])) for a, b in folds)\n"
+        "print('PROBE', bool(_ok), len(folds))"
+    )
+    out = stdout_lines(run_rendered(tmp_path, nb, probe), "PROBE")
+    assert out and out[-1].split()[1:] == ["True", "5"]
+
+
+def test_ungrouped_rows_are_in_neither_split(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    df = pd.read_csv(path)
+    df.loc[df.index[:15], "store"] = None
+    df.to_csv(path, index=False)
+    prof = profile(path, target)
+    plan = design(prof, path, tmp_path / "exp", "", [], None, 0)
+    (tmp_path / "exp").mkdir()
+    probe = (
+        "_missing = df['store'].isna().to_numpy()\n"
+        "_ok = not (train & test).any() and not (train | test)[_missing].any() and int(_missing.sum()) == 15\n"
+        "print('PROBE', bool(_ok))"
+    )
+    out = stdout_lines(run_rendered(tmp_path, render(plan), probe), "PROBE")
+    assert out and out[-1].split()[1:] == ["True"]
+
+
+def test_multiclass_fold_missing_a_class_is_skipped(tmp_path):
+    from sklearn.model_selection import GroupShuffleSplit
+
+    path, target = make_csv(tmp_path / "d.csv", "multiclass")
+    df = pd.read_csv(path)
+    rows = np.arange(len(df))
+    splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=0)
+    train_rows, _ = next(splitter.split(rows, groups=df["store"].to_numpy()))
+    store = df["store"].iloc[train_rows[0]]
+    df["tier"] = df["tier"].replace({"low": "mid"})
+    df.loc[df["store"] == store, "tier"] = "low"
+    df.to_csv(path, index=False)
+    prof = profile(path, target)
+    plan = design(prof, path, tmp_path / "exp", "", [], None, 0)
+    assert plan["split"]["kind"] == "group_kfold"
+    (tmp_path / "exp").mkdir()
+    assert metrics_of(tmp_path, render(plan))["skipped_folds"] == 1
