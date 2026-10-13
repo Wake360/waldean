@@ -35,7 +35,7 @@ verdict: 1 high, 0 medium | static layer (no LLM)
 - **Fix:** Fit the transformer on the training split only; apply transform to the test split.
 - **Confidence:** 0.92
 
-## CLEAN (checked): baserate-accuracy-imbalanced, leakage-temporal-shuffle, testing-multiple-uncorrected
+## CLEAN (checked): baserate-accuracy-imbalanced, leakage-temporal-shuffle, leakage-test-selection, testing-multiple-uncorrected
 
 ```
 
@@ -70,7 +70,7 @@ Limits: one flaw class so far (`leakage-temporal-shuffle`). Comparison is cell b
 
 | | What |
 |---|---|
-| **Available now** | `waldean check` on `.ipynb` and `.py` (plain and `# %%`); four static flaw classes (below); a survivorship candidate; Markdown, JSON and SARIF output; GitHub Action; pre-commit hooks; `waldean rules`; `waldean eval --predictions` for scoring other tools on the corpus |
+| **Available now** | `waldean check` on `.ipynb` and `.py` (plain and `# %%`); five static flaw classes (below); a survivorship candidate; Markdown, JSON and SARIF output; GitHub Action; pre-commit hooks; `waldean rules`; `waldean eval --predictions` for scoring other tools on the corpus |
 | **Experimental** | `--llm` / `--llm-subscription` narrative layer (prose claims vs computation). No validated precision or recall; its quality gates never ran |
 | **Experimental** | Repair loop: `waldean propose` / `waldean verify` for one class (`leakage-temporal-shuffle`). Measured on the synthetic corpus and in a 7-run agent trial, indicative (see Repair loop) |
 | **Planned** | Repair contracts for more flaw classes, starting with `leakage-fit-before-split`. Not shipped |
@@ -85,6 +85,7 @@ Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
 | `leakage-temporal-shuffle` | Lag or rolling features on time-ordered data, evaluated with a shuffled split instead of `TimeSeriesSplit` or a time cutoff |
 | `testing-multiple-uncorrected` | Many statistical tests with no multiple-comparison correction; reports the implied family-wise error rate |
 | `baserate-accuracy-imbalanced` | Accuracy as the only metric while stored outputs show class imbalance |
+| `leakage-test-selection` | A model, feature set or threshold picked by its score on the rows that are then reported as the held-out result |
 | `selection-survivorship-cohort` | Candidate only: a filter on a survival-correlated column before aggregation |
 
 `waldean rules` prints the full list from `waldean/core/taxonomy/flaws.yaml`.
@@ -230,7 +231,7 @@ unpinned models, not reproducible (the prior 2026-07-09 run lost 17/45
 files to backend errors; the rerun after hook isolation completed all
 files). Static-only is the default; without `--llm`, Waldean calls no LLM.
 
-Taxonomy is data (`flaws.yaml`): 9 flaw classes with definition, book
+Taxonomy is data (`flaws.yaml`): 10 flaw classes with definition, book
 anchor, mutation recipe and severity (`waldean rules` lists them). Adding a
 class = a record + a detector + a mutation; prompts and reports generate
 from the same file, so documentation and detector cannot drift.

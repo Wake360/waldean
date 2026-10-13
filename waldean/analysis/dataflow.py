@@ -46,6 +46,8 @@ MAX_CELL_SOURCE_BYTES = 200_000
 # (dense method chains run well under 100) and far below the native crash point.
 MAX_CELL_NEST_DEPTH = 500
 
+MUTATING_METHODS = {"append", "extend", "update", "insert", "setdefault", "add"}
+
 _NON_PYTHON_CELL_MAGICS = {
     "%%writefile", "%%file", "%%bash", "%%sh", "%%script", "%%cmd",
     "%%html", "%%javascript", "%%js", "%%latex", "%%markdown", "%%svg",
@@ -114,6 +116,7 @@ class CallSite:
     pos_args: list[set[str]] = field(default_factory=list)  # names per positional arg
     kw_args: dict[str, set[str]] = field(default_factory=dict)  # names per keyword arg
     loop_vars: set[str] = field(default_factory=set)  # targets of enclosing for-loops
+    end_line: int = 0
 
     @property
     def arg_names(self) -> set[str]:
@@ -134,6 +137,8 @@ class AssignEvent:
     cell: int
     line: int
     call: CallSite | None = None  # the exact CallSite object when the value is a call
+    end_line: int = 0
+    col: int = 0
 
 
 class _CellVisitor(cst.CSTVisitor):
@@ -145,11 +150,15 @@ class _CellVisitor(cst.CSTVisitor):
         self.scope_depth = 0  # inside def/lambda/class: not notebook-level bindings
         self.calls: list[CallSite] = []
         self.assigns: list[AssignEvent] = []
+        self.mutations: list[AssignEvent] = []
         self._pending: dict[int, AssignEvent] = {}  # id(call node) -> its assign event
         self._loop_vars: list[set[str]] = []  # target names per enclosing for-loop
 
     def _line(self, node: cst.CSTNode) -> int:
         return cast(CodeRange, self.get_metadata(PositionProvider, node)).start.line
+
+    def _end_line(self, node: cst.CSTNode) -> int:
+        return cast(CodeRange, self.get_metadata(PositionProvider, node)).end.line
 
     def visit_For(self, node: cst.For) -> None:
         self.loop_depth += 1
@@ -208,6 +217,7 @@ class _CellVisitor(cst.CSTVisitor):
             pos_args=pos_args,
             kw_args=kw_args,
             loop_vars=set().union(set(), *self._loop_vars),
+            end_line=self._end_line(node),
         )
 
     def visit_Call(self, node: cst.Call) -> None:
@@ -215,6 +225,13 @@ class _CellVisitor(cst.CSTVisitor):
         if site is None:
             return
         self.calls.append(site)
+        base = site.receiver_base
+        if site.name in MUTATING_METHODS and base is not None and base == site.receiver and self.scope_depth == 0:
+            self.mutations.append(AssignEvent(
+                targets={base}, sources=site.arg_names | {base},
+                cell=self.cell, line=site.line, end_line=site.end_line,
+                col=cast(CodeRange, self.get_metadata(PositionProvider, node)).start.column,
+            ))
         ev = self._pending.pop(id(node), None)
         if ev is not None:
             ev.call = site  # identity-shared: detect can test `ev.call is call`
@@ -228,6 +245,8 @@ class _CellVisitor(cst.CSTVisitor):
             sources=expr_names(value) | set(extra_sources),
             cell=self.cell,
             line=self._line(node),
+            end_line=self._end_line(node),
+            col=cast(CodeRange, self.get_metadata(PositionProvider, node)).start.column,
         )
         self.assigns.append(ev)
         if isinstance(value, cst.Call):
@@ -285,24 +304,37 @@ def _strip_magics(source: str) -> str:
 class NotebookDataflow:
     calls: list[CallSite] = field(default_factory=list)
     assigns: list[AssignEvent] = field(default_factory=list)
+    mutations: list[AssignEvent] = field(default_factory=list)  # x.append(v)-style in-place updates
     parse_errors: list[int] = field(default_factory=list)  # cell indices that failed to parse
     skipped_cells: list[int] = field(default_factory=list)  # cell indices skipped by a size/depth cap
     _by_name: dict[str, list[AssignEvent]] | None = field(default=None, repr=False)
+    _by_name_mut: dict[str, list[AssignEvent]] | None = field(default=None, repr=False)
 
-    def last_assign(self, name: str, before: tuple[int, int]) -> AssignEvent | None:
+    def _index(self, mutations: bool) -> dict[str, list[AssignEvent]]:
+        cached = self._by_name_mut if mutations else self._by_name
+        if cached is not None:
+            return cached
+        index: dict[str, list[AssignEvent]] = {}
+        events = self.assigns + self.mutations if mutations else self.assigns
+        for ev in sorted(events, key=lambda e: (e.cell, e.line, e.col)) if mutations else events:
+            for t in ev.targets:
+                index.setdefault(t, []).append(ev)
+        if mutations:
+            self._by_name_mut = index
+        else:
+            self._by_name = index
+        return index
+
+    def last_assign(self, name: str, before: tuple[int, ...], mutations: bool = False) -> AssignEvent | None:
         """Latest assignment to `name` strictly before (cell, line), in
         document order — the notebook's v1 linear-execution assumption."""
-        if self._by_name is None:
-            self._by_name = {}
-            for ev in self.assigns:
-                for t in ev.targets:
-                    self._by_name.setdefault(t, []).append(ev)
-        for ev in reversed(self._by_name.get(name, [])):
-            if (ev.cell, ev.line) < before:
+        for ev in reversed(self._index(mutations).get(name, [])):
+            if (ev.cell, ev.line, ev.col) < before:
                 return ev
         return None
 
-    def chain(self, names: set[str], at: tuple[int, int]) -> tuple[list[AssignEvent], set[tuple[str, int | None]]]:
+    def chain(self, names: set[str], at: tuple[int, ...],
+              mutations: bool = False) -> tuple[list[AssignEvent], set[tuple[str, int | None]]]:
         """Flow-sensitive dependency chain: the assign events and
         (name, binding-event-id) pairs reachable from `names` as bound at
         position `at`. A name rebound between its producer and `at` kills
@@ -310,10 +342,10 @@ class NotebookDataflow:
         the two."""
         events: list[AssignEvent] = []
         bindings: set[tuple[str, int | None]] = set()
-        frontier: list[tuple[str, tuple[int, int]]] = [(n, at) for n in names]
+        frontier: list[tuple[str, tuple[int, ...]]] = [(n, at) for n in names]
         while frontier:
             n, pos = frontier.pop()
-            ev = self.last_assign(n, pos)
+            ev = self.last_assign(n, pos, mutations)
             key = (n, id(ev) if ev is not None else None)
             if key in bindings:
                 continue
@@ -322,11 +354,11 @@ class NotebookDataflow:
                 continue
             events.append(ev)
             for s in ev.sources:
-                frontier.append((s, (ev.cell, ev.line)))
+                frontier.append((s, (ev.cell, ev.line, ev.col)))
         return events, bindings
 
-    def binding(self, name: str, at: tuple[int, int]) -> tuple[str, int | None]:
-        ev = self.last_assign(name, at)
+    def binding(self, name: str, at: tuple[int, ...], mutations: bool = False) -> tuple[str, int | None]:
+        ev = self.last_assign(name, at, mutations)
         return (name, id(ev) if ev is not None else None)
 
 
@@ -408,4 +440,5 @@ def analyze(nb: ParsedNotebook) -> NotebookDataflow:
             continue  # deep expression tree exhausts the recursion limit: skip
         flow.calls.extend(visitor.calls)
         flow.assigns.extend(visitor.assigns)
+        flow.mutations.extend(visitor.mutations)
     return flow

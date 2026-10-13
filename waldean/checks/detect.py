@@ -585,12 +585,174 @@ def detect_survivorship_candidate(nb: ParsedNotebook, flow: NotebookDataflow) ->
     return flags
 
 
+SCORE_FUNCS = {
+    "roc_auc_score", "average_precision_score", "f1_score", "fbeta_score", "precision_score",
+    "recall_score", "accuracy_score", "balanced_accuracy_score", "log_loss", "brier_score_loss",
+    "matthews_corrcoef", "cohen_kappa_score", "r2_score", "mean_squared_error",
+    "mean_absolute_error", "root_mean_squared_error", "mean_absolute_percentage_error",
+    "precision_recall_curve", "roc_curve",
+}
+CV_SCORERS = {"cross_val_score", "cross_validate"}
+PREDICT_CALLS = {"predict", "predict_proba", "decision_function", "cross_val_predict"}
+SELECT_RE = re.compile(
+    r"\.(?:idxmax|idxmin|argmax|argmin|nanargmax|nanargmin)\("
+    r"|\b(?:max|min|sorted)\([^\n]*\bkey\s*="
+    r"|\.(?:index|iloc)\[0\]"
+)
+ARGBEST_RE = re.compile(
+    r"\.(?:idxmax|idxmin|argmax|argmin|nanargmax|nanargmin)\(|\b(?:max|min|sorted)\([^\n]*\bkey\s*="
+)
+SORT_RE = re.compile(r"\.(?:sort_values|nlargest|nsmallest|sort_index)\(|\bsorted\(")
+FIRST_TRUE_RE = re.compile(r"\([^()]*(?:>=|<=|==|!=|>|<)[^()]*\)\s*\.(?:argmax|idxmax|argmin|idxmin)\(")
+ROW_SELECT_RE = re.compile(r"\.iloc\[0\]\s*$|\.loc\[[^\n]*\.(?:idxmax|idxmin|argmax|argmin)\(")
+IFEXP_RE = re.compile(r"\bif\b[^\n]*\belse\b")
+LABEL_PASSTHROUGH = {"to_numpy", "values", "copy", "astype", "reset_index", "ravel", "squeeze"}
+DEF_RE = re.compile(r"^def (\w+)\(", re.MULTILINE)
+
+
+def _metric_functions(nb: ParsedNotebook) -> set[str]:
+    names = set(SCORE_FUNCS)
+    for cell in nb.code_cells:
+        lines = cell.source.splitlines()
+        for m in DEF_RE.finditer(cell.source):
+            start = cell.source[:m.start()].count("\n")
+            body = []
+            for line in lines[start + 1:]:
+                if line.strip() and not line[:1].isspace():
+                    break
+                body.append(line)
+            if any(re.search(rf"\b{f}\b", "\n".join(body)) for f in SCORE_FUNCS):
+                names.add(m.group(1))
+    return names
+
+
+def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) -> list[Flag]:
+    metric_names = _metric_functions(nb)
+    src = {c.index: c.source.splitlines() for c in nb.code_cells}
+    calls_by_cell: dict[int, list] = {}
+    for c in flow.calls:
+        calls_by_cell.setdefault(c.cell, []).append(c)
+
+    def span_text(ev) -> str:
+        lines = src.get(ev.cell, [])
+        return "\n".join(lines[ev.line - 1:max(ev.end_line, ev.line)])
+
+    def calls_in(ev) -> list:
+        end = max(ev.end_line, ev.line)
+        return [c for c in calls_by_cell.get(ev.cell, []) if ev.line <= c.line <= end]
+
+    def is_metric(c) -> bool:
+        return c.name in metric_names or c.name in CV_SCORERS or (c.name == "score" and c.receiver is not None)
+
+    def label_names(c) -> set[str]:
+        if c.name in CV_SCORERS:
+            return c.pos_args[2] if len(c.pos_args) > 2 else c.kw_args.get("y", set())
+        if c.name == "score":
+            return c.pos_args[1] if len(c.pos_args) > 1 else c.kw_args.get("y", set())
+        return c.pos_args[0] if c.pos_args else c.kw_args.get("y_true", set())
+
+    def canonical(names: set[str], at: tuple[int, int]) -> frozenset:
+        out: set = set()
+        frontier = [(n, at) for n in names]
+        seen: set = set()
+        while frontier:
+            n, pos = frontier.pop()
+            if (n, pos) in seen:
+                continue
+            seen.add((n, pos))
+            ev = flow.last_assign(n, pos)
+            if ev is not None and ev.call is not None and ev.call.name in LABEL_PASSTHROUGH:
+                frontier.extend((s, (ev.cell, ev.line)) for s in ev.sources)
+            else:
+                out.add((n, id(ev) if ev is not None else None))
+        return frozenset(out)
+
+    def score_bearing(name: str, at: tuple[int, int] | tuple[int, int, int]) -> bool:
+        events, _ = flow.chain({name}, at, mutations=True)
+        return any(is_metric(c) or c.name in PREDICT_CALLS for ev in events for c in calls_in(ev))
+
+    statements = [((ev.cell, ev.line, ev.col), ev.sources) for ev in flow.assigns] + [
+        ((c.cell, c.line), c.arg_names | ({c.receiver_base} if c.receiver_base else set()))
+        for c in flow.calls
+    ]
+    flags: list[Flag] = []
+    for sel in flow.assigns:
+        text = span_text(sel)
+        if not SELECT_RE.search(text) and not (
+            IFEXP_RE.search(text) and sum(c.name in metric_names for c in calls_in(sel)) >= 2
+        ):
+            continue
+        if FIRST_TRUE_RE.search(text) and not re.search(r"\b(?:max|min|sorted)\([^\n]*\bkey\s*=", text):
+            continue
+        pos = (sel.cell, sel.line)
+        chain_events, chain_binds = flow.chain(sel.sources, pos, mutations=True)
+        if SELECT_RE.search(text) and not ARGBEST_RE.search(text) and not any(
+            SORT_RE.search(span_text(ev)) for ev in chain_events + [sel]
+        ):
+            continue
+        metrics =[c for ev in chain_events + [sel] for c in calls_in(ev) if is_metric(c)]
+        if not metrics:
+            continue
+        selected = {(t, id(sel)) for t in sel.targets}
+        labels = {canonical(label_names(m), (m.cell, m.line)) for m in metrics}
+        labels.discard(frozenset())
+        row_pick = bool(ROW_SELECT_RE.search(text))
+
+        def related(lab: frozenset) -> bool:
+            return any(lab <= known or known <= lab for known in labels)
+
+        reuse = None
+        fresh = False
+        for m in flow.calls:
+            at = (m.cell, m.line)
+            if at <= (sel.cell, max(sel.end_line, sel.line)) or not is_metric(m):
+                continue
+            _, binds = flow.chain(m.arg_names - label_names(m), at, mutations=True)
+            lab = canonical(label_names(m), at)
+            if not lab:
+                continue
+            if binds & selected and related(lab):
+                reuse = reuse or at
+            elif {n for n, _ in binds} & sel.targets and not related(lab):
+                fresh = True
+        for at, reads in sorted(statements, key=lambda s: s[0]):
+            if reuse is not None:
+                break
+            if len(at) == 3 and at <= (sel.cell, sel.line, sel.col):
+                continue
+            if len(at) == 2 and at <= (sel.cell, max(sel.end_line, sel.line)):
+                continue
+            hits = {n for n in reads if flow.binding(n, at) in selected}
+            if not hits:
+                continue
+            if row_pick or any(
+                flow.binding(n, at, mutations=True) in chain_binds and score_bearing(n, at) for n in reads - hits
+            ):
+                reuse = at
+        if reuse is None:
+            continue
+
+        confidence = 0.9 if labels and not fresh else 0.6
+        target = _join_names({t for t, _ in selected})
+        evidence = (
+            f"`{target}` (cell {sel.cell}) is chosen by comparing scores computed on the same rows "
+            f"whose score is then reported for it (cell {reuse[0]})"
+            + ("; a later evaluation on other rows exists (candidate)" if fresh else "")
+        )
+        flags.append(_make_flag(
+            "leakage-test-selection", confidence=confidence, cell=sel.cell, line=sel.line,
+            evidence=evidence, selected=sorted(t for t, _ in selected),
+        ))
+    return flags
+
+
 DETECTORS = [
     detect_leakage_fit_before_split,
     detect_leakage_temporal_shuffle,
     detect_multiple_testing,
     detect_baserate_accuracy,
     detect_survivorship_candidate,
+    detect_leakage_test_selection,
 ]
 
 # flaw classes the static layer can decide on its own (measured by gate G1)
@@ -599,6 +761,7 @@ STATIC_DECIDABLE = {
     "leakage-temporal-shuffle",
     "testing-multiple-uncorrected",
     "baserate-accuracy-imbalanced",
+    "leakage-test-selection",
 }
 
 

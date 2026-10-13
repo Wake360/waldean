@@ -583,6 +583,70 @@ class TemporalShuffleMutation(Mutation):
             return ok, {"variant": 1, "train_max_date": train_max, "test_min_date": test_min}
 
 
+class TestSelectionMutation(Mutation):
+    """Choose the model on the test split instead of the validation split,
+    then report the chosen model on that same test split."""
+
+    flaw_id = "leakage-test-selection"
+
+    CONCLUSION = (
+        "The best of the three models reaches the test ROC AUC and average "
+        "precision printed above."
+    )
+
+    def applicable(self, nb_node) -> bool:
+        m = meta(nb_node)
+        return all(k in m for k in ("candidates_cell", "select_cell", "report_cell", "conclusion_cell"))
+
+    def apply(self, nb_node, seed: int):
+        m = meta(nb_node)
+        if seed % 2 == 0:
+            idx = m["candidates_cell"]
+            src = nb_node.cells[idx]["source"]
+            needle = "roc_auc_score(y_va, fitted[name].predict_proba(X_va)[:, 1])"
+            if needle not in src:
+                raise ValueError("validation scoring line not found in candidates_cell")
+            nb = _replace_cell(nb_node, idx, src.replace(
+                needle, "roc_auc_score(y_te, fitted[name].predict_proba(X_te)[:, 1])"))
+        else:
+            idx = m["select_cell"]
+            src = nb_node.cells[idx]["source"]
+            if "best = scores.idxmax()" not in src:
+                raise ValueError("best = scores.idxmax() not found in select_cell")
+            nb = _replace_cell(nb_node, idx, src.replace(
+                "best = scores.idxmax()",
+                "best = max(fitted, key=lambda n: roc_auc_score(y_te, fitted[n].predict_proba(X_te)[:, 1]))",
+            ))
+        return _replace_markdown(nb, m["conclusion_cell"], self.CONCLUSION)
+
+    def verify(self, mutated_node) -> tuple[bool, dict]:
+        m = meta(mutated_node)
+        variant = 1 if "key=lambda" in mutated_node.cells[m["select_cell"]]["source"] else 0
+        probe = (
+            "_t = {n: roc_auc_score(y_te, f.predict_proba(X_te)[:, 1]) for n, f in fitted.items()}\n"
+            "_v = {n: roc_auc_score(y_va, f.predict_proba(X_va)[:, 1]) for n, f in fitted.items()}\n"
+            "_used = sel_scores if " + str(variant) + " == 0 else _t\n"
+            "print('WALDEAN_VERIFY_SELECT', int(all(abs(_used[n] - _t[n]) < 1e-12 for n in _t)), "
+            "int(best == max(_t, key=_t.get)), int(abs(test_auc - max(_t.values())) < 1e-12), "
+            "int(best == max(_v, key=_v.get)))"
+        )
+        executed = ex.execute(ex.with_appended_code_cell(mutated_node, probe))
+        lines = ex.stdout_lines(executed, "WALDEAN_VERIFY_SELECT")
+        if not lines:
+            return False, {"reason": "no verify output"}
+        _, on_test, picks_test_max, reports_max, agrees_with_val = lines[-1].split()
+        flow = analyze(from_nbnode(mutated_node))
+        sel_line_uses_test = any(
+            c.name == "roc_auc_score" and c.pos_args and "y_te" in c.pos_args[0]
+            and c.cell == (m["select_cell"] if variant else m["candidates_cell"])
+            for c in flow.calls
+        )
+        ok = on_test == "1" and picks_test_max == "1" and reports_max == "1" and sel_line_uses_test
+        return ok, {"variant": variant, "selection_scores_are_test_scores": on_test == "1",
+                    "reported_test_auc_is_max_over_candidates": reports_max == "1",
+                    "same_choice_as_validation": agrees_with_val == "1"}
+
+
 MUTATIONS: list[Mutation] = [
     FitBeforeSplitMutation(),
     MultipleTestingMutation(),
@@ -591,4 +655,5 @@ MUTATIONS: list[Mutation] = [
     SignificanceMeaninglessMutation(),
     RegressionToMeanMutation(),
     TemporalShuffleMutation(),
+    TestSelectionMutation(),
 ]

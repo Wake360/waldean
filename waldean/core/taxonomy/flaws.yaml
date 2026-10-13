@@ -212,3 +212,22 @@
   fix: >
     Report ROC-AUC / precision-recall / F1 alongside accuracy, and state
     the class balance.
+
+- id: leakage-test-selection
+  class: leakage
+  layer: static
+  severity: medium
+  definition: >
+    A model, feature set or decision threshold is chosen by comparing
+    scores on a set of rows, and the score of the chosen candidate on
+    those same rows is then reported as its performance estimate.
+  book_anchor: "Cawley & Talbot 2010, JMLR 11:2079 (selection bias in performance evaluation); ESL §7.2"
+  failure_scenario: >
+    The reported score is the maximum over several noisy estimates, so it
+    is biased upward; the chosen model scores lower on new data. The bias
+    grows with the number of candidates and shrinks with the size of the
+    evaluation set.
+  fix: >
+    Choose on a validation split or by cross-validation within the
+    training data, then report the chosen candidate once on an untouched
+    test split (or use nested cross-validation).

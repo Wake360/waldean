@@ -1,4 +1,4 @@
-"""Corpus builder: 6 clean analysis families x dev + held-out seeds, plus
+"""Corpus builder: clean analysis families x dev + held-out seeds, plus
 verified mutants and seeded false flags (G3 substrate).
 
 Clean notebooks satisfy the clean-corpus criteria (see CONTRIBUTING.md):
@@ -539,6 +539,92 @@ def forecast_notebook(seed: int):
     })
 
 
+SELECTION_COLS = [
+    "income_k", "debt_ratio", "credit_lines", "utilization", "late_payments",
+    "account_age_years", "inquiries_6m", "loan_amount_k",
+]
+
+
+def selection_notebook(seed: int):
+    cells = [
+        _md("# Default model — choosing between candidates\n\n"
+            "Three candidate models are compared on a validation split; the "
+            "chosen one is scored once on a separate test split."),
+        _code(
+            "import numpy as np\n"
+            "import pandas as pd\n"
+            "from sklearn.model_selection import train_test_split\n"
+            "from sklearn.pipeline import make_pipeline\n"
+            "from sklearn.preprocessing import StandardScaler\n"
+            "from sklearn.linear_model import LogisticRegression\n"
+            "from sklearn.tree import DecisionTreeClassifier\n"
+            "from sklearn.ensemble import RandomForestClassifier\n"
+            "from sklearn.metrics import roc_auc_score, average_precision_score"
+        ),
+        _code(
+            f"rng = np.random.default_rng({seed})\n"
+            "n = 1200\n"
+            "df = pd.DataFrame({\n"
+            '    "income_k": rng.lognormal(3.9, 0.4, n).round(1),\n'
+            '    "debt_ratio": rng.beta(2, 5, n).round(3),\n'
+            '    "credit_lines": rng.poisson(4, n),\n'
+            '    "utilization": rng.beta(2, 3, n).round(3),\n'
+            '    "late_payments": rng.poisson(0.7, n),\n'
+            '    "account_age_years": rng.gamma(3, 2.5, n).round(1),\n'
+            '    "inquiries_6m": rng.poisson(1.2, n),\n'
+            '    "loan_amount_k": rng.lognormal(2.5, 0.5, n).round(1),\n'
+            "})\n"
+            'logit = (-1.0 + 2.2 * df["debt_ratio"] + 1.4 * df["utilization"]\n'
+            '         + 0.35 * df["late_payments"] - 0.01 * df["income_k"]\n'
+            "         + rng.normal(0, 1.4, n))\n"
+            'df["defaulted"] = (logit > np.quantile(logit, 0.7)).astype(int)'
+        ),
+        _code('df["defaulted"].value_counts(normalize=True)'),
+        _code(
+            f"feature_cols = {SELECTION_COLS!r}\n"
+            "X = df[feature_cols]\n"
+            'y = df["defaulted"]\n'
+            "X_tmp, X_te, y_tmp, y_te = train_test_split(X, y, test_size=0.2, "
+            f"random_state={seed}, stratify=y)\n"
+            "X_tr, X_va, y_tr, y_va = train_test_split(X_tmp, y_tmp, test_size=0.25, "
+            f"random_state={seed}, stratify=y_tmp)"
+        ),
+        _code(
+            "candidates = {\n"
+            '    "logistic": make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000)),\n'
+            f'    "tree": DecisionTreeClassifier(max_depth=3, random_state={seed}),\n'
+            f'    "forest": RandomForestClassifier(n_estimators=100, min_samples_leaf=5, random_state={seed}),\n'
+            "}\n"
+            "fitted = {}\n"
+            "sel_scores = {}\n"
+            "for name, est in candidates.items():\n"
+            "    fitted[name] = est.fit(X_tr, y_tr)\n"
+            "    sel_scores[name] = roc_auc_score(y_va, fitted[name].predict_proba(X_va)[:, 1])"
+        ),
+        _code(
+            "scores = pd.Series(sel_scores).sort_values(ascending=False)\n"
+            "best = scores.idxmax()\n"
+            "print(scores.round(3))\n"
+            'print("selected:", best)'
+        ),
+        _code(
+            "test_proba = fitted[best].predict_proba(X_te)[:, 1]\n"
+            "test_auc = roc_auc_score(y_te, test_proba)\n"
+            "test_ap = average_precision_score(y_te, test_proba)\n"
+            'print(f"test roc_auc={test_auc:.3f}  average_precision={test_ap:.3f}")'
+        ),
+        _md("The model was chosen on the validation split; the test split "
+            "was used once, after the choice, so the test ROC AUC and "
+            "average precision printed above are not inflated by the "
+            "comparison. They describe applicants in this dataset only."),
+    ]
+    return _nb(cells, {
+        "family": "selection", "seed": seed, "imports_cell": 1,
+        "candidates_cell": 5, "select_cell": 6, "report_cell": 7,
+        "conclusion_cell": 8, "imbalanced": False,
+    })
+
+
 FAMILIES = {
     "churn": churn_notebook,
     "abtest": abtest_notebook,
@@ -547,6 +633,7 @@ FAMILIES = {
     "cohort": cohort_notebook,
     "program": program_notebook,
     "forecast": forecast_notebook,
+    "selection": selection_notebook,
 }
 
 DEV_SEEDS = (11, 12, 13, 14)
@@ -562,6 +649,7 @@ MUTATION_SEEDS = {
     "significance-meaningless": {"dev": (0, 1), "heldout": (2, 3)},
     "regression-to-mean-claim": {"dev": (0, 1), "heldout": (2, 3)},
     "leakage-temporal-shuffle": {"dev": (0, 1), "heldout": (2, 3)},
+    "leakage-test-selection": {"dev": (0, 1), "heldout": (2, 3)},
 }
 
 
