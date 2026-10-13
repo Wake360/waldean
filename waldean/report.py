@@ -112,8 +112,11 @@ def to_markdown(path: str, flags: list[Flag], floor: float = DEFAULT_CONFIDENCE_
             f"- **Failure scenario:** {f.failure_scenario}",
             f"- **Fix:** {f.fix}",
             f"- **Confidence:** {f.confidence:.2f}",
-            "",
         ]
+        if d.repair_invariant:
+            lines.append(f"- **Repair:** `waldean propose {path}` writes a repair contract "
+                         "that an agent or a person can apply and Waldean can verify")
+        lines.append("")
     if candidates:
         lines.append(f"## Candidates (below confidence floor {floor:.2f})")
         for f in candidates:

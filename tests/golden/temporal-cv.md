@@ -9,6 +9,7 @@ verdict: 1 high, 0 medium | static layer (no LLM)
 - **Failure scenario:** Training rows sit after test rows in time, so the model is scored on "predicting" a past it was trained beyond; the reported error collapses when the model must forecast an actual future.
 - **Fix:** Split by time: an explicit cutoff date, train_test_split(shuffle=False) on time-sorted rows, or TimeSeriesSplit for cross-validation.
 - **Confidence:** 0.90
+- **Repair:** `waldean propose examples/temporal-cv-before-after.ipynb` writes a repair contract that an agent or a person can apply and Waldean can verify
 
 ## CLEAN (checked): baserate-accuracy-imbalanced, leakage-fit-before-split, testing-multiple-uncorrected
 
