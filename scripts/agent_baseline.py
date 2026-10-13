@@ -91,7 +91,7 @@ def prompt(m: dict, d: dict, variant: str) -> str:
 def agent_env(python_bin: Path, cli: str) -> dict:
     keep = {k: os.environ[k] for k in ("HOME", "USER", "LOGNAME", "LANG", "TERM") if k in os.environ}
     cli_dir = str(Path(shutil.which(cli) or cli).parent)
-    return {**keep, "TMPDIR": "/private/tmp", "PATH": os.pathsep.join([str(python_bin), cli_dir, "/usr/bin", "/bin"])}
+    return {**keep, "TMPDIR": "/private/tmp", "MPLBACKEND": "Agg", "PATH": os.pathsep.join([str(python_bin), cli_dir, "/usr/bin", "/bin"])}
 
 
 def agent_command(agent: str, m: dict, text: str, codex_home: Path, python_bin: Path) -> tuple[list[str], dict]:
