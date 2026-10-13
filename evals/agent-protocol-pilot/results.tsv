@@ -1,0 +1,21 @@
+run	dataset	agent	variant	cli_version	model	sha256	check	group	selection	headline	future_auc	temporal	leak
+clinic-claude-B-0	clinic	claude	B	2.1.296 (Claude Code)	sonnet	78ac8197496dd218e6afc3b10c283b6021c017e10c6e15631d46427d253591ec		pass	pass	('roc_auc', 0.641)	None		
+clinic-claude-B-1	clinic	claude	B	2.1.296 (Claude Code)	sonnet	77bacbf6b7c4cccdc570ac0cc8659911d1ad1c13c10340e2bd49e53b615dab6a		pass	pass	('roc_auc', 0.636)	None		
+clinic-claude-B-2	clinic	claude	B	2.1.296 (Claude Code)	sonnet	cb5cf1f04141582fa1ffacd9345be4ae233ef3440bcb2d3136313c60e37f07f0		pass	pass	('roc_auc', 0.655)	None		
+clinic-claude-B-3	clinic	claude	B	2.1.296 (Claude Code)	sonnet	6272cb0999a822a1b54032fad00e09821b397fb670be5e8bf6da43e09f43f7ce	leakage-test-selection	pass	pass	('roc_auc', 0.655)	None		
+clinic-claude-B-4	clinic	claude	B	2.1.296 (Claude Code)	sonnet	75c8dadd46161b776758e5fd7dc6b7fe8c427a297c2ef479a1e63f2ad665aecf		pass	pass	('roc_auc', 0.655)	None		
+control-claude-B-0	control	claude	B	2.1.296 (Claude Code)	sonnet	781cb4fda79ddacd174fab8906303ce5c9d9302bc544b374be3de2c2644b633e			pass	('test_roc_auc', 0.7662936513574387)	None		
+control-claude-B-1	control	claude	B	2.1.296 (Claude Code)	sonnet	6b7d539a4b6bcf4e598a260ada2c2168ae2d49d8a6e920882f9d0763c97474c8			pass	('test_roc_auc', 0.7703603076520296)	None		
+control-claude-B-2	control	claude	B	2.1.296 (Claude Code)	sonnet	5e1cac4afa922347238967bff69d00eace12196a02103ed63acc8e17702208ca			pass	('test_roc_auc', 0.7662936513574387)	None		
+control-claude-B-3	control	claude	B	2.1.296 (Claude Code)	sonnet	026ff028424c516241e0a22dfe57cd551363d3fc6c25a723fb7fe0f107216b33			pass	('test_roc_auc', 0.7806285544751391)	None		
+control-claude-B-4	control	claude	B	2.1.296 (Claude Code)	sonnet	784a1f45431620f1644083ee488f6695db53d22db65def61d3fa9f2e10c1267d			pass	('test_roc_auc', 0.7645773887249924)	None		
+maintenance-claude-B-0	maintenance	claude	B	2.1.296 (Claude Code)	sonnet	0d3badd7c0468c11be2877033dff154a6b4fd340d7360704e36538504ab48609			pass	('average_precision', 0.076)	None	pass	pass
+maintenance-claude-B-1	maintenance	claude	B	2.1.296 (Claude Code)	sonnet	24a7e44c370bf2685221d595501bd23139f0d13cd9eb1ea7a882359fbc0f2d29			pass	('average_precision', 0.085)	None	pass	pass
+maintenance-claude-B-2	maintenance	claude	B	2.1.296 (Claude Code)	sonnet	5a690b64b3d9c86c98448a62cd5cb9ca2c62cc5f49b09634b2fb7c9f1fe0b925			pass	('average_precision', 0.073)	None	pass	pass
+maintenance-claude-B-3	maintenance	claude	B	2.1.296 (Claude Code)	sonnet	e08c89e6cd290481d023c369f8253d940bfc7b1d7b8dab958c57c07c75d166ce			pass	('average_precision', 0.087)	None	pass	pass
+maintenance-claude-B-4	maintenance	claude	B	2.1.296 (Claude Code)	sonnet	87114b53c1a656ec0eca1ceeb646f4e9485f2259cfa150a0fc8274dc242e5f23			pass	('average_precision', 0.082)	None	pass	pass
+subscriptions-claude-B-0	subscriptions	claude	B	2.1.296 (Claude Code)	sonnet	ea7f7cc3b2ac4b590b05ff1f23e3689e529514687730e93731462f10515413a0			pass	('roc_auc', 0.703)	None	pass	pass
+subscriptions-claude-B-1	subscriptions	claude	B	2.1.296 (Claude Code)	sonnet	06023bb5c32900d97a159306e0a52fd4e0396056b204c31e5a71cbe846c32b45			pass	('roc_auc', 0.737)	None	fail	pass
+subscriptions-claude-B-2	subscriptions	claude	B	2.1.296 (Claude Code)	sonnet	25a60d4f0a4113ffe76ae560b68b59ec5a9cb30e42a4168fdea351673ed75472			pass	('roc_auc', 0.702)	None	fail	pass
+subscriptions-claude-B-3	subscriptions	claude	B	2.1.296 (Claude Code)	sonnet	2994250d9774d1a6236e4e1b118fa9c4abe470574bc19c08867984653c0f6b27			pass	('average_precision', 0.241)	None	pass	pass
+subscriptions-claude-B-4	subscriptions	claude	B	2.1.296 (Claude Code)	sonnet	19ec17b74676c937513997294a3993d697f0a106bfa87739f83ba5122f764e3a			pass	('pr_auc', 0.217)	None	pass	pass
