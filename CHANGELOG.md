@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 - `waldean propose FILE` writes a repair contract (`protocol.json`, `brief.md`, a copy of the original) for confident `leakage-temporal-shuffle` findings. Other classes are listed as unsupported.
 - `waldean verify REPAIR_DIR` checks a repair against its contract and writes `evidence.json`. Exit 0 verified or static-pass, 1 inconclusive, 2 rejected, 3 error. `--execute --metric REGEX` runs the original and the repaired notebook (new `execute` extra).

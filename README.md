@@ -11,14 +11,14 @@ that number was valid: was the scaler fitted on the test rows, did the
 cross-validation shuffle a time series, were twenty tests run with no
 correction?
 
-![waldean check on a time-series notebook](https://raw.githubusercontent.com/Wake360/waldean/v0.4.0/assets/demo.gif)
+![waldean check on a time-series notebook](https://raw.githubusercontent.com/Wake360/waldean/v0.5.0/assets/demo.gif)
 
 ```bash
 pip install waldean
 waldean check your_notebook.ipynb
 ```
 
-A real report, on [`examples/leaky.ipynb`](https://github.com/Wake360/waldean/blob/v0.4.0/examples/leaky.ipynb):
+A real report, on [`examples/leaky.ipynb`](https://github.com/Wake360/waldean/blob/v0.5.0/examples/leaky.ipynb):
 
 ```
 $ waldean check examples/leaky.ipynb
@@ -42,11 +42,11 @@ verdict: 1 high, 0 medium | static layer (no LLM)
 Exit codes: `0` clean, `1` medium findings, `2` high findings, `3` input
 error. Usable as a pre-merge gate.
 
-[`examples/temporal-cv-before-after.ipynb`](https://github.com/Wake360/waldean/blob/v0.4.0/examples/temporal-cv-before-after.ipynb)
+[`examples/temporal-cv-before-after.ipynb`](https://github.com/Wake360/waldean/blob/v0.5.0/examples/temporal-cv-before-after.ipynb)
 shows the effect on a metric: the same model scored with shuffled CV and
 with `TimeSeriesSplit`, numbers computed in the notebook
 (run record:
-[`evals/2026-10-12-temporal-cv-demo.md`](https://github.com/Wake360/waldean/blob/v0.4.0/evals/2026-10-12-temporal-cv-demo.md)).
+[`evals/2026-10-12-temporal-cv-demo.md`](https://github.com/Wake360/waldean/blob/v0.5.0/evals/2026-10-12-temporal-cv-demo.md)).
 
 ## Repair loop (experimental)
 
@@ -95,13 +95,13 @@ Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
   and Waldean caught 12 of 20 leaky notebooks in the audited subset (0.60
   recall; audited subset, one seed, likely lower over all 60). That
   evidence covers the two leakage classes only
-  ([`evals/2026-07-07-dogfood-wide.md`](https://github.com/Wake360/waldean/blob/v0.4.0/evals/2026-07-07-dogfood-wide.md)).
+  ([`evals/2026-07-07-dogfood-wide.md`](https://github.com/Wake360/waldean/blob/v0.5.0/evals/2026-07-07-dogfood-wide.md)).
 - On the 100 notebooks of Yang et al. (ASE'22), 66 of them labeled for
   pre-split leakage, `leakage-fit-before-split` reached 0.58 precision and
   0.37 recall against the authors' `pre` label. The labels were not
   re-adjudicated, and two files Waldean could not analyse count as not
   flagged
-  ([`evals/2026-10-12-yang-pre.md`](https://github.com/Wake360/waldean/blob/v0.4.0/evals/2026-10-12-yang-pre.md)).
+  ([`evals/2026-10-12-yang-pre.md`](https://github.com/Wake360/waldean/blob/v0.5.0/evals/2026-10-12-yang-pre.md)).
 - Misses cluster in pandas-arithmetic leaks with no syntactic anchor
   (per-group imputation, `fillna(df[col].mean())` before the split). A
   scaler fit on full data that feeds `cross_val_score` is reported only as
@@ -113,18 +113,18 @@ Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
 - Waldean never executes your notebook unless you run `waldean verify --execute`.
 
 Full evaluation, corpus method and dogfood history:
-[`docs/EVALUATION.md`](https://github.com/Wake360/waldean/blob/v0.4.0/docs/EVALUATION.md).
+[`docs/EVALUATION.md`](https://github.com/Wake360/waldean/blob/v0.5.0/docs/EVALUATION.md).
 
 ## How Waldean is measured
 
 Detectors are scored by mutation testing: clean notebooks get flaws
 injected, and every mutant must mechanically prove the flaw before it
 counts. Corpus tables, dogfood runs and detector scope:
-[`docs/EVALUATION.md`](https://github.com/Wake360/waldean/blob/v0.4.0/docs/EVALUATION.md).
+[`docs/EVALUATION.md`](https://github.com/Wake360/waldean/blob/v0.5.0/docs/EVALUATION.md).
 
 ## GitHub Action
 
-`Wake360/waldean@v0.4.0` is a composite action that installs `waldean`, runs
+`Wake360/waldean@v0.5.0` is a composite action that installs `waldean`, runs
 `waldean check` on the paths you pass, writes a SARIF 2.1.0 log, and reports a
 `gate-exit-code` mapped through `fail-on` (high, medium, or never). The
 action never fails the job itself — it exposes the code and lets your
@@ -163,7 +163,7 @@ jobs:
       - name: waldean
         id: waldean
         if: steps.changed.outputs.files != ''
-        uses: Wake360/waldean@v0.4.0
+        uses: Wake360/waldean@v0.5.0
         with:
           paths: ${{ steps.changed.outputs.files }}
           fail-on: high
@@ -187,7 +187,7 @@ jobs:
 ```yaml
 repos:
   - repo: https://github.com/Wake360/waldean
-    rev: v0.4.0
+    rev: v0.5.0
     hooks:
       - id: waldean
       - id: waldean-scripts
