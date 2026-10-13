@@ -202,3 +202,13 @@ def test_iloc_slices_form_a_split_sink():
 def test_single_slice_peek_is_not_a_split():
     flow = analyze(nb_from_sources("sample = df[:5]"))
     assert flow.slice_splits() == []
+
+
+def test_head_and_tail_peeks_are_not_a_split():
+    flow = analyze(nb_from_sources("head = df[:5]\ntail = df[-5:]"))
+    assert flow.slice_splits() == []
+
+
+def test_shifted_slices_are_not_a_split():
+    flow = analyze(nb_from_sources("inputs = s[:-1]\ntargets = s[1:]"))
+    assert flow.slice_splits() == []

@@ -765,3 +765,12 @@ def test_fit_after_slice_split_is_silent():
         ("code", "X_train = scaler.fit_transform(X_train)\nX_test = scaler.transform(X_test)"),
     ])
     assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_fit_before_iloc_split_is_flagged():
+    notebook = nb([
+        ("code", "X = scaler.fit_transform(X)"),
+        ("code", "X_train, X_test = X.iloc[:800], X.iloc[800:]"),
+        ("code", "model.fit(X_train, y[:800])"),
+    ])
+    assert "leakage-fit-before-split" in flag_ids(notebook)

@@ -358,9 +358,10 @@ class NotebookDataflow:
         for base, events in by_base.items():
             heads = [e for e in events if e.upper and not e.lower]
             tails = [e for e in events if e.lower and not e.upper]
-            if not heads or not tails:
+            pairs = [(h, t) for h in heads for t in tails if h.upper == t.lower]
+            if not pairs:
                 continue
-            last = max(heads + tails, key=lambda e: (e.cell, e.line))
+            last = max(pairs[0], key=lambda e: (e.cell, e.line))
             sinks.append(CallSite(func="slice_split", name="slice_split", receiver=None,
                                   cell=last.cell, line=last.line, loop_depth=0, pos_args=[{base}]))
         return sinks

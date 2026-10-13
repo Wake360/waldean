@@ -403,9 +403,10 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                     continue
                 if base_bind in bindings and pos < (sink.cell, sink.line):
                     # one flag per frame: imputing N columns is one violation
+                    how = "`train_test_split`" if sink.name == "train_test_split" else "a row slice split"
                     emit(call, 0.85, {base}, (
                         f"`{call.func}(...)` fills values of `{base}` with statistics "
-                        f"computed on the full `{base}` before `train_test_split` "
+                        f"computed on the full `{base}` before {how} "
                         f"(cell {sink.cell}); imputation statistics include the test rows"
                     ), key=f"impute:{base}")
                     break
@@ -432,9 +433,10 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                 if id(ev) not in chain_ids:
                     continue
                 if sink.name in {"train_test_split", "slice_split"}:
+                    how = "`train_test_split`" if sink.name == "train_test_split" else "a row slice split"
                     emit(stat, 0.85, {base}, (
                         f"`{stat.func}(...)` is computed over the full `{base}` and written back "
-                        f"into `{base}` before `train_test_split` (cell {sink.cell}); "
+                        f"into `{base}` before {how} (cell {sink.cell}); "
                         f"the statistic includes the test rows"
                     ), key=f"impute:{base}")
                 else:
