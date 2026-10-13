@@ -218,3 +218,23 @@ def test_stratified_plan_renders_and_runs(tmp_path):
                      "override_reason": "test"}
     (tmp_path / "exp").mkdir()
     assert stdout_lines(run_rendered(tmp_path, render(plan)), "WALDEAN_METRICS ")
+
+
+def test_undated_rows_are_in_neither_split(tmp_path):
+    csv = write_csv(tmp_path / "d.csv")
+    df = pd.read_csv(csv)
+    df["snapshot"] = df["snapshot"].astype(object)
+    df.loc[df.index[:10], "snapshot"] = None
+    df.loc[df.index[10:20], "snapshot"] = "garbage"
+    df.to_csv(csv, index=False)
+    prof = profile(csv, "churn")
+    plan = design(prof, csv, tmp_path / "exp", "", [], None, 0)
+    (tmp_path / "exp").mkdir()
+    probe = (
+        "_t = pd.to_datetime(df['snapshot'], errors='coerce', format='mixed')\n"
+        "_ok = _t[test].notna().all() and _t[train].notna().all() and not (train & test).any()"
+        " and not (train | test)[_t.isna().to_numpy()].any() and int(_t.isna().sum()) == 20\n"
+        "print('PROBE', bool(_ok))"
+    )
+    out = stdout_lines(run_rendered(tmp_path, render(plan), probe), "PROBE")
+    assert out and out[-1].split()[1:] == ["True"]

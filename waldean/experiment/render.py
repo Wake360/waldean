@@ -77,12 +77,13 @@ def split_cells(plan: dict) -> list[str]:
     s = plan["split"]
     if s["kind"] == "temporal_holdout":
         return [
-            f"t = pd.to_datetime(df[{s['column']!r}], format=\"mixed\")\n"
-            "periods = np.sort(t.unique())\n"
+            f"t = pd.to_datetime(df[{s['column']!r}], errors=\"coerce\", format=\"mixed\")\n"
+            "periods = np.sort(t.dropna().unique())\n"
             f"cutoff = periods[int(len(periods) * {1 - s['test_fraction']!r})]\n"
             "train = (t < cutoff).to_numpy()\n"
-            "test = ~train\n"
-            "print(f\"train {t[train].min()} to {t[train].max()}, test {t[test].min()} to {t[test].max()}\")",
+            "test = (t >= cutoff).to_numpy()\n"
+            "print(f\"train {t[train].min()} to {t[train].max()}, test {t[test].min()} to {t[test].max()}\")\n"
+            "print(f\"undated rows left out: {int(t.isna().sum())}\")",
             "train_periods = np.sort(t[train].unique())\n"
             f"cv = TimeSeriesSplit(n_splits={s['n_splits']})\n"
             "folds = [(np.flatnonzero(t.isin(train_periods[a]).to_numpy()),\n"
