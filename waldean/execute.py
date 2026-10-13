@@ -25,11 +25,12 @@ def _ensure_kernelspec(kernel_name: str = "python3") -> None:
         install_kernelspec(user=True, kernel_name=kernel_name)
 
 
-def execute(nb_node, timeout: int = 180):
+def execute(nb_node, timeout: int = 180, cwd: str | None = None, kernel_name: str = "python3"):
     """Execute a notebook node in place-safe copy; returns the executed node."""
     nb = copy.deepcopy(nb_node)
-    _ensure_kernelspec("python3")
-    client = NotebookClient(nb, timeout=timeout, kernel_name="python3")
+    _ensure_kernelspec(kernel_name)
+    resources = {"metadata": {"path": cwd}} if cwd else {}
+    client = NotebookClient(nb, timeout=timeout, kernel_name=kernel_name, resources=resources)
     client.execute()
     return nb
 

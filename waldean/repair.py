@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import contextlib
 import difflib
 import hashlib
 import importlib.metadata
 import json
+import os
 import platform
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
+
+import nbformat
 
 from .dataflow import NotebookDataflow, analyze
 from .detect import DEFAULT_CONFIDENCE_FLOOR, Flag, run_static
@@ -17,6 +22,8 @@ from .taxonomy import load_taxonomy
 SCHEMA = 1
 DEFAULT_OUT = Path(".waldean") / "repairs"
 PROVENANCE_PACKAGES = ("numpy", "pandas", "scikit-learn")
+KERNEL_NAME = "waldean-verify"
+SECRET_ENV_RE = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL", re.IGNORECASE)
 RULES = (
     "Edit only the cells in the edit scope.",
     "Outside the edit scope, only add import lines.",
@@ -205,10 +212,13 @@ def provenance() -> dict:
     }
 
 
-def verify(repair_dir: str | Path, fixed_path: str | Path | None = None) -> dict:
+def verify(repair_dir: str | Path, fixed_path: str | Path | None = None,
+           metric: re.Pattern | None = None, timeout: int = 600) -> dict:
     repair_dir = Path(repair_dir)
     protocol, snapshot = load_repair(repair_dir)
     fixed = Path(fixed_path or protocol["file"])
+    if metric is not None and fixed.suffix != ".ipynb":
+        raise ValueError("--execute runs .ipynb notebooks only")
     reasons = static_checks(protocol, parse_notebook(snapshot), parse_notebook(fixed))
     evidence = {
         "schema": SCHEMA,
@@ -223,5 +233,65 @@ def verify(repair_dir: str | Path, fixed_path: str | Path | None = None) -> dict
         "provenance": provenance(),
         "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
+    if not reasons and metric is not None:
+        run = counterfactual(snapshot, fixed, metric, timeout)
+        evidence["execution"] = run
+        evidence["status"] = "verified" if run["complete"] else "inconclusive"
     (repair_dir / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
     return evidence
+
+
+@contextlib.contextmanager
+def scrubbed_env():
+    removed = {k: os.environ.pop(k) for k in list(os.environ) if SECRET_ENV_RE.search(k)}
+    try:
+        yield sorted(removed)
+    finally:
+        os.environ.update(removed)
+
+
+def metric_values(nb_node, metric: re.Pattern) -> list[float]:
+    values = []
+    for cell in nb_node.cells:
+        for out in cell.get("outputs", []):
+            if out.get("output_type") != "stream":
+                continue
+            for line in out.get("text", "").splitlines():
+                m = metric.search(line)
+                if m:
+                    with contextlib.suppress(ValueError):
+                        values.append(float(m.group(1)))
+    return values
+
+
+def _first_line(exc: Exception) -> str:
+    text = str(exc).strip()
+    return f"{type(exc).__name__}: {text.splitlines()[0] if text else ''}"
+
+
+def counterfactual(original: Path, fixed: Path, metric: re.Pattern, timeout: int) -> dict:
+    from .execute import execute
+
+    cwd = str(fixed.resolve().parent)
+    run = {"metric": metric.pattern, "cwd": cwd, "timeout_per_cell": timeout,
+           "before": [], "after": [], "delta": None, "complete": False, "error": None}
+    with scrubbed_env() as removed:
+        run["env_removed"] = removed
+        try:
+            before = execute(nbformat.read(str(original), as_version=4),
+                             timeout=timeout, cwd=cwd, kernel_name=KERNEL_NAME)
+            after = execute(nbformat.read(str(fixed), as_version=4),
+                            timeout=timeout, cwd=cwd, kernel_name=KERNEL_NAME)
+        except Exception as exc:
+            run["error"] = _first_line(exc)
+            return run
+    run["before"] = metric_values(before, metric)
+    run["after"] = metric_values(after, metric)
+    if not run["before"] and not run["after"]:
+        run["error"] = "the metric pattern matched no output line"
+    elif len(run["before"]) != len(run["after"]):
+        run["error"] = "the metric pattern matched a different number of lines before and after"
+    else:
+        run["delta"] = [round(a - b, 6) for b, a in zip(run["before"], run["after"])]
+        run["complete"] = True
+    return run

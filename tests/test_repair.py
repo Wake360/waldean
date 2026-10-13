@@ -1,10 +1,13 @@
+import copy
 import json
+import os
+import re
 from pathlib import Path
 
 import nbformat
 import pytest
 
-from waldean.repair import propose, render_brief, supported, verify
+from waldean.repair import counterfactual, metric_values, propose, render_brief, scrubbed_env, supported, verify
 from waldean.taxonomy import load_taxonomy
 
 IMPORTS = """import numpy as np
@@ -176,3 +179,92 @@ def test_changed_snapshot_is_refused(leaky, tmp_path):
     (repair_dir / "original.ipynb").write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match="no longer matches"):
         verify(repair_dir, leaky)
+
+
+R2 = re.compile(r"R2=(-?\d+\.\d+)")
+
+
+def _with_stdout(nb_node, text):
+    nb = copy.deepcopy(nb_node)
+    nb.cells[-1].outputs = [nbformat.v4.new_output("stream", text=text)]
+    return nb
+
+
+def test_scrubbed_env_hides_and_restores_secrets(monkeypatch):
+    monkeypatch.setenv("WALDEAN_TEST_TOKEN", "s3cret")
+    monkeypatch.setenv("WALDEAN_TEST_PLAIN", "ok")
+    with scrubbed_env() as removed:
+        assert "WALDEAN_TEST_TOKEN" in removed
+        assert "WALDEAN_TEST_TOKEN" not in os.environ
+        assert os.environ["WALDEAN_TEST_PLAIN"] == "ok"
+    assert os.environ["WALDEAN_TEST_TOKEN"] == "s3cret"
+
+
+def test_metric_values_reads_stream_lines_only():
+    nb = nbformat.v4.new_notebook()
+    nb.cells = [nbformat.v4.new_code_cell("x")]
+    nb.cells[0].outputs = [
+        nbformat.v4.new_output("stream", text="R2=0.992 MAE=2.98\nnoise\nR2=0.465\n"),
+        nbformat.v4.new_output("execute_result", data={"text/plain": "R2=0.111"}),
+    ]
+    assert metric_values(nb, R2) == [0.992, 0.465]
+
+
+def _fake_execute(calls, outputs):
+    def fake(nb_node, timeout=180, cwd=None, kernel_name="python3"):
+        calls.append({"cwd": cwd, "kernel_name": kernel_name, "timeout": timeout})
+        return _with_stdout(nb_node, outputs[len(calls) - 1])
+    return fake
+
+
+def test_counterfactual_measures_both_runs(leaky, tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr("waldean.execute.execute", _fake_execute(calls, ["R2=0.992\n", "R2=0.465\n"]))
+    repair_dir = _repair(leaky, tmp_path)
+    fixed = _fixed(tmp_path, [IMPORTS, DATA, FEATURES, TEMPORAL])
+    evidence = verify(repair_dir, fixed, metric=R2, timeout=30)
+    assert evidence["status"] == "verified"
+    assert evidence["execution"]["before"] == [0.992]
+    assert evidence["execution"]["after"] == [0.465]
+    assert evidence["execution"]["delta"] == [-0.527]
+    assert [c["kernel_name"] for c in calls] == ["waldean-verify", "waldean-verify"]
+    assert {c["cwd"] for c in calls} == {str(fixed.resolve().parent)}
+
+
+def test_counterfactual_is_not_run_after_rejection(leaky, tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr("waldean.execute.execute", _fake_execute(calls, ["R2=0.9\n", "R2=0.9\n"]))
+    evidence = verify(_repair(leaky, tmp_path), leaky, metric=R2)
+    assert evidence["status"] == "rejected"
+    assert calls == []
+
+
+def test_mismatched_metric_lines_are_inconclusive(leaky, tmp_path, monkeypatch):
+    monkeypatch.setattr("waldean.execute.execute", _fake_execute([], ["R2=0.9\nR2=0.8\n", "R2=0.5\n"]))
+    fixed = _fixed(tmp_path, [IMPORTS, DATA, FEATURES, TEMPORAL])
+    evidence = verify(_repair(leaky, tmp_path), fixed, metric=R2)
+    assert evidence["status"] == "inconclusive"
+    assert "different number of lines" in evidence["execution"]["error"]
+
+
+def test_execution_error_is_inconclusive(leaky, tmp_path, monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("cell 3 failed\nTraceback ...")
+    monkeypatch.setattr("waldean.execute.execute", boom)
+    fixed = _fixed(tmp_path, [IMPORTS, DATA, FEATURES, TEMPORAL])
+    evidence = verify(_repair(leaky, tmp_path), fixed, metric=R2)
+    assert evidence["status"] == "inconclusive"
+    assert evidence["execution"]["error"] == "RuntimeError: cell 3 failed"
+
+
+def test_live_counterfactual_hides_secrets(tmp_path, monkeypatch):
+    pytest.importorskip("nbclient")
+    monkeypatch.setenv("WALDEAN_TEST_TOKEN", "s3cret")
+    probe = 'import os\nprint(f"LEAK={int(bool(os.environ.get(\'WALDEAN_TEST_TOKEN\')))}.0")'
+    a = write_nb(tmp_path / "a.ipynb", [probe])
+    b = write_nb(tmp_path / "b.ipynb", [probe])
+    run = counterfactual(a, b, re.compile(r"LEAK=(\d\.\d)"), timeout=60)
+    if run["error"] and "kernel" in run["error"].lower():
+        pytest.skip(run["error"])
+    assert run["complete"], run["error"]
+    assert run["before"] == run["after"] == [0.0]

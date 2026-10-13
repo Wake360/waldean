@@ -1941,12 +1941,18 @@ corpus = [
 dev = [
     { name = "pytest" },
 ]
+execute = [
+    { name = "ipykernel" },
+    { name = "nbclient" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "ipykernel", marker = "extra == 'corpus'" },
+    { name = "ipykernel", marker = "extra == 'execute'" },
     { name = "libcst", specifier = ">=1.0" },
     { name = "nbclient", marker = "extra == 'corpus'", specifier = ">=0.9" },
+    { name = "nbclient", marker = "extra == 'execute'", specifier = ">=0.9" },
     { name = "nbformat", specifier = ">=5.9" },
     { name = "numpy", marker = "extra == 'corpus'" },
     { name = "pandas", marker = "extra == 'corpus'" },
@@ -1955,7 +1961,7 @@ requires-dist = [
     { name = "scikit-learn", marker = "extra == 'corpus'" },
     { name = "scipy", marker = "extra == 'corpus'" },
 ]
-provides-extras = ["corpus", "dev"]
+provides-extras = ["corpus", "execute", "dev"]
 
 [[package]]
 name = "wcwidth"
