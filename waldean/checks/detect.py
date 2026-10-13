@@ -398,6 +398,15 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
             _, arg_bindings = flow.chain(call.arg_names, pos)
             if base_bind not in arg_bindings:
                 continue  # fill values do not derive from the frame itself
+            _, base_chain = flow.chain({base}, pos)
+            base_names = {n for n, _ in base_chain}
+            filled_test = base_names & test_outputs
+            if filled_test and not base_names & (split_outputs - test_outputs):
+                emit(call, 0.85, filled_test, (
+                    f"`{call.func}(...)` fills `{base}` with statistics of {_join_names(filled_test)}, "
+                    f"a test split output; the imputation learns from the rows it is scored on"
+                ), key=f"impute:{base}")
+                continue
             for sink, _ids, bindings in chains:
                 if sink.name not in {"train_test_split", "slice_split"}:
                     continue

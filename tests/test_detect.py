@@ -804,3 +804,37 @@ def test_helper_locals_do_not_leak_between_inlined_helpers():
         ("code", "enc = fit_enc(tr)"),
     ])
     assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_test_split_filled_with_its_own_statistic_is_flagged():
+    notebook = nb([
+        ("code", "X_tr, X_te, y_tr, y_te = train_test_split(X, y)"),
+        ("code", "X_te['a'] = X_te['a'].fillna(X_te['a'].median())"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert flags and flags[0].cell == 1 and flags[0].confidence >= 0.8
+
+
+def test_helper_filling_test_split_with_its_own_statistic_is_flagged():
+    notebook = nb([
+        ("code", "def prep(d):\n    f = d[cols].copy()\n    f['a'] = d.a.fillna(d.a.median())\n    return f"),
+        ("code", "tr, te = train_test_split(df)"),
+        ("code", "model.fit(prep(tr), tr.y)\npred = model.predict(prep(te))"),
+    ])
+    assert "leakage-fit-before-split" in flag_ids(notebook)
+
+
+def test_test_split_filled_with_train_statistic_is_silent():
+    notebook = nb([
+        ("code", "X_tr, X_te, y_tr, y_te = train_test_split(X, y)"),
+        ("code", "X_te['a'] = X_te['a'].fillna(X_tr['a'].median())"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_frame_mixing_train_and_test_split_rows_is_not_a_test_fill():
+    notebook = nb([
+        ("code", "a, b = train_test_split(df)"),
+        ("code", "both = pd.concat([a, b])\nboth['f'] = both['f'].fillna(both['f'].median())"),
+    ])
+    assert not any("test split output" in f.evidence for f in run_static(notebook))
