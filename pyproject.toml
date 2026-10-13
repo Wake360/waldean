@@ -37,6 +37,10 @@ corpus = [
     "scipy",
     "scikit-learn",
 ]
+execute = [
+    "nbclient>=0.9",
+    "ipykernel",
+]
 dev = ["pytest>=8.0"]
 
 [project.scripts]

@@ -81,6 +81,24 @@ def build() -> nbformat.NotebookNode:
     return nb
 
 
+LEAKY_INTRO = """# Demand forecast
+
+Synthetic daily demand series generated below with a fixed seed, so the notebook runs offline."""
+
+
+def build_leaky() -> nbformat.NotebookNode:
+    nb = nbformat.v4.new_notebook()
+    nb.metadata["kernelspec"] = {"name": "python3", "display_name": "Python 3", "language": "python"}
+    nb.cells = [
+        nbformat.v4.new_markdown_cell(LEAKY_INTRO),
+        nbformat.v4.new_code_cell(IMPORTS),
+        nbformat.v4.new_code_cell(DATA),
+        nbformat.v4.new_code_cell(FEATURES),
+        nbformat.v4.new_code_cell(BEFORE),
+    ]
+    return nb
+
+
 def metric_lines(nb) -> list[str]:
     return stdout_lines(nb, "shuffled KFold:") + stdout_lines(nb, "TimeSeriesSplit:")
 
@@ -103,9 +121,15 @@ def write_eval(evals_dir: Path, lines: list[str], out: Path) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", required=True)
+    parser.add_argument("--out")
     parser.add_argument("--evals-dir")
+    parser.add_argument("--leaky-out")
     args = parser.parse_args()
+    if args.leaky_out:
+        nbformat.write(build_leaky(), args.leaky_out)
+        print(f"wrote {args.leaky_out}")
+    if not args.out:
+        return
     out = Path(args.out)
     executed = execute(build(), timeout=600)
     lines = metric_lines(executed)

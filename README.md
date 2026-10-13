@@ -48,13 +48,32 @@ with `TimeSeriesSplit`, numbers computed in the notebook
 (run record:
 [`evals/2026-10-12-temporal-cv-demo.md`](https://github.com/Wake360/waldean/blob/v0.4.0/evals/2026-10-12-temporal-cv-demo.md)).
 
+## Repair loop (experimental)
+
+Waldean does not stop at the finding. For a shuffled split on time-ordered data it writes a repair contract that a coding agent or a person applies, and then checks the result.
+
+```bash
+waldean propose forecast.ipynb          # writes .waldean/repairs/forecast--leakage-temporal-shuffle/brief.md
+claude -p "$(cat .waldean/repairs/forecast--leakage-temporal-shuffle/brief.md)"
+waldean verify .waldean/repairs/forecast--leakage-temporal-shuffle
+pip install 'waldean[execute]'
+waldean verify .waldean/repairs/forecast--leakage-temporal-shuffle --execute --metric 'R2=(-?\d+\.\d+)'
+```
+
+`verify` rejects edits outside the cells the contract names, a deleted evaluation call, a finding that is still there, and a new confident finding of a class the original did not have. With `--execute` it runs the original and the repaired notebook and records both metrics, package versions and file hashes in `evidence.json`. A repair is `static-pass` without execution and `verified` with it. Neither status says the new number is right.
+
+On the mutation corpus the verifier accepted all 16 true repairs and rejected all 48 constructed bad repairs of three kinds (file unchanged, edit outside the scope, evaluation call deleted) ([`evals/2026-10-13-repair-loop.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-repair-loop.md)). Agent trial: 5 of 5 demo runs verified, 2 of 2 real notebooks static-pass, N=7, indicative ([`evals/2026-10-13-repair-trial.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-repair-trial.md)).
+
+Limits: one flaw class so far (`leakage-temporal-shuffle`). Comparison is cell by cell, so an added cell is rejected. `--execute` runs code on your machine with your permissions. It hides secret-looking environment variables and isolates nothing else. `verify` trusts the files in the repair directory, so do not let the agent write there. The static check reads names and literal arguments, not behaviour, so a disguised split can pass; read the delta in `evidence.json`. `train_test_split(shuffle=False)` on rows not sorted by time passes the static check; only `--execute` plus reading the evidence catches it. A `.py` file without `# %%` markers is one cell, so the scope check covers the whole file. The metric regex is yours; one that matches unrelated lines gives a misleading delta. The kernel runs with Waldean's Python, so the notebook's dependencies must be installed there. Both runs share the repaired notebook's directory, so files one run writes can affect the other.
+
 ## Status
 
 | | What |
 |---|---|
 | **Available now** | `waldean check` on `.ipynb` and `.py` (plain and `# %%`); four static flaw classes (below); a survivorship candidate; Markdown, JSON and SARIF output; GitHub Action; pre-commit hooks; `waldean rules`; `waldean eval --predictions` for scoring other tools on the corpus |
 | **Experimental** | `--llm` / `--llm-subscription` narrative layer (prose claims vs computation). No validated precision or recall; its quality gates never ran |
-| **Planned** | Generated fixes: a reviewable patch plus a verification recipe for one canonical leakage shape (`waldean propose`), then opt-in sandboxed verification. Not shipped |
+| **Experimental** | Repair loop: `waldean propose` / `waldean verify` for one class (`leakage-temporal-shuffle`). Measured on the synthetic corpus and in a 7-run agent trial, indicative (see Repair loop) |
+| **Planned** | Repair contracts for more flaw classes, starting with `leakage-fit-before-split`. Not shipped |
 
 Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
 
@@ -91,7 +110,7 @@ Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
 - The 0.0% false-positive rate holds on the curated corpus, not on messy
   real code.
 - Flaws with no imprint in code, outputs or prose are invisible to Waldean.
-- Waldean never executes your notebook.
+- Waldean never executes your notebook unless you run `waldean verify --execute`.
 
 Full evaluation, corpus method and dogfood history:
 [`docs/EVALUATION.md`](https://github.com/Wake360/waldean/blob/v0.4.0/docs/EVALUATION.md).
@@ -257,8 +276,7 @@ summary line gains a `, N failed` suffix.
 `waldean rules` lists the flaw classes from the taxonomy (id, layer, severity,
 definition); `--format json` emits the same data as a JSON array.
 
-Waldean never executes *your* notebook (static analysis + stored outputs
-only). Only self-authored corpus notebooks are executed, at corpus build
+Waldean never executes *your* notebook unless you pass `waldean verify --execute` (static analysis + stored outputs otherwise). Only self-authored corpus notebooks are executed, at corpus build
 time, to verify mutations.
 
 ## Roadmap

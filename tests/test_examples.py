@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import re
+import shutil
 from pathlib import Path
 
 import nbformat
@@ -62,3 +63,48 @@ def test_demo_rebuild_matches_stored_metrics():
     stored_flat = [v for pair in stored for v in pair]
     rebuilt_flat = [v for pair in rebuilt for v in pair]
     assert rebuilt_flat == pytest.approx(stored_flat, rel=0.05)
+
+
+LEAKY = REPO / "examples" / "temporal-cv-leaky.ipynb"
+
+
+def _repair_leaky_demo(tmp_path):
+    from waldean.repair import propose
+
+    work = tmp_path / "demand.ipynb"
+    shutil.copyfile(LEAKY, work)
+    written, unsupported = propose(work, out_root=tmp_path / "repairs")
+    assert unsupported == []
+    assert len(written) == 1
+    nb = nbformat.read(work, as_version=4)
+    nb.cells[4].source = _load_build_script().AFTER
+    nbformat.write(nb, work)
+    return written[0]
+
+
+def test_leaky_demo_matches_build_script():
+    stored = [c.source for c in nbformat.read(LEAKY, as_version=4).cells]
+    assert stored == [c.source for c in _load_build_script().build_leaky().cells]
+
+
+def test_leaky_demo_repair_passes_static_checks(tmp_path):
+    from waldean.repair import verify
+
+    repair_dir = _repair_leaky_demo(tmp_path)
+    assert json.loads((repair_dir / "protocol.json").read_text())["edit_scope"] == [4]
+    assert verify(repair_dir)["status"] == "static-pass"
+
+
+def test_leaky_demo_repair_measures_the_gap(tmp_path):
+    pytest.importorskip("sklearn")
+    from waldean.repair import verify
+
+    evidence = verify(_repair_leaky_demo(tmp_path), metric=re.compile(r"R2=(-?\d+\.\d+)"))
+    run = evidence["execution"]
+    if run["error"] and "kernel" in run["error"].lower():
+        pytest.skip(run["error"])
+    assert evidence["status"] == "verified", run["error"]
+    (before,), (after,) = run["before"], run["after"]
+    stored = _metrics(nbformat.read(DEMO, as_version=4))
+    assert before == pytest.approx(stored[0][0], rel=0.05)
+    assert after == pytest.approx(stored[1][0], rel=0.05)

@@ -172,6 +172,16 @@ real finding. The SARIF upload runs regardless (`if: always()`) so findings
 show up as PR annotations even on a failing run — that's the point of
 uploading before gating.
 
+## Recipe D: repair loop
+
+```bash
+waldean propose forecast.ipynb
+claude -p --model sonnet --permission-mode acceptEdits --allowedTools "Read,Edit,NotebookEdit" --disallowedTools "Edit(.waldean/**)" < .waldean/repairs/forecast--leakage-temporal-shuffle/brief.md
+waldean verify .waldean/repairs/forecast--leakage-temporal-shuffle
+```
+
+The gate recipes block a bad notebook, while this recipe turns the block into a scoped task for the agent and checks the agent's answer. The agent gets no Bash, because a `waldean verify` prefix rule also matches `--execute`; run `waldean verify` yourself after the agent finishes.
+
 ## What it will and will not catch
 
 The static layer — the only layer active in any recipe above, since none
