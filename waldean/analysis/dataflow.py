@@ -172,6 +172,8 @@ class _CellVisitor(cst.CSTVisitor):
         self.slices: list[SliceEvent] = []
         self.functions: list[FuncDef] = []
         self._func: FuncDef | None = None
+        self._lambda: FuncDef | None = None
+        self._pipe_lambdas: set[int] = set()
         self._pending: dict[int, AssignEvent] = {}  # id(call node) -> its assign event
         self._loop_vars: list[set[str]] = []  # target names per enclosing for-loop
 
@@ -209,9 +211,18 @@ class _CellVisitor(cst.CSTVisitor):
 
     def visit_Lambda(self, node: cst.Lambda) -> None:
         self.scope_depth += 1
+        if self.scope_depth == 1 and self._func is None and id(node) in self._pipe_lambdas:
+            params = [p.name.value for p in node.params.params]
+            self._func = self._lambda = FuncDef(name=self._lambda_name(node), params=params)
+            self.functions.append(self._func)
 
     def leave_Lambda(self, original_node: cst.Lambda) -> None:
         self.scope_depth -= 1
+        if self.scope_depth == 0 and self._lambda is not None and self._lambda is self._func:
+            self._lambda = self._func = None
+
+    def _lambda_name(self, node: cst.Lambda) -> str:
+        return f"<lambda@{self._line(node)}:{cast(CodeRange, self.get_metadata(PositionProvider, node)).start.column}>"
 
     def visit_ClassDef(self, node: cst.ClassDef) -> None:
         self.scope_depth += 1
@@ -228,8 +239,11 @@ class _CellVisitor(cst.CSTVisitor):
             receiver = _dotted(node.func.value)
         pos_args: list[set[str]] = []
         kw_args: dict[str, set[str]] = {}
-        for arg in node.args:
+        for position, arg in enumerate(node.args):
             names = expr_names(arg.value)
+            if position == 0 and dotted.endswith(".pipe") and isinstance(arg.value, cst.Lambda):
+                self._pipe_lambdas.add(id(arg.value))
+                names = {self._lambda_name(arg.value)}
             if arg.keyword is not None:
                 kw_args[arg.keyword.value] = names
             else:
@@ -527,9 +541,10 @@ def _call_target(site: CallSite, functions: dict[str, FuncDef]) -> tuple[FuncDef
     if site.receiver is None and site.name in functions:
         return functions[site.name], site.pos_args
     if site.name == "pipe" and site.receiver is not None and site.pos_args:
-        fname = next(iter(site.pos_args[0]), None)
-        if fname in functions:
-            return functions[fname], [{site.receiver_base or ""}] + site.pos_args[1:]
+        if len(site.pos_args[0]) == 1 and site.receiver_base:
+            fname = next(iter(site.pos_args[0]))
+            if fname in functions:
+                return functions[fname], [{site.receiver_base}] + site.pos_args[1:]
     return None, []
 
 

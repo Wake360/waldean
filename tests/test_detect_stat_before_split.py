@@ -78,3 +78,24 @@ def test_frame_rebuilt_after_statistic_is_silent():
 def test_rolling_window_mean_is_silent():
     cells = ["df = pd.read_csv('x.csv')", "df['ma'] = df['demand'].rolling(7).mean()", SPLIT]
     assert not leak_flags(cells)
+
+
+def test_assign_with_frame_statistic_before_split():
+    assert leak_flags(["df = pd.read_csv('x.csv')", "df = df.assign(a=df['a'] / df['a'].max())", SPLIT])
+
+
+def test_chained_fillna_with_frame_mean_before_split():
+    assert leak_flags(["df = pd.read_csv('x.csv')", "df = df.fillna(df.mean())", SPLIT])
+
+
+def test_chained_pipe_of_lambda_statistic_before_split():
+    assert leak_flags(["df = pd.read_csv('x.csv')", "df = df.pipe(lambda d: (d - d.mean()) / d.std())", SPLIT])
+
+
+def test_rolling_on_full_frame_then_shuffled_split_is_temporal():
+    notebook = nb([
+        ("code", "df = pd.read_csv('x.csv', parse_dates=['date']).sort_values('date')"),
+        ("code", "df['r7'] = df['y'].rolling(7).mean()"),
+        ("code", "X_tr, X_te, y_tr, y_te = train_test_split(df[['r7']], df.y)"),
+    ])
+    assert "leakage-temporal-shuffle" in {f.flaw_id for f in run_static(notebook) if f.confidence >= 0.8}
