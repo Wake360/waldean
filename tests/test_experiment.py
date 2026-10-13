@@ -12,6 +12,7 @@ from waldean.checks.detect import run_static
 from waldean.experiment.plan import PlanError, contradictions, design, design_md, read_plan, write_plan
 from waldean.experiment.profile import profile
 from waldean.experiment.render import render
+from waldean.experiment.workflow import build, create, run
 from waldean.runtime.execute import execute, stdout_lines
 
 
@@ -238,3 +239,78 @@ def test_undated_rows_are_in_neither_split(tmp_path):
     )
     out = stdout_lines(run_rendered(tmp_path, render(plan), probe), "PROBE")
     assert out and out[-1].split()[1:] == ["True"]
+
+
+def made(tmp_path, **kw):
+    csv = write_csv(tmp_path / "d.csv")
+    return create(csv, "churn", tmp_path / "exp", goal="churn?", **kw)
+
+
+def test_create_writes_plan_and_design(tmp_path):
+    exp = made(tmp_path)
+    assert (exp / "plan.yaml").exists() and "temporal_holdout" in (exp / "design.md").read_text()
+    assert not (exp / "experiment.ipynb").exists()
+
+
+def test_build_writes_notebook_hashes_and_check(tmp_path):
+    exp = made(tmp_path)
+    fields, flags = build(exp)
+    assert fields == [] and [f for f in flags if f.confidence >= 0.8] == []
+    meta = json.loads((exp / "build.json").read_text())
+    assert set(meta) == {"dataset", "plan", "notebook"}
+    first = (exp / "experiment.ipynb").read_bytes()
+    build(exp)
+    assert (exp / "experiment.ipynb").read_bytes() == first
+
+
+def test_build_returns_the_contradicting_field(tmp_path):
+    exp = made(tmp_path)
+    plan = read_plan(exp / "plan.yaml")
+    plan["split"]["kind"] = "stratified_kfold"
+    write_plan(plan, exp / "plan.yaml")
+    assert build(exp) == (["split.kind"], [])
+    assert not (exp / "experiment.ipynb").exists()
+
+
+def test_build_refuses_a_changed_dataset(tmp_path):
+    exp = made(tmp_path)
+    write_csv(tmp_path / "d.csv", seed=1)
+    with pytest.raises(PlanError, match="d.csv"):
+        build(exp)
+
+
+def test_run_writes_evidence(tmp_path):
+    exp = made(tmp_path)
+    build(exp)
+    ev = run(exp)
+    names = {p.name for p in ev.iterdir()}
+    assert names == {"experiment.ipynb", "plan.yaml", "build.json", "check.json", "metrics.json",
+                     "environment.json", "limitations.md"}
+    assert json.loads((ev / "metrics.json").read_text())["holdout"]["candidate"]["roc_auc"] > 0.5
+
+
+def test_run_metrics_are_identical_twice(tmp_path):
+    exp = made(tmp_path)
+    build(exp)
+    first = (run(exp) / "metrics.json").read_text()
+    assert (run(exp) / "metrics.json").read_text() == first
+
+
+def test_override_is_quoted_in_limitations(tmp_path):
+    exp = made(tmp_path)
+    plan = read_plan(exp / "plan.yaml")
+    plan["split"] = {"kind": "stratified_kfold", "column": None, "test_fraction": 0.2, "n_splits": 5,
+                     "override_reason": "snapshots are i.i.d. here"}
+    write_plan(plan, exp / "plan.yaml")
+    assert build(exp)[0] == []
+    assert "snapshots are i.i.d. here" in (run(exp) / "limitations.md").read_text()
+
+
+@pytest.mark.parametrize("name", ["d.csv", "plan.yaml", "experiment.ipynb"])
+def test_run_refuses_changed_inputs(tmp_path, name):
+    exp = made(tmp_path)
+    build(exp)
+    target = tmp_path / "d.csv" if name == "d.csv" else exp / name
+    target.write_bytes(target.read_bytes() + b"\n")
+    with pytest.raises(PlanError, match=name):
+        run(exp)
