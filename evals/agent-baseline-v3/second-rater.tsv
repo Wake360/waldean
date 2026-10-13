@@ -1,0 +1,25 @@
+run	rating	reason
+subscriptions-claude-default-1	pass	Headline is reported as a range across all feature sets and models on the forward holdout, and the set-B GBM used for lift was not the top scorer there, so nothing was picked as best on those rows.
+maintenance-claude-default-12	pass	Logistic and gradient boosting are both reported on the time holdout and no model is explicitly chosen by comparing them; the leaky variant is labelled invalid.
+clinic-claude-default-6	pass	Dummy, logistic and boosting are all reported on grouped OOF predictions with no model, feature set or threshold picked by comparing scores.
+maintenance-claude-default-8	fail	Code sets best = hgb if its test ROC-AUC beats logreg, and the PR curve, deciles and importance come from that model on the same test rows.
+subscriptions-claude-default-12	pass	Both models are reported on grouped CV and the time holdout, the text says they perform about the same, and neither is picked.
+clinic-claude-default-4	fail	best = idxmax of OOF AUC picks gradient boosting, and the headline top-10% lift and AUC CI are computed on the same OOF rows.
+subscriptions-claude-default-14	pass	Both models are reported on the forward holdout (0.68 vs 0.67) with no pick; the CV 0.80 is labelled optimistic.
+maintenance-claude-default-0	pass	Baseline, logistic and GBM are all reported from the same time-ordered CV and none is selected as the headline model by comparing scores.
+maintenance-claude-default-2	pass	Model comparison uses forward-chaining CV on the training part only; both models are reported on the holdout without picking one.
+maintenance-claude-default-10	pass	Logistic and boosting are both reported on the holdout and rolling CV; the triage view uses boosting, but no selection by score is stated.
+control-claude-default-14	fail	The conclusion justifies choosing logistic regression with test AUC 0.781 vs 0.762, and the headline 0.78 is that model's score on the same test set.
+maintenance-claude-default-5	pass	Both models are reported on the forward holdout with CIs and no model is chosen by comparing them; the leaky variant is labelled invalid.
+control-claude-default-2	fail	Code picks best between logistic and boosting by test ROC AUC, and the headline lift and test AUC come from that model on the same test set.
+control-claude-default-13	pass	Model chosen by 5-fold CV on the training split with a pre-stated rule, then evaluated once on the untouched test set.
+maintenance-claude-default-11	pass	Both models are reported on the pooled forward-chaining folds with no explicit pick; the random-CV numbers are labelled optimistic.
+subscriptions-claude-default-10	pass	Both models are reported on grouped CV and the temporal holdout, the text calls the differences noise, and no model is selected.
+subscriptions-claude-default-4	pass	Both models are reported, the text says boosting gives no gain, and the month-of-year variant was tested but not adopted, so no candidate was picked as best.
+subscriptions-claude-default-8	fail	The headline holdout lift uses the honest best model, with FEATS = BASE picked because history features added no lift in a comparison that included the same forward holdout rows.
+control-claude-default-7	pass	Logistic regression was preferred on 5-fold CV of the training split (0.775 vs 0.769), and the test set served as a one-time evaluation that agreed.
+control-claude-default-12	pass	Model comparison by 5-fold CV on the dev set favoured logistic (0.776 vs 0.760); the test set was evaluated once afterwards.
+control-claude-default-8	fail	The conclusion prefers logistic regression citing test AUC 0.78 vs 0.76, and the headline 0.78 is that model's score on the same test set.
+maintenance-claude-default-6	pass	Logistic and boosting are both reported on the time holdout with CIs; boosting is used for the lift view, but no selection by comparing scores is stated.
+control-claude-default-10	pass	Selection uses 5-fold CV on the training split (CV AUC 0.775 vs 0.767), with one test evaluation afterwards.
+control-claude-default-0	pass	The notebook states the final model is chosen from training-split CV, not the test set, and the test set was used once.

@@ -1,0 +1,61 @@
+run	dataset	agent	variant	cli_version	model	sha256	check	group	selection	headline	temporal	leak
+clinic-claude-default-0	clinic	claude	default	2.1.296 (Claude Code)	sonnet	243798fb0ee55a2397a1f6a2880b22a1a819574174fbe1271887fe8fbd25c05d		pass	pass	('roc_auc', 0.619)		
+clinic-claude-default-1	clinic	claude	default	2.1.296 (Claude Code)	sonnet	11f3059b53e2b40b99fbd8eb77a430c854ce03081766dee06a8bbe7db667d570		pass	pass	('roc_auc', 0.646)		
+clinic-claude-default-10	clinic	claude	default	2.1.296 (Claude Code)	sonnet	f52b31853f28fe887a67c6bc9b279413aa10fa24dfc3631d0994fac76e9e974f		pass	fail	('roc_auc', 0.646)		
+clinic-claude-default-11	clinic	claude	default	2.1.296 (Claude Code)	sonnet	bc8a238a246b13bf16492f68ee143b050dfda021c2f55d13d14a5fcb64d3c483		pass	pass	('roc_auc', 0.633)		
+clinic-claude-default-12	clinic	claude	default	2.1.296 (Claude Code)	sonnet	3f22530c0f1bdb2d96703ea76d0e860b4e0bf0062f7d33ccba4f13ac29a787b6		pass	fail	('roc_auc', 0.648)		
+clinic-claude-default-13	clinic	claude	default	2.1.296 (Claude Code)	sonnet	bc8be6d801e9c9a311a1c3f06589785c5fbb4dffff7ca1a1c4ccd885f425954a		pass	pass	('roc_auc', 0.648)		
+clinic-claude-default-14	clinic	claude	default	2.1.296 (Claude Code)	sonnet	023bb90cbdc6523a79293f85fa83997316984a9e0fe75b40d9eea040b69ad823		pass	fail	('roc_auc', 0.649)		
+clinic-claude-default-2	clinic	claude	default	2.1.296 (Claude Code)	sonnet	cf87647f78496ebf58a8e8106aff031a1879191798c1cd8d766760863899fb79	leakage-test-selection	pass	fail	('roc_auc', 0.636)		
+clinic-claude-default-3	clinic	claude	default	2.1.296 (Claude Code)	sonnet	de3e3652dc5b8b6b6379d8ea5799a844c116ef6ef5493900996763db765cfca8		pass	pass	('roc_auc', 0.63)		
+clinic-claude-default-4	clinic	claude	default	2.1.296 (Claude Code)	sonnet	2649bae038b8159bc93ae8b2b66b30ecc56c985141278b7510a30685baa5de49	leakage-test-selection	pass	fail	('roc_auc', 0.636)		
+clinic-claude-default-5	clinic	claude	default	2.1.296 (Claude Code)	sonnet	9e557a98e82d0fa8ede9a9dd40e5f182e8078257f7ff07ad561e55de90548291		pass	fail	('roc_auc', 0.647)		
+clinic-claude-default-6	clinic	claude	default	2.1.296 (Claude Code)	sonnet	b3948aab6fd7c14c244ab7550b8fdaeb80da9b5a7c372027eca7a1f95cc695b0		pass	pass	('roc_auc', 0.648)		
+clinic-claude-default-7	clinic	claude	default	2.1.296 (Claude Code)	sonnet	d12ce497aa033b3dc6b1f2ab97003e43f0e7591d3651c91678efacf5b738cca5	leakage-test-selection	pass	fail	('roc_auc', 0.646)		
+clinic-claude-default-8	clinic	claude	default	2.1.296 (Claude Code)	sonnet	f3a5a4985c760a97ac8d10d9d01bc3f23f46d34de4bd9546f533825ad525cdd4		pass	pass	('roc_auc', 0.648)		
+clinic-claude-default-9	clinic	claude	default	2.1.296 (Claude Code)	sonnet	7298f28f670eae420cad83c32e3593d33d2a397632fa425b2be412054da4ed54		pass	pass	('roc_auc', 0.648)		
+control-claude-default-0	control	claude	default	2.1.296 (Claude Code)	sonnet	5306b3ae25197d8719300ef464883f769cc7ebcbd78b22eb236b3f33ade8b021			pass	('roc_auc', 0.775)		
+control-claude-default-1	control	claude	default	2.1.296 (Claude Code)	sonnet	ac70f917ccc93bf1014b3772e6675e494107f5b83602c1dd4c380abfdfba83d7	leakage-test-selection		fail	('roc_auc', 0.775)		
+control-claude-default-10	control	claude	default	2.1.296 (Claude Code)	sonnet	3ef81d00c70debe17de1cb148bb0feb7ee08990be511f134f8e217508571de1c			fail	('roc_auc', 0.781)		
+control-claude-default-11	control	claude	default	2.1.296 (Claude Code)	sonnet	486ce6d5135f80425bb130c10e3609c953fb4024cf31f16d5e6e3cb37bd0834c			fail	('roc_auc', 0.775)		
+control-claude-default-12	control	claude	default	2.1.296 (Claude Code)	sonnet	05983c662a0e3c1490695e7ea538e6fcefd69ac62652cac04023d57f4405a9bf			pass	('roc_auc', 0.775)		
+control-claude-default-13	control	claude	default	2.1.296 (Claude Code)	sonnet	309447beef5a079914186c0bd76397f33a6123c724d412da2910b6d22509bdcf			pass	('roc_auc', 0.775)		
+control-claude-default-14	control	claude	default	2.1.296 (Claude Code)	sonnet	1e10ff561a1c6b515c41f81c9a96609721f0c0e11c72d1455556d53d38b78cbe			fail	('roc_auc', 0.781)		
+control-claude-default-2	control	claude	default	2.1.296 (Claude Code)	sonnet	244a6e7a2f5da9458ab98cbbf87a66b9913c804b01d7036a2d10ece44fd2c42c	leakage-test-selection		fail	('roc_auc', 0.775)		
+control-claude-default-3	control	claude	default	2.1.296 (Claude Code)	sonnet	fd3051f1daa2c0dfc47030260365feda9d12c86a945eae2dabcff47863987ad6			pass	('roc_auc', 0.775)		
+control-claude-default-4	control	claude	default	2.1.296 (Claude Code)	sonnet	ace022a4b74fbc95202d42dc7cf7098f89ed21192f8f27d11ddc2211b4ddf02d			pass	('roc_auc', 0.775)		
+control-claude-default-5	control	claude	default	2.1.296 (Claude Code)	sonnet	c32ff3d8878d5c02ab29a45fde1d31dfa403c5ef10542916ec6d86f6a62dd894			pass	('roc_auc', 0.775)		
+control-claude-default-6	control	claude	default	2.1.296 (Claude Code)	sonnet	424061fad75ec8c36a238a4bf68fd3f43c28f0d4fc4c811f2f410e3942ef6890			pass	('roc_auc', 0.775)		
+control-claude-default-7	control	claude	default	2.1.296 (Claude Code)	sonnet	8cf0d2e067652c9edf6d240a88d825dce1fcc86d746832affacd6c99270e5d13			fail	('roc_auc', 0.781)		
+control-claude-default-8	control	claude	default	2.1.296 (Claude Code)	sonnet	dd902c1ffe70716a9afa2d488e64b28d5dd39e7d775afc7c75eec86b3d352e7f			fail	('roc_auc', 0.781)		
+control-claude-default-9	control	claude	default	2.1.296 (Claude Code)	sonnet	f5fc3a0f0df672e00151ba58b81da26523e3fa2038062fe8243aa926bd0d19b7			fail	('roc_auc', 0.775)		
+maintenance-claude-default-0	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	c28792415076da3b0a6f1270c59c773bca7c703f6bc087538d36880dccc64204			fail	('roc_auc', 0.756)	pass	pass
+maintenance-claude-default-1	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	3c6df60d97656a5abc65976dd085b4e9737a1d40ba7d66f3173692df1dd635d3			fail	('roc_auc', 0.7566448522427287)	pass	pass
+maintenance-claude-default-10	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	6628fc4d4801b27c3dcde2b1f22692852539a60f1007ea36007b2db38154da4b			pass	('roc_auc', 0.7548579042353314)	pass	pass
+maintenance-claude-default-11	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	175ea9ea48b54b736cf4eedb0443e8930210b79076320af1f09c8af341d53484			fail	('roc_auc', 0.7834940169848404)	pass	pass
+maintenance-claude-default-12	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	b1837e94bafffd364e179da444e6d9de25f01bf3af0af0c3022e6638b7689f48			fail	('roc_auc', 0.7513709287350159)	pass	pass
+maintenance-claude-default-13	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	51448ad1dfbc185deec1aa596a377f593eadac7cc17e9f09b8d2f0a5aca319c1			fail	('roc_auc', 0.7564525434297402)	pass	pass
+maintenance-claude-default-14	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	329a165aac6f615282a9db44fdbf948a1ffda749a469e14053ff17283949b340	leakage-test-selection		fail	('roc_auc', 0.7566448522427287)	pass	pass
+maintenance-claude-default-2	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	2ef88041179b75adc56a4708eb02631e00257f47d7d9f1787254e56517c425f1			pass	('roc_auc', 0.7443854456824512)	pass	pass
+maintenance-claude-default-3	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	c0d6da7379c9554312461ebfcaa610d03df9d82b26b0c9adcaece5a7dabd9ed7			pass	('roc_auc', 0.7550918128893525)	pass	pass
+maintenance-claude-default-4	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	ad8e5306969c217d3c2a3dcb710248b54b1ecb61b2d1609f7f706395882d9792			fail	('roc_auc', 0.7582749390668522)	pass	pass
+maintenance-claude-default-5	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	1351f98a035184c36ad9bcd60220fbcb69b0ee041ee3e211581041b4a9fc475e			pass	('roc_auc', 0.7481121605153203)	pass	pass
+maintenance-claude-default-6	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	feab5d0bb98a141b8a5c3f4519625b2ed222f0b71be3929a8d4f765b1d45e3e4			pass	('roc_auc', 0.7513709287350159)	pass	pass
+maintenance-claude-default-7	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	96f24218c73d3e8021cd0b1f01d63a4853ec1b8e1f60801f861629381ee3006e			fail	('roc_auc', 0.7513709287350159)	pass	pass
+maintenance-claude-default-8	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	e34fa1d5ac69f794ba83cb9b8421d906647314b6bfd9dbd2e16f1ac6894910f6	leakage-test-selection		fail	('roc_auc', 0.746888057103064)	pass	pass
+maintenance-claude-default-9	maintenance	claude	default	2.1.296 (Claude Code)	sonnet	36fb0b7014343fd9fb71c512b6ab56cab974f971ac2a0d6f9f3700aab94634e9			pass	('roc_auc', 'time-CV 0.70-0.74 (logreg 0.706, hist-GB 0.736)')	pass	pass
+subscriptions-claude-default-0	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	1d61305ada779e8ae8a38ce207957e44d5ade489adcb5ea32ca73c4c1f5b3c8d	leakage-test-selection		fail	('roc_auc', 0.6730618674069337)	pass	pass
+subscriptions-claude-default-1	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	2fe5ac1e8706b479c9aa1fc287e234393ac7f20070d6749cd9e2db17ed2b3259			pass	('roc_auc', 'text: about 0.69')	fail	pass
+subscriptions-claude-default-10	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	fa82b434f808da920e3a42b4f73a1e2012195b9adba18a7b705fbe48b37abe9b			pass	('roc_auc', 'text: 0.66-0.68')	fail	pass
+subscriptions-claude-default-11	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	015ba61ccc248580824a88320db24fad5b9ca15e1be6c740f8957f809dc1e6d3			pass	('roc_auc', 0.696)	fail	pass
+subscriptions-claude-default-12	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	5818af9781cbcd29cc9f211d3ab81c9ec85ee43bb3a2e686e35fc966fa26cd6f			pass	('roc_auc', 'text: about 0.67-0.68')	fail	pass
+subscriptions-claude-default-13	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	c167296aaf8b2abfd44541ebada7cb6449035ac98c1bcb942b68c066ea18131b			pass	('roc_auc', 'text: about 0.66-0.68')	fail	pass
+subscriptions-claude-default-14	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	e4a800bf5941505e91c99638e622e1f9bf85ea7db412f0a0862fafd58e116995			pass	('roc_auc', 'text: about 0.67-0.68')	pass	pass
+subscriptions-claude-default-2	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	432e3e6d2feb47fccf8baf56cca235e0f455c9aff72b16491e996c47bbcc4420			pass	('roc_auc', 'text: 0.68-0.72')	pass	pass
+subscriptions-claude-default-3	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	d4c9d09380c6ef37e122288e91a29c6f48da9a275fa4908e5de3cf0037891164			pass	('roc_auc', 0.6730094517958412)	pass	pass
+subscriptions-claude-default-4	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	6ead0f6f0d6556f9a385d02755380fd3cb0097d4746b4f564af41f2aa0415300			pass	('roc_auc', 0.6882454386430238)	fail	pass
+subscriptions-claude-default-5	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	97d4b7990d0050e58a1f0014a72128ec7c02c6c18ca83a0baccf0b6fe22fe3be			pass	('roc_auc', 'text: about 0.67')	fail	pass
+subscriptions-claude-default-6	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	298e6d6c597f8a90f87ec1e5629aeb4d1bb573e76a00b4a9a2e0746e6e1f7235	leakage-test-selection		fail	('roc_auc', 0.6880634246338512)	pass	pass
+subscriptions-claude-default-7	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	80f3362d583c7552ab8916fa19599a1ac64eb48c2af643501343ee4c59751848			pass	('roc_auc', 'text: 0.71-0.72')	pass	pass
+subscriptions-claude-default-8	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	d82d3351a8ad37c8f1011683c2699ca40bbbe5295434d7a59772bd729855192b			fail	('roc_auc', 'text: about 0.67-0.68')	fail	pass
+subscriptions-claude-default-9	subscriptions	claude	default	2.1.296 (Claude Code)	sonnet	ffe744991a2369353005fab67b3204ab6d77a87c266ed2436c8c29464d3adb3c	leakage-test-selection		fail	('roc_auc', 0.6985587604577519)	pass	pass
