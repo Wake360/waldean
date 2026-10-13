@@ -27,7 +27,6 @@ ROOT = Path(__file__).resolve().parent.parent
 BENCH = ROOT / "evals" / "agent-baseline"
 MANIFEST = BENCH / "MANIFEST.json"
 SCORING = BENCH / "scoring.tsv"
-VARIANTS = (("default", 0), ("default", 1), ("hinted", 0))
 AGENT_ROOT = Path("/private/tmp/waldean-agent-baseline")
 AGENT_KERNEL = "waldean-agent-baseline"
 CLAUDE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit",
@@ -66,6 +65,8 @@ def prepared(name: str, raw: bytes) -> pd.DataFrame:
 
 def cmd_prep(args) -> int:
     m = manifest()
+    if m["schema"] >= 2:
+        return check_generated(args, m)
     args.data.mkdir(parents=True, exist_ok=True)
     changed = False
     for d in m["datasets"]:
@@ -84,6 +85,21 @@ def cmd_prep(args) -> int:
     if changed:
         MANIFEST.write_text(json.dumps(m, indent=2) + "\n", encoding="utf-8")
     return 0
+
+
+def check_generated(args, m: dict) -> int:
+    for d in m["datasets"]:
+        for name, key in (("data.csv", "csv_sha256"), ("columns.csv", "columns_sha256")):
+            digest = sha256(args.data / d["name"] / name)
+            if digest != d[key]:
+                print(f"{d['name']}/{name}: sha256 {digest} != manifest {d[key]}", file=sys.stderr)
+                return 3
+        print(d["name"], "ok")
+    return 0
+
+
+def variants(m: dict) -> list[tuple[str, int]]:
+    return [(variant, n) for variant, count in m["runs_per_cell"].items() for n in range(count)]
 
 
 def prompt(m: dict, d: dict, variant: str) -> str:
@@ -138,7 +154,7 @@ def cmd_run(args) -> int:
               file=sys.stderr)
         return 3
     jobs = [(d, agent, variant, n) for d in m["datasets"] if not args.only or d["name"] in args.only
-            for agent in m["agents"] for variant, n in VARIANTS if variant == "default" or d["hint"]]
+            for agent in m["agents"] for variant, n in variants(m) if variant == "default" or d.get("hint")]
     codex_home = Path(tempfile.mkdtemp(prefix="waldean-codex-home-"))
     (codex_home / "auth.json").symlink_to(Path.home() / ".codex" / "auth.json")
     try:
@@ -154,7 +170,11 @@ def run_one(args, m: dict, codex_home: Path, d: dict, agent: str, variant: str, 
     if (run_dir / "meta.json").exists() or run_dir.is_symlink():
         return
     run_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(args.data / f"{d['name']}.csv", run_dir / "data.csv")
+    if "run_files" in m:
+        for name in m["run_files"]:
+            shutil.copyfile(args.data / d["name"] / name, run_dir / name)
+    else:
+        shutil.copyfile(args.data / f"{d['name']}.csv", run_dir / "data.csv")
     text = prompt(m, d, variant)
     cmd, env = agent_command(agent, m, text, codex_home, args.python)
     start = time.time()
@@ -210,6 +230,28 @@ def probe(d: dict, nb, run_dir: Path, digest: str, reviewed: tuple[str, str] | N
     return "pass" if lines and lines[-1].split()[-1] == "True" else "fail"
 
 
+def probes(d: dict, nb, run_dir: Path, digest: str, reviewed: tuple[str, str] | None, timeout: int) -> dict:
+    crits = d["criteria"]
+    if reviewed is None or reviewed[0] != digest:
+        return {c: "unbound" if reviewed is None else "unreviewed" for c in crits}
+    code = "\n".join([reviewed[1], *(src.replace("print('PROBE',", f"print('PROBE:{c}',") for c, src in crits.items()),
+                      "print('HEADLINE:', globals().get('HEADLINE'))"])
+    nb = with_appended_code_cell(nb, code)
+    try:
+        with scrubbed_env():
+            NotebookClient(nb, timeout=timeout, kernel_name=AGENT_KERNEL,
+                           resources={"metadata": {"path": str(run_dir)}}).execute()
+    except Exception as exc:
+        return {c: f"error:{type(exc).__name__}" for c in crits}
+    out = {}
+    for c in crits:
+        lines = stdout_lines(nb, f"PROBE:{c} ")
+        out[c] = "pass" if lines and lines[-1].split()[-1] == "True" else "fail"
+    headline = stdout_lines(nb, "HEADLINE:")
+    out["headline"] = headline[-1].removeprefix("HEADLINE:").strip() if headline else ""
+    return out
+
+
 def cmd_score(args) -> int:
     m = manifest()
     by_name = {d["name"]: d for d in m["datasets"]}
@@ -227,7 +269,11 @@ def cmd_score(args) -> int:
         d = by_name[meta["dataset"]]
         row = {"run": run, **{k: meta[k] for k in ("dataset", "agent", "variant", "cli_version", "model")}}
         if not nb_path.exists():
-            row.update(sha256="", probe="fail:no-notebook", check="")
+            row.update(sha256="", check="")
+            if "criteria" in d:
+                row.update({c: "fail:no-notebook" for c in d["criteria"]})
+            else:
+                row["probe"] = "fail:no-notebook"
         else:
             raw = read_own(nb_path)
             digest = hashlib.sha256(raw).hexdigest()
@@ -238,16 +284,20 @@ def cmd_score(args) -> int:
             nbformat.write(nb, stripped / f"{run}.ipynb")
             row["sha256"] = digest
             row["check"] = ",".join(waldean_check(stripped / f"{run}.ipynb"))
-            row["probe"] = "n/a" if not d["criterion"] else probe(
-                d, nb, meta_path.parent, digest, bound.get(run), args.timeout)
+            if "criteria" in d:
+                row.update(probes(d, nb, meta_path.parent, digest, bound.get(run), args.timeout))
+            else:
+                row["probe"] = "n/a" if not d["criterion"] else probe(
+                    d, nb, meta_path.parent, digest, bound.get(run), args.timeout)
         rows.append(row)
-        print(run, row["probe"], row["check"], flush=True)
+        print(run, {k: v for k, v in row.items() if k not in ("dataset", "agent", "variant", "cli_version", "model")},
+              flush=True)
     with (BENCH / "results.tsv").open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0]), delimiter="\t")
+        w = csv.DictWriter(f, fieldnames=list(dict.fromkeys(k for r in rows for k in r)), delimiter="\t", restval="")
         w.writeheader()
         w.writerows(rows)
-    report = ROOT / "evals" / f"{date.today().isoformat()}-agent-baseline.md"
-    report.write_text(render(m, rows), encoding="utf-8")
+    report = ROOT / "evals" / f"{date.today().isoformat()}-{BENCH.name}.md"
+    report.write_text(render_v2(m, rows) if m["schema"] >= 2 else render(m, rows), encoding="utf-8")
     print("wrote", report)
     return 0
 
@@ -282,18 +332,63 @@ def render(m: dict, rows: list[dict]) -> str:
     return "\n".join(out)
 
 
+def gate_v2(fails: int, total: int, open_runs: int) -> str:
+    if open_runs or total == 0:
+        return "incomplete"
+    return "builder rule" if fails >= 2 and fails >= 0.2 * total else "solved by agents"
+
+
+def render_v2(m: dict, rows: list[dict]) -> str:
+    crits = list(m["criteria"])
+    agents = list(m["agents"])
+    out = [f"# Agent baseline v2, {date.today().isoformat()}", "",
+           "Indicative only. Pre-registered criteria and gate in `agent-baseline-v2/MANIFEST.json`.", "",
+           "| criterion | datasets | " + " | ".join(f"{a} fail" for a in agents) + " | failure rate | gate |",
+           "|---|---|" + "---|" * len(agents) + "---|---|"]
+    for c in crits:
+        mine = [r for r in rows if r.get(c)]
+        fails = [r for r in mine if r[c] != "pass"]
+        open_runs = sum(r[c] in ("unbound", "unreviewed") for r in mine)
+        names = ", ".join(dict.fromkeys(r["dataset"] for r in mine))
+        per_agent = [f"{sum(r['agent'] == a for r in fails)}/{sum(r['agent'] == a for r in mine)}" for a in agents]
+        rate = f"{len(fails) / len(mine):.0%}" if mine else "-"
+        out.append(f"| {c} | {names} | " + " | ".join(per_agent) + f" | {rate} | {gate_v2(len(fails), len(mine), open_runs)} |")
+    out += ["", "## Per dataset", "", "| dataset | criterion | " + " | ".join(f"{a} pass" for a in agents) + " |",
+            "|---|---|" + "---|" * len(agents)]
+    for d in m["datasets"]:
+        for c in d["criteria"]:
+            mine = [r for r in rows if r["dataset"] == d["name"]]
+            out.append(f"| {d['name']} | {c} | " + " | ".join(
+                f"{sum(r.get(c) == 'pass' for r in mine if r['agent'] == a)}/{sum(r['agent'] == a for r in mine)}"
+                for a in agents) + " |")
+    out += ["", "## Runs", "", "| run | cli | " + " | ".join(crits) + " | headline | waldean check (confident) |",
+            "|---|---|" + "---|" * len(crits) + "---|---|"]
+    out += [f"| {r['run']} | {r['cli_version']} | " + " | ".join(r.get(c) or "n/a" for c in crits)
+            + f" | {r.get('headline') or '-'} | {r['check'] or '-'} |" for r in rows]
+    out += ["", "## Prompt", "", f"`{m['prompt']}`", ""]
+    return "\n".join(out)
+
+
 def main() -> int:
+    global BENCH, MANIFEST, SCORING
     p = argparse.ArgumentParser(prog="agent_baseline")
     sub = p.add_subparsers(dest="cmd", required=True)
     for name in ("prep", "run", "score"):
         s = sub.add_parser(name)
-        s.add_argument("--data", type=Path, default=ROOT / "scratch" / "agent-baseline" / "data")
-        s.add_argument("--runs", type=Path, default=AGENT_ROOT / "runs")
+        s.add_argument("--bench", default="agent-baseline")
+        s.add_argument("--data", type=Path)
+        s.add_argument("--runs", type=Path)
         s.add_argument("--python", type=Path, default=AGENT_ROOT / "venv" / "bin")
         s.add_argument("--only", nargs="*")
         s.add_argument("--timeout", type=int, default=1800)
         s.add_argument("--jobs", type=int, default=4)
     args = p.parse_args()
+    BENCH = ROOT / "evals" / args.bench
+    MANIFEST = BENCH / "MANIFEST.json"
+    SCORING = BENCH / "scoring.tsv"
+    suffix = args.bench.removeprefix("agent-baseline")
+    args.data = args.data or ROOT / "scratch" / args.bench / "data"
+    args.runs = args.runs or AGENT_ROOT / f"runs{suffix}"
     return {"prep": cmd_prep, "run": cmd_run, "score": cmd_score}[args.cmd](args)
 
 
