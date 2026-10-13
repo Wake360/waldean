@@ -13,13 +13,14 @@ Detection quality is then a confusion matrix per flaw class, not an opinion:
 
 | class (static layer) | mutants | TP | FN | FP | precision | recall |
 |---|---|---|---|---|---|---|
-| leakage-fit-before-split | 24 | 24 | 0 | 0 | 1.00 | 1.00 |
+| leakage-fit-before-split | 48 | 48 | 0 | 0 | 1.00 | 1.00 |
 | leakage-temporal-shuffle | 16 | 16 | 0 | 0 | 1.00 | 1.00 |
+| leakage-test-selection | 16 | 16 | 0 | 0 | 1.00 | 1.00 |
 | testing-multiple-uncorrected | 96 | 96 | 0 | 0 | 1.00 | 1.00 |
 | baserate-accuracy-imbalanced | 8 | 8 | 0 | 0 | 1.00 | 1.00 |
 | selection-survivorship-cohort (candidate) | 16 | 16 | 0 | — | — | 1.00 |
 
-False-positive rate on the 83-notebook clean corpus (56 synthetic + 27
+False-positive rate on the 91-notebook clean corpus (64 synthetic + 27
 hand-reviewed real notebooks from Apache-2.0/MIT repositories): **0.0%**.
 The 27 real notebooks also shaped the static layer during dogfood (the
 rebuild described below), so this is not an out-of-sample test for them —
@@ -30,11 +31,15 @@ training set before `cross_val_score`, which a later review judged a real
 leak (`evals/2026-07-08-llm-dogfood-subscription.md`). The static layer
 reports those sites as 0.75 candidates, so they do not count against the
 0.0%.
-192/192 mutants passed mechanical verification at build; 0 discarded.
-32 of the 192 are narrative-only mutants (regression-to-mean-claim,
+232/232 mutants passed mechanical verification at build; 0 discarded.
+Half of the fit-before-split mutants are a hand-written z-score over the
+full frame (verified by the all-rows mean and unit standard deviation of
+the pre-split matrix), the other half a scaler fit on the full frame
+(verified by `n_samples_seen_`).
+32 of the 232 are narrative-only mutants (regression-to-mean-claim,
 significance-meaningless); they are scored by the `--llm` eval, not by
 this table, and no numbers are claimed for them until its gates run.
-(Eval 2026-07-05, `evals/2026-07-05-eval.json`.)
+(Eval 2026-10-13, `evals/2026-10-13-eval.json`.)
 
 Reproduce: `waldean corpus build && waldean eval`. Dated reports live in `evals/`.
 Set `WALDEAN_BUILD_DATE=YYYY-MM-DD` to pin the manifest/report date for a byte-identical rebuild.

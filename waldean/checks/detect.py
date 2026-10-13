@@ -67,6 +67,11 @@ TRANSFORMER_CLASSES = {
 NON_LEAKY_TRANSFORMERS = {"LabelEncoder", "LabelBinarizer"}
 
 
+STAT_METHODS = {"mean", "median", "std", "var", "min", "max", "quantile", "mode"}
+GROUP_STAT_RE = re.compile(r"\b(?:mean|median|std|var|min|max|mode)\b")
+COMPARE_RE = re.compile(r"[<>!=]=|[<>]")
+
+
 # cross-validation calls are evaluation sinks too: a transformer fitted on
 # the full data whose output feeds CV has seen every fold's test rows
 CV_SINKS = {"cross_val_score", "cross_val_predict", "cross_validate"}
@@ -390,6 +395,41 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                         f"(cell {sink.cell}); imputation statistics include the test rows"
                     ), key=f"impute:{base}")
                     break
+
+    src = {c.index: c.source.splitlines() for c in nb.code_cells}
+    for ev in flow.assigns:
+        end = max(ev.end_line, ev.line)
+        text = "\n".join(src.get(ev.cell, [])[ev.line - 1:end])
+        if COMPARE_RE.search(text):
+            continue
+        for base in ev.targets & ev.sources:
+            stats = [
+                c for c in flow.calls
+                if c.cell == ev.cell and ev.line <= c.line <= end and c.receiver_base == base and (
+                    (c.name in STAT_METHODS and c.receiver is not None and "(" not in c.receiver)
+                    or (c.name in {"transform", "apply"} and c.receiver is not None
+                        and c.receiver.startswith(f"{base}.groupby") and GROUP_STAT_RE.search(text))
+                )
+            ]
+            if not stats:
+                continue
+            stat = stats[0]
+            for sink, chain_ids, _bindings in chains:
+                if id(ev) not in chain_ids:
+                    continue
+                if sink.name == "train_test_split":
+                    emit(stat, 0.85, {base}, (
+                        f"`{stat.func}(...)` is computed over the full `{base}` and written back "
+                        f"into `{base}` before `train_test_split` (cell {sink.cell}); "
+                        f"the statistic includes the test rows"
+                    ), key=f"impute:{base}")
+                else:
+                    emit(stat, 0.75, {base}, (
+                        f"`{stat.func}(...)` is computed over the full `{base}` and written back "
+                        f"into `{base}` whose rows feed `{sink.name}` (cell {sink.cell}); "
+                        f"every CV fold's test rows were in the statistic"
+                    ), key=f"impute:{base}", sink_cell=sink.cell)
+                break
 
     return list(best.values())
 

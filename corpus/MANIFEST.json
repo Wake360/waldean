@@ -395,7 +395,19 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1500,
+        "rows_in_statistic": 1500,
+        "total_rows": 1500
+      }
+    },
+    {
+      "file": "mutated/churn-s11__leakage-fit-before-split__m1.ipynb",
+      "base": "clean/churn-s11.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1500,
         "total_rows": 1500
       }
     },
@@ -465,7 +477,19 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1500,
+        "rows_in_statistic": 1500,
+        "total_rows": 1500
+      }
+    },
+    {
+      "file": "mutated/churn-s12__leakage-fit-before-split__m1.ipynb",
+      "base": "clean/churn-s12.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1500,
         "total_rows": 1500
       }
     },
@@ -535,7 +559,19 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1500,
+        "rows_in_statistic": 1500,
+        "total_rows": 1500
+      }
+    },
+    {
+      "file": "mutated/churn-s13__leakage-fit-before-split__m1.ipynb",
+      "base": "clean/churn-s13.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1500,
         "total_rows": 1500
       }
     },
@@ -605,7 +641,19 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1500,
+        "rows_in_statistic": 1500,
+        "total_rows": 1500
+      }
+    },
+    {
+      "file": "mutated/churn-s14__leakage-fit-before-split__m1.ipynb",
+      "base": "clean/churn-s14.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1500,
         "total_rows": 1500
       }
     },
@@ -891,7 +939,19 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 3000,
+        "rows_in_statistic": 3000,
+        "total_rows": 3000
+      }
+    },
+    {
+      "file": "mutated/fraud-s11__leakage-fit-before-split__m1.ipynb",
+      "base": "clean/fraud-s11.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 3000,
         "total_rows": 3000
       }
     },
@@ -939,7 +999,19 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 3000,
+        "rows_in_statistic": 3000,
+        "total_rows": 3000
+      }
+    },
+    {
+      "file": "mutated/fraud-s12__leakage-fit-before-split__m1.ipynb",
+      "base": "clean/fraud-s12.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 3000,
         "total_rows": 3000
       }
     },
@@ -987,7 +1059,19 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 3000,
+        "rows_in_statistic": 3000,
+        "total_rows": 3000
+      }
+    },
+    {
+      "file": "mutated/fraud-s13__leakage-fit-before-split__m1.ipynb",
+      "base": "clean/fraud-s13.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 3000,
         "total_rows": 3000
       }
     },
@@ -1035,7 +1119,19 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 3000,
+        "rows_in_statistic": 3000,
+        "total_rows": 3000
+      }
+    },
+    {
+      "file": "mutated/fraud-s14__leakage-fit-before-split__m1.ipynb",
+      "base": "clean/fraud-s14.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 3000,
         "total_rows": 3000
       }
     },
@@ -1083,7 +1179,19 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1800,
+        "rows_in_statistic": 1800,
+        "total_rows": 1800
+      }
+    },
+    {
+      "file": "mutated/housing-s11__leakage-fit-before-split__m1.ipynb",
+      "base": "clean/housing-s11.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1800,
         "total_rows": 1800
       }
     },
@@ -1119,7 +1227,19 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1800,
+        "rows_in_statistic": 1800,
+        "total_rows": 1800
+      }
+    },
+    {
+      "file": "mutated/housing-s12__leakage-fit-before-split__m1.ipynb",
+      "base": "clean/housing-s12.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1800,
         "total_rows": 1800
       }
     },
@@ -1155,7 +1275,19 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1800,
+        "rows_in_statistic": 1800,
+        "total_rows": 1800
+      }
+    },
+    {
+      "file": "mutated/housing-s13__leakage-fit-before-split__m1.ipynb",
+      "base": "clean/housing-s13.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1800,
         "total_rows": 1800
       }
     },
@@ -1191,7 +1323,19 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1800,
+        "rows_in_statistic": 1800,
+        "total_rows": 1800
+      }
+    },
+    {
+      "file": "mutated/housing-s14__leakage-fit-before-split__m1.ipynb",
+      "base": "clean/housing-s14.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1800,
         "total_rows": 1800
       }
     },
@@ -1739,7 +1883,19 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1500,
+        "rows_in_statistic": 1500,
+        "total_rows": 1500
+      }
+    },
+    {
+      "file": "mutated/churn-s21__leakage-fit-before-split__m3.ipynb",
+      "base": "clean/churn-s21.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1500,
         "total_rows": 1500
       }
     },
@@ -1809,7 +1965,19 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1500,
+        "rows_in_statistic": 1500,
+        "total_rows": 1500
+      }
+    },
+    {
+      "file": "mutated/churn-s22__leakage-fit-before-split__m3.ipynb",
+      "base": "clean/churn-s22.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1500,
         "total_rows": 1500
       }
     },
@@ -1879,7 +2047,19 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1500,
+        "rows_in_statistic": 1500,
+        "total_rows": 1500
+      }
+    },
+    {
+      "file": "mutated/churn-s23__leakage-fit-before-split__m3.ipynb",
+      "base": "clean/churn-s23.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1500,
         "total_rows": 1500
       }
     },
@@ -1949,7 +2129,19 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1500,
+        "rows_in_statistic": 1500,
+        "total_rows": 1500
+      }
+    },
+    {
+      "file": "mutated/churn-s24__leakage-fit-before-split__m3.ipynb",
+      "base": "clean/churn-s24.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1500,
         "total_rows": 1500
       }
     },
@@ -2235,7 +2427,19 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 3000,
+        "rows_in_statistic": 3000,
+        "total_rows": 3000
+      }
+    },
+    {
+      "file": "mutated/fraud-s21__leakage-fit-before-split__m3.ipynb",
+      "base": "clean/fraud-s21.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 3000,
         "total_rows": 3000
       }
     },
@@ -2283,7 +2487,19 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 3000,
+        "rows_in_statistic": 3000,
+        "total_rows": 3000
+      }
+    },
+    {
+      "file": "mutated/fraud-s22__leakage-fit-before-split__m3.ipynb",
+      "base": "clean/fraud-s22.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 3000,
         "total_rows": 3000
       }
     },
@@ -2331,7 +2547,19 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 3000,
+        "rows_in_statistic": 3000,
+        "total_rows": 3000
+      }
+    },
+    {
+      "file": "mutated/fraud-s23__leakage-fit-before-split__m3.ipynb",
+      "base": "clean/fraud-s23.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 3000,
         "total_rows": 3000
       }
     },
@@ -2379,7 +2607,19 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 3000,
+        "rows_in_statistic": 3000,
+        "total_rows": 3000
+      }
+    },
+    {
+      "file": "mutated/fraud-s24__leakage-fit-before-split__m3.ipynb",
+      "base": "clean/fraud-s24.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 3000,
         "total_rows": 3000
       }
     },
@@ -2427,7 +2667,19 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1800,
+        "rows_in_statistic": 1800,
+        "total_rows": 1800
+      }
+    },
+    {
+      "file": "mutated/housing-s21__leakage-fit-before-split__m3.ipynb",
+      "base": "clean/housing-s21.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1800,
         "total_rows": 1800
       }
     },
@@ -2463,7 +2715,19 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1800,
+        "rows_in_statistic": 1800,
+        "total_rows": 1800
+      }
+    },
+    {
+      "file": "mutated/housing-s22__leakage-fit-before-split__m3.ipynb",
+      "base": "clean/housing-s22.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1800,
         "total_rows": 1800
       }
     },
@@ -2499,7 +2763,19 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1800,
+        "rows_in_statistic": 1800,
+        "total_rows": 1800
+      }
+    },
+    {
+      "file": "mutated/housing-s23__leakage-fit-before-split__m3.ipynb",
+      "base": "clean/housing-s23.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1800,
         "total_rows": 1800
       }
     },
@@ -2535,7 +2811,19 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "scaler_samples_seen": 1800,
+        "rows_in_statistic": 1800,
+        "total_rows": 1800
+      }
+    },
+    {
+      "file": "mutated/housing-s24__leakage-fit-before-split__m3.ipynb",
+      "base": "clean/housing-s24.ipynb",
+      "flaw_id": "leakage-fit-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "rows_in_statistic": 1800,
         "total_rows": 1800
       }
     },

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `leakage-fit-before-split` also flags a column or frame written back with a statistic of its own full rows (`(df[c] - df[c].mean()) / df[c].std()`, `df[c] / df[c].max()`, `groupby(...).transform('median')`) before `train_test_split` (0.85), or before a CV sink (0.75 candidate). Window statistics (`rolling`, `expanding`) and row filters on a quantile do not count. Yang et al. `pre` recall 0.37 -> 0.42 at 0.62 precision (`evals/2026-10-13-yang-pre.md`).
+- `leakage-test-selection` no longer fires when the chosen threshold is only recorded next to the chosen model name; a selection label is not a score report. Found on the agent-protocol pilot (clinic-claude-B-3).
+- Corpus: `leakage-fit-before-split` mutants gain a hand-written z-score variant (odd seeds) verified by the all-rows mean and unit standard deviation of the pre-split matrix.
+
 ## 0.5.0
 
 - `waldean propose FILE` writes a repair contract (`protocol.json`, `brief.md`, a copy of the original) for confident `leakage-temporal-shuffle` findings. Other classes are listed as unsupported.

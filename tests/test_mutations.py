@@ -35,6 +35,17 @@ def test_fit_before_split_reorders_statements():
     assert not any(".transform(X_te)" in line for line in lines)
 
 
+def test_fit_before_split_odd_seed_writes_hand_zscore_before_split():
+    clean = churn_notebook(7)
+    mutant = FitBeforeSplitMutation().apply(clean, 1)
+    lines = mutant.cells[5]["source"].splitlines()
+    hand_line = next(i for i, line in enumerate(lines) if ".mean()" in line)
+    split_line = next(i for i, line in enumerate(lines) if "train_test_split" in line)
+    assert hand_line < split_line
+    assert "X = (X - X.mean()) / X.std()" in lines[hand_line]
+    assert "scaler" not in mutant.cells[5]["source"]
+
+
 def test_multiple_testing_inserts_uncorrected_loop():
     clean = churn_notebook(7)
     m = MultipleTestingMutation()

@@ -642,7 +642,7 @@ HELDOUT_SEEDS = (21, 22, 23, 24)
 # which mutation seeds to run per flaw and split; seeds 0-1 select dev
 # phrasing variants, 2-3 select held-out ones (see mutate.phrasing_variant)
 MUTATION_SEEDS = {
-    "leakage-fit-before-split": {"dev": (0,), "heldout": (2,)},
+    "leakage-fit-before-split": {"dev": (0, 1), "heldout": (2, 3)},
     "testing-multiple-uncorrected": {"dev": (0, 1), "heldout": (2, 3)},
     "baserate-accuracy-imbalanced": {"dev": (0,), "heldout": (2,)},
     "selection-survivorship-cohort": {"dev": (0, 1), "heldout": (2, 3)},
