@@ -4,7 +4,7 @@ from pathlib import Path
 import nbformat
 import pytest
 
-from waldean.repair import propose, render_brief, supported
+from waldean.repair import propose, render_brief, supported, verify
 from waldean.taxonomy import load_taxonomy
 
 IMPORTS = """import numpy as np
@@ -95,3 +95,84 @@ def test_script_brief_names_file_lines(tmp_path):
     protocol = json.loads((written[0] / "protocol.json").read_text())
     assert protocol["targets"][0]["where"] == "line 15"
     assert "# %%" in render_brief(protocol, written[0])
+
+
+def _repair(leaky, tmp_path):
+    written, _ = propose(leaky, out_root=tmp_path / "repairs")
+    return written[0]
+
+
+def _fixed(tmp_path, sources, name="fixed.ipynb"):
+    return write_nb(tmp_path / name, sources)
+
+
+def test_temporal_fix_passes_static_checks(leaky, tmp_path):
+    repair_dir = _repair(leaky, tmp_path)
+    fixed = _fixed(tmp_path, [IMPORTS, DATA, FEATURES, TEMPORAL])
+    evidence = verify(repair_dir, fixed)
+    assert evidence["status"] == "static-pass"
+    assert evidence["static"]["reasons"] == []
+    assert evidence["execution"] is None
+    assert json.loads((repair_dir / "evidence.json").read_text())["status"] == "static-pass"
+
+
+def test_verify_defaults_to_the_proposed_file(leaky, tmp_path):
+    repair_dir = _repair(leaky, tmp_path)
+    write_nb(leaky, [IMPORTS, DATA, FEATURES, TEMPORAL])
+    assert verify(repair_dir)["fixed"]["path"] == leaky.as_posix()
+    assert verify(repair_dir)["status"] == "static-pass"
+
+
+def test_unchanged_file_is_rejected(leaky, tmp_path):
+    evidence = verify(_repair(leaky, tmp_path), leaky)
+    assert evidence["status"] == "rejected"
+    assert any("still reported at cell 4" in r for r in evidence["static"]["reasons"])
+
+
+def test_import_line_outside_scope_is_allowed(leaky, tmp_path):
+    imports = IMPORTS + "\nfrom sklearn.model_selection import TimeSeriesSplit"
+    temporal = TEMPORAL.replace("from sklearn.model_selection import TimeSeriesSplit\n", "")
+    fixed = _fixed(tmp_path, [imports, DATA, FEATURES, temporal])
+    assert verify(_repair(leaky, tmp_path), fixed)["status"] == "static-pass"
+
+
+def test_unshuffled_kfold_is_still_rejected(leaky, tmp_path):
+    plain = SHUFFLED.replace("shuffle=True, random_state=0", "shuffle=False")
+    evidence = verify(_repair(leaky, tmp_path), _fixed(tmp_path, [IMPORTS, DATA, FEATURES, plain]))
+    assert evidence["status"] == "rejected"
+    assert any("confidence 0.75" in r for r in evidence["static"]["reasons"])
+
+
+def test_edit_outside_scope_is_rejected(leaky, tmp_path):
+    trimmed = FEATURES + "\nX = X.iloc[:100]\ny = y.iloc[:100]"
+    evidence = verify(_repair(leaky, tmp_path), _fixed(tmp_path, [IMPORTS, DATA, trimmed, TEMPORAL]))
+    assert evidence["status"] == "rejected"
+    assert "cell 3 changed outside the edit scope" in evidence["static"]["reasons"]
+
+
+def test_stored_outputs_outside_scope_do_not_count(leaky, tmp_path):
+    repair_dir = _repair(leaky, tmp_path)
+    fixed = _fixed(tmp_path, [IMPORTS, DATA, FEATURES, TEMPORAL])
+    nb = nbformat.read(fixed, as_version=4)
+    nb.cells[2].outputs = [nbformat.v4.new_output("stream", text="rows: 400\n")]
+    nbformat.write(nb, fixed)
+    assert verify(repair_dir, fixed)["status"] == "static-pass"
+
+
+def test_removed_evaluation_is_rejected(leaky, tmp_path):
+    evidence = verify(_repair(leaky, tmp_path), _fixed(tmp_path, [IMPORTS, DATA, FEATURES, "scores = None"]))
+    assert evidence["status"] == "rejected"
+    assert "the evaluation call `cross_val_score` is no longer in the edit scope" in evidence["static"]["reasons"]
+
+
+def test_added_cell_is_rejected(leaky, tmp_path):
+    evidence = verify(_repair(leaky, tmp_path), _fixed(tmp_path, [IMPORTS, DATA, FEATURES, TEMPORAL, "pass"]))
+    assert evidence["status"] == "rejected"
+    assert evidence["static"]["reasons"] == ["cells were added, removed or retyped; this version compares cell by cell"]
+
+
+def test_changed_snapshot_is_refused(leaky, tmp_path):
+    repair_dir = _repair(leaky, tmp_path)
+    (repair_dir / "original.ipynb").write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="no longer matches"):
+        verify(repair_dir, leaky)

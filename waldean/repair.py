@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import difflib
 import hashlib
+import importlib.metadata
 import json
+import platform
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .dataflow import NotebookDataflow, analyze
@@ -12,6 +16,7 @@ from .taxonomy import load_taxonomy
 
 SCHEMA = 1
 DEFAULT_OUT = Path(".waldean") / "repairs"
+PROVENANCE_PACKAGES = ("numpy", "pandas", "scikit-learn")
 RULES = (
     "Edit only the cells in the edit scope.",
     "Outside the edit scope, only add import lines.",
@@ -130,3 +135,93 @@ def propose(path: str | Path, out_root: Path = DEFAULT_OUT,
         (repair_dir / "brief.md").write_text(render_brief(protocol, repair_dir), encoding="utf-8")
         written.append(repair_dir)
     return written, unsupported
+
+
+def _import_only(old: str, new: str) -> bool:
+    for line in difflib.ndiff(old.splitlines(), new.splitlines()):
+        if line.startswith("- "):
+            return False
+        added = line[2:].strip()
+        if line.startswith("+ ") and added and not added.startswith(("import ", "from ")):
+            return False
+    return True
+
+
+def static_checks(protocol: dict, original: ParsedNotebook, fixed: ParsedNotebook) -> list[str]:
+    if [c.cell_type for c in original.cells] != [c.cell_type for c in fixed.cells]:
+        return ["cells were added, removed or retyped; this version compares cell by cell"]
+    scope = set(protocol["edit_scope"])
+    reasons = [
+        f"cell {o.index} changed outside the edit scope"
+        for o, f in zip(original.cells, fixed.cells)
+        if o.cell_type == "code" and o.index not in scope
+        and o.source != f.source and not _import_only(o.source, f.source)
+    ]
+    flow = analyze(fixed)
+    for sink in sorted({t["sink"] for t in protocol["targets"]}):
+        if not any(c.name == sink and c.cell in scope for c in flow.calls):
+            reasons.append(f"the evaluation call `{sink}` is no longer in the edit scope")
+    fixed_flags = run_static(fixed, flow)
+    reasons += [
+        f"{f.flaw_id} is still reported at cell {f.cell}, line {f.line} (confidence {f.confidence:.2f})"
+        for f in fixed_flags
+        if f.flaw_id == protocol["flaw_id"] and f.cell in scope
+    ]
+    before = {f.flaw_id for f in run_static(original) if f.confidence >= DEFAULT_CONFIDENCE_FLOOR}
+    reasons += [
+        f"new finding {f.flaw_id} at cell {f.cell}, line {f.line}"
+        for f in fixed_flags
+        if f.confidence >= DEFAULT_CONFIDENCE_FLOOR and f.flaw_id not in before
+    ]
+    return reasons
+
+
+def load_repair(repair_dir: Path) -> tuple[dict, Path]:
+    protocol = json.loads((repair_dir / "protocol.json").read_text(encoding="utf-8"))
+    if protocol.get("schema") != SCHEMA:
+        raise ValueError(f"unsupported repair schema {protocol.get('schema')!r}")
+    snapshot = repair_dir / f"original{Path(protocol['file']).suffix}"
+    if sha256(snapshot) != protocol["original_sha256"]:
+        raise ValueError(f"{snapshot} no longer matches the proposed original")
+    return protocol, snapshot
+
+
+def provenance() -> dict:
+    packages = {}
+    for name in PROVENANCE_PACKAGES:
+        try:
+            packages[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            packages[name] = None
+    try:
+        waldean_version = importlib.metadata.version("waldean")
+    except importlib.metadata.PackageNotFoundError:
+        waldean_version = "unknown"
+    return {
+        "waldean": waldean_version,
+        "python": platform.python_version(),
+        "platform": platform.system(),
+        "packages": packages,
+    }
+
+
+def verify(repair_dir: str | Path, fixed_path: str | Path | None = None) -> dict:
+    repair_dir = Path(repair_dir)
+    protocol, snapshot = load_repair(repair_dir)
+    fixed = Path(fixed_path or protocol["file"])
+    reasons = static_checks(protocol, parse_notebook(snapshot), parse_notebook(fixed))
+    evidence = {
+        "schema": SCHEMA,
+        "id": protocol["id"],
+        "flaw_id": protocol["flaw_id"],
+        "status": "rejected" if reasons else "static-pass",
+        "original": {"path": snapshot.as_posix(), "sha256": sha256(snapshot)},
+        "fixed": {"path": fixed.as_posix(), "sha256": sha256(fixed)},
+        "edit_scope": protocol["edit_scope"],
+        "static": {"passed": not reasons, "reasons": reasons},
+        "execution": None,
+        "provenance": provenance(),
+        "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    (repair_dir / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
+    return evidence
