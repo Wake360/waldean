@@ -307,13 +307,13 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
 
     best: dict[object, Flag] = {}
 
-    def emit(call, confidence, leaked, evidence, key=None, sink_cell=None):
+    def emit(call, confidence, leaked, evidence, key=None, sink_cell=None, **more):
         key = key if key is not None else id(call)
         if key in best and best[key].confidence >= confidence:
             return
-        extra = {"leaked_names": sorted(leaked)}
+        extra = {"leaked_names": sorted(leaked), **more}
         if sink_cell is not None:
-            extra["sink_cell"] = sink_cell  # CV sink cell, read by the pre-CV fusion rule
+            extra["sink_cell"] = sink_cell
         best[key] = _make_flag(
             "leakage-fit-before-split",
             confidence=confidence,
@@ -374,7 +374,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                         f"`{call.func}(...)` consumes {_join_names(leaked)}, "
                         f"feeding {how} (cell {sink.cell}) — "
                         f"the fit happened before the split"
-                    ))
+                    ), sink_cell=sink.cell, receiver=call.receiver, arg=next(iter(call.arg_names), ""))
                 else:
                     if not on_chain:
                         continue
@@ -387,7 +387,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                         f"transformed output feeds `{sink.name}` (cell {sink.cell}); "
                         f"every CV fold's test rows were in the transformer fit"
                         + (" (fitted with labels)" if supervised else "")
-                    ), sink_cell=sink.cell)
+                    ), sink_cell=sink.cell, receiver=call.receiver, arg=next(iter(call.arg_names), ""))
 
         # -- imputation with statistics of the same frame, before the split --
         elif call.name in {"fillna", "replace"} and call.receiver is not None:

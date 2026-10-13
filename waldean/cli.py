@@ -32,6 +32,9 @@ def cmd_check(args) -> int:
     if not 0.0 <= args.floor <= 1.0:
         print(f"waldean: --floor must be between 0 and 1 (got {args.floor})", file=sys.stderr)
         return 3
+    if args.probe and any(Path(n).suffix == ".py" for n in args.notebooks):
+        print("waldean: --probe runs .ipynb notebooks only", file=sys.stderr)
+        return 3
     det = ver = None
     if args.llm:
         if args.llm_subscription and missing_subscription_clis():
@@ -73,7 +76,7 @@ def cmd_check(args) -> int:
                 print(f"waldean: {refusal}", file=sys.stderr)
                 return 3
         try:
-            nb, flow, flags = check(path, det, ver)
+            nb, flow, flags = check(path, det, ver, args.probe)
         except BackendError as exc:
             close_progress()
             print(f"waldean: narrative layer failed: {exc}", file=sys.stderr)
@@ -304,6 +307,10 @@ def main(argv=None) -> int:
                          help="run the narrative layer through the claude/codex CLIs "
                               "(subscription billing, no API keys); never gate-eligible")
     p_check.add_argument("--replay-dir", help="record/replay LLM responses here")
+    p_check.add_argument("--probe", action="store_true",
+                         help="run the notebook up to each fit-before-split sink in a separate "
+                              "waldean-verify kernel and rewrite the flag's confidence from "
+                              "n_samples_seen_; executes your code with your permissions; .ipynb only")
     p_check.add_argument("--keep-going", action="store_true",
                          help="continue past unreadable files (reported on stderr); "
                               "exit 3 if any file could not be checked")

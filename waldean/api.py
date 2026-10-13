@@ -108,7 +108,7 @@ class BackendError(Exception):
     pass
 
 
-def check(path, det=None, ver=None):
+def check(path, det=None, ver=None, probe=False):
     nb = parse_notebook(path)
     flow = analyze(nb)
     if det is not None:
@@ -123,4 +123,12 @@ def check(path, det=None, ver=None):
             raise BackendError(backend_error)
     else:
         flags = run_static(nb, flow)
+    if probe:
+        import nbformat
+
+        from .runtime.probe import probe_fit_before_split
+
+        flags = probe_fit_before_split(
+            nbformat.read(str(path), as_version=4), flags, cwd=str(Path(path).resolve().parent)
+        )
     return nb, flow, absolutize(nb, flags)

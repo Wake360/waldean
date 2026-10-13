@@ -667,3 +667,10 @@ def test_eval_predictions_rejects_split(fake_corpus, capsys):
                "--split", "dev"])
     assert rc == 3
     assert "--split does not apply" in capsys.readouterr().err
+
+
+def test_probe_on_script_exits_3(tmp_path, capsys):
+    script = tmp_path / "a.py"
+    script.write_text("x = 1\n")
+    assert main(["check", str(script), "--probe"]) == 3
+    assert "--probe runs .ipynb" in capsys.readouterr().err
