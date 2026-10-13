@@ -57,7 +57,7 @@ def design(prof: dict, csv_path: Path, out_dir: Path, goal: str, exclude: list[s
     dropped = {e["column"] for e in excluded} | {prof["target"]}
     features = [c for c in prof["columns"] if c not in dropped]
     return {
-        "dataset": {"path": os.path.relpath(csv_path, out_dir), "sha256": prof["sha256"], "rows": prof["rows"]},
+        "dataset": {"path": Path(os.path.relpath(csv_path, out_dir)).as_posix(), "sha256": prof["sha256"], "rows": prof["rows"]},
         "goal": goal,
         "target": prof["target"],
         "positive_label": prof["positive_label"],
