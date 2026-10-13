@@ -82,9 +82,10 @@ Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
   against the authors' `pre` label
   ([`evals/2026-10-12-yang-pre.md`](https://github.com/Wake360/waldean/blob/v0.4.0/evals/2026-10-12-yang-pre.md)).
 - Misses cluster in pandas-arithmetic leaks with no syntactic anchor
-  (per-group imputation, `fillna(df[col].mean())` before the split), and
-  in named transformers whose fit Waldean does not connect to
-  `cross_val_score` or that are fit on a whole text corpus.
+  (per-group imputation, `fillna(df[col].mean())` before the split) and in
+  transformers fit on a whole text corpus. A scaler fit on full data that
+  feeds `cross_val_score` is reported only as a candidate below the 0.8
+  floor, by design.
 - The 0.0% false-positive rate holds on the curated corpus, not on messy
   real code.
 - Flaws with no imprint in code, outputs or prose are invisible to Waldean.

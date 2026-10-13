@@ -108,3 +108,25 @@ the published artifact stays aggregate and names no author.
   unmeasured on real data.
 - Sources skew toward small personal/competition repos; still not
   production pipelines.
+
+## Correction (2026-10-13)
+
+A re-check against the local review data changes three descriptions. No
+number changes.
+
+- The third flag that did not survive was not a duplicate scaler flag. It
+  was a one-hot encoder fitted on the target column of the full training
+  frame (nb11), in a notebook whose other flag was a confirmed leak.
+- Two of the eight misses, not one, are a scaler fitted on full data whose
+  output feeds `cross_val_score` (nb02, nb18). Neither notebook calls
+  `train_test_split`. The static layer reported both as
+  `leakage-fit-before-split` candidates at confidence 0.75, below the 0.8
+  floor, following the 2026-07-04 decision on unsupervised pre-CV fits.
+  They are misses at the floor, not blind spots. "All are leaks with no
+  name-level syntactic anchor" holds for the other six.
+- The eight misses therefore span seven idioms: per-group imputation 1,
+  scaler feeding `cross_val_score` 2, column-mean `fillna` 1, TF-IDF/SVD 1,
+  `get_dummies` 1, temporal shuffle 2.
+- The ledger row for nb14 marked "duplicate" is a second cell repeating
+  the same pipeline. Both cells were flagged and both leaks are real; it is
+  not the non-surviving flag.
