@@ -345,7 +345,7 @@ def test_llm_progress_on_tty_stderr_only(monkeypatch, tmp_path, capsys):
     assert "checking 1/2" in err
     assert "checking 2/2" in err
     assert "checking" not in out
-    assert err.count("\n") == 1  # \r-overwrite, single close newline
+    assert err.count("\n") == 2  # warning line, then \r-overwrite with a single close newline
 
 
 def test_llm_progress_absent_when_piped(monkeypatch, tmp_path, capsys):
@@ -399,7 +399,7 @@ def test_message_llm_missing_keys(monkeypatch, capsys):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     rc = main(["check", "--llm", LEAKY])
     assert rc == 3
-    assert capsys.readouterr().err == (
+    assert capsys.readouterr().err.endswith(
         "waldean: --llm needs ANTHROPIC_API_KEY and OPENAI_API_KEY set in the environment\n"
     )
 
@@ -409,7 +409,7 @@ def test_eval_llm_missing_keys_exits_3(monkeypatch, capsys):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     rc = main(["eval", "--llm", "--split", "dev"])
     assert rc == 3
-    assert capsys.readouterr().err == (
+    assert capsys.readouterr().err.endswith(
         "waldean: --llm needs ANTHROPIC_API_KEY and OPENAI_API_KEY set in the environment\n"
     )
 
@@ -550,7 +550,7 @@ def test_llm_subscription_missing_clis_exits_3(monkeypatch, capsys):
     monkeypatch.setattr("waldean.api.shutil.which", lambda name: None)
     rc = main(["check", "--llm", "--llm-subscription", LEAKY])
     assert rc == 3
-    assert capsys.readouterr().err == (
+    assert capsys.readouterr().err.endswith(
         "waldean: --llm-subscription needs the claude and codex CLIs on PATH\n"
     )
 
@@ -674,3 +674,14 @@ def test_probe_on_script_exits_3(tmp_path, capsys):
     script.write_text("x = 1\n")
     assert main(["check", str(script), "--probe"]) == 3
     assert "--probe runs .ipynb" in capsys.readouterr().err
+
+
+def test_llm_flag_prints_experimental_warning(tmp_path, capsys, monkeypatch):
+    import nbformat
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setenv("OPENAI_API_KEY", "x")
+    nb_path = tmp_path / "a.ipynb"
+    nbformat.write(nbformat.v4.new_notebook(), nb_path)
+    main(["check", str(nb_path), "--llm", "--replay-dir", str(tmp_path / "replay")])
+    assert "experimental: no validated precision or recall" in capsys.readouterr().err

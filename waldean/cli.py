@@ -37,6 +37,8 @@ def cmd_check(args) -> int:
         return 3
     det = ver = None
     if args.llm:
+        print("waldean: --llm is experimental: no validated precision or recall; "
+              "its quality gates never ran (see README, Architecture)", file=sys.stderr)
         if args.llm_subscription and missing_subscription_clis():
             print("waldean: --llm-subscription needs the claude and codex CLIs on PATH",
                   file=sys.stderr)

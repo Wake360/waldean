@@ -221,21 +221,12 @@ notebook ──> ingest (nbformat) ──> layer A: static detectors ──> rep
              layer A candidates (filter + population claim = flag)
 ```
 
-The hybrid split is the point: leakage is an AST pattern — an LLM has no
-business there. The LLM layer handles only what statics cannot: whether
-the prose claims match what the code computes. Its quality gates (G2/G3)
-never ran, so **no narrative-layer numbers are claimed; the static
-linter is the validated product.**
-
-The narrative layer runs through the `claude`/`codex` CLIs on
-subscription billing: `waldean check --llm --llm-subscription <notebook>`.
-Its numbers are dev-split and indicative by construction
-(`gate_evidence: false`); it has not passed a quality gate. An
-indicative dev-split run is at
-`evals/2026-07-25-llm-eval-dev-subscription-indicative-rerun.md` —
-unpinned models, not reproducible (the prior 2026-07-09 run lost 17/45
-files to backend errors; the rerun after hook isolation completed all
-files). Static-only is the default; without `--llm`, Waldean calls no LLM.
+The hybrid split is the point: leakage is an AST pattern, and the LLM
+layer handles only whether the prose claims match what the code computes.
+Its quality gates (G2/G3) never ran, so **no narrative-layer numbers are
+claimed; the static linter is the validated product.** Run it with
+`waldean check --llm --llm-subscription <notebook>`; without `--llm`,
+Waldean calls no LLM.
 
 Taxonomy is data (`flaws.yaml`): 10 flaw classes with definition, book
 anchor, mutation recipe and severity (`waldean rules` lists them). Adding a

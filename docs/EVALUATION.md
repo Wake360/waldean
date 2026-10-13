@@ -133,3 +133,11 @@ candidate on a script, never a confident flag. `--llm` needs markdown cells
 to check claims against computation, so it is meaningful on percent-format
 scripts and not on plain scripts, which have none.
 
+## LLM layer: indicative runs
+
+The narrative layer (`--llm`) has not passed a quality gate. Its numbers are
+dev-split and indicative by construction (`gate_evidence: false`). An
+indicative dev-split run is at
+`evals/2026-07-25-llm-eval-dev-subscription-indicative-rerun.md`: unpinned
+models, not reproducible. The prior 2026-07-09 run lost 17/45 files to backend
+errors; the rerun after hook isolation completed all files.
