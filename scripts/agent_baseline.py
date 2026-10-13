@@ -20,8 +20,7 @@ import pandas as pd
 
 from nbclient import NotebookClient
 
-from waldean.execute import stdout_lines, with_appended_code_cell
-from waldean.repair import scrubbed_env
+from waldean.runtime.execute import scrubbed_env, stdout_lines, with_appended_code_cell
 
 ROOT = Path(__file__).resolve().parent.parent
 BENCH = ROOT / "evals" / "agent-baseline"
