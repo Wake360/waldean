@@ -1,9 +1,18 @@
+import ast
+import json
+
+import nbformat
 import numpy as np
 import pandas as pd
 import pytest
 
+from waldean.analysis.dataflow import analyze
+from waldean.analysis.ingest import parse_notebook
+from waldean.checks.detect import run_static
 from waldean.experiment.plan import PlanError, contradictions, design, design_md, read_plan, write_plan
 from waldean.experiment.profile import profile
+from waldean.experiment.render import render
+from waldean.runtime.execute import execute, stdout_lines
 
 
 def write_csv(path, n=1200, seed=0, extra_dates=False, single_class_month=None):
@@ -137,3 +146,75 @@ def test_plan_round_trips_and_design_md_names_the_fact(tmp_path):
     text = design_md(plan, prof)
     assert "temporal_holdout on snapshot" in text
     assert "24 distinct periods" in text
+
+
+def rendered(tmp_path, **kw):
+    plan, prof = planned(tmp_path, **kw)
+    (tmp_path / "exp").mkdir(exist_ok=True)
+    return render(plan), plan
+
+
+def run_rendered(tmp_path, nb, probe=""):
+    if probe:
+        nb.cells.append(nbformat.v4.new_code_cell(probe))
+    return execute(nb, cwd=str(tmp_path / "exp"))
+
+
+def test_render_is_byte_deterministic(tmp_path):
+    nb, plan = rendered(tmp_path)
+    assert nbformat.writes(nb) == nbformat.writes(render(plan))
+
+
+def test_every_code_cell_names_its_plan_field_and_parses(tmp_path):
+    nb, _ = rendered(tmp_path)
+    for cell in nb.cells:
+        if cell.cell_type == "code":
+            assert cell.metadata["waldean"]["plan_field"]
+            ast.parse(cell.source)
+
+
+def test_rendered_notebook_is_clean_under_check(tmp_path):
+    nb, _ = rendered(tmp_path)
+    path = tmp_path / "exp" / "experiment.ipynb"
+    nbformat.write(nb, path)
+    parsed = parse_notebook(path)
+    assert [f.flaw_id for f in run_static(parsed, analyze(parsed)) if f.confidence >= 0.8] == []
+
+
+def test_no_period_crosses_any_split(tmp_path):
+    nb, _ = rendered(tmp_path)
+    probe = (
+        "_t = pd.to_datetime(df['snapshot'], format='mixed')\n"
+        "_ok = _t[train].max() < _t[test].min() and all(_t.iloc[a].max() < _t.iloc[b].min() for a, b in folds)\n"
+        "print('PROBE', bool(_ok), len(folds))"
+    )
+    out = stdout_lines(run_rendered(tmp_path, nb, probe), "PROBE")
+    assert out and out[-1].split()[1:] == ["True", "5"]
+
+
+def test_metrics_line_has_both_models(tmp_path):
+    nb, _ = rendered(tmp_path)
+    line = stdout_lines(run_rendered(tmp_path, nb), "WALDEAN_METRICS ")[-1]
+    metrics = json.loads(line.removeprefix("WALDEAN_METRICS "))
+    assert set(metrics["holdout"]) == {"baseline", "candidate"}
+    assert set(metrics["holdout"]["candidate"]) == {"roc_auc", "average_precision", "balanced_accuracy"}
+    assert len(metrics["cv"]["candidate"]) == 5
+    assert metrics["skipped_folds"] == 0
+
+
+def test_single_class_fold_is_skipped_and_counted(tmp_path):
+    csv = write_csv(tmp_path / "d.csv", single_class_month=3)
+    prof = profile(csv, "churn")
+    plan = design(prof, csv, tmp_path / "exp", "", [], None, 0)
+    plan["split"]["n_splits"] = 18
+    (tmp_path / "exp").mkdir()
+    line = stdout_lines(run_rendered(tmp_path, render(plan)), "WALDEAN_METRICS ")[-1]
+    assert json.loads(line.removeprefix("WALDEAN_METRICS "))["skipped_folds"] >= 1
+
+
+def test_stratified_plan_renders_and_runs(tmp_path):
+    plan, _ = planned(tmp_path)
+    plan["split"] = {"kind": "stratified_kfold", "column": None, "test_fraction": 0.2, "n_splits": 5,
+                     "override_reason": "test"}
+    (tmp_path / "exp").mkdir()
+    assert stdout_lines(run_rendered(tmp_path, render(plan)), "WALDEAN_METRICS ")
