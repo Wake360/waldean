@@ -3,7 +3,7 @@
 **NOT GATE EVIDENCE. NOT REPRODUCIBLE.** Produced by the claude/codex
 subscription backends (`--llm-subscription`), which route to unpinned
 subscription models. These numbers cannot be reproduced and must never be
-folded into G2/G3 or published to README (see `plans/g2g3-runbook.md` STOP 3).
+folded into G2/G3 or published to README.
 Each flag requires hand review before it means anything; a zero counts only
 if the quote grounded, so weigh backend errors (excluded, not clean).
 

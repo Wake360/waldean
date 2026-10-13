@@ -264,7 +264,7 @@ time, to verify mutations.
 ## Roadmap
 
 - **M2** — LLM narrative layer + cross-provider verifier + fusion: built,
-  tested against replay fixtures (`plans/m2.md`), and runs on
+  tested against replay fixtures, and runs on
   subscription CLIs (`waldean check --llm --llm-subscription`). The G2/G3
   gates never ran; narrative numbers stay dev-split and indicative
   (`gate_evidence: false`).

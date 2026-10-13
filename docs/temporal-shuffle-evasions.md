@@ -6,7 +6,7 @@ adversarial round that shipped the class (commit 096606f) and ruled
 residual risk: the root fix re-adds a measured false-positive class or
 needs analysis machinery owned by a later milestone. Dispositions below.
 Revisit trigger for all four: a confirmed real-world flaw in this shape
-during the wide dogfood (`plans/v1-completion.md`, Static WS-A).
+during the wide dogfood.
 
 ## 1. Variable `shuffle=` argument
 
