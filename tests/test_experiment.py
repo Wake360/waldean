@@ -314,3 +314,24 @@ def test_run_refuses_changed_inputs(tmp_path, name):
     target.write_bytes(target.read_bytes() + b"\n")
     with pytest.raises(PlanError, match=name):
         run(exp)
+
+
+def edited(tmp_path, edit):
+    exp = made(tmp_path)
+    plan = read_plan(exp / "plan.yaml")
+    edit(plan)
+    write_plan(plan, exp / "plan.yaml")
+    return exp
+
+
+@pytest.mark.parametrize("edit, field", [
+    (lambda p: p["split"].update(n_splits="5); import os#"), "split.n_splits"),
+    (lambda p: p.update(seed="0); import os#"), "seed"),
+    (lambda p: p["split"].update(test_fraction=1.5), "split.test_fraction"),
+    (lambda p: p["features"].update(numeric=["x", 3]), "features"),
+])
+def test_build_rejects_bad_field_types(tmp_path, edit, field):
+    exp = edited(tmp_path, edit)
+    with pytest.raises(PlanError, match=field):
+        build(exp)
+    assert not (exp / "experiment.ipynb").exists()

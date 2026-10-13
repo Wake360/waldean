@@ -70,7 +70,31 @@ def design(prof: dict, csv_path: Path, out_dir: Path, goal: str, exclude: list[s
     }
 
 
+def validate(plan: dict) -> None:
+    split = plan["split"]
+    n_splits, seed, fraction = split.get("n_splits"), plan.get("seed"), split.get("test_fraction")
+    if not isinstance(n_splits, int) or isinstance(n_splits, bool) or n_splits < 2:
+        raise PlanError(f"split.n_splits must be an int >= 2, got {n_splits!r}")
+    if not isinstance(seed, int) or isinstance(seed, bool):
+        raise PlanError(f"seed must be an int, got {seed!r}")
+    if isinstance(fraction, bool) or not isinstance(fraction, (int, float)) or not 0 < fraction < 1:
+        raise PlanError(f"split.test_fraction must be a number strictly between 0 and 1, got {fraction!r}")
+    texts = {"target": plan.get("target"), "dataset.path": plan["dataset"].get("path")}
+    if split.get("column") is not None:
+        texts["split.column"] = split["column"]
+    for field, value in texts.items():
+        if not isinstance(value, str):
+            raise PlanError(f"{field} must be a string, got {value!r}")
+    for kind in ("numeric", "categorical"):
+        columns = plan["features"].get(kind)
+        if not isinstance(columns, list) or not all(isinstance(c, str) for c in columns):
+            raise PlanError(f"features.{kind} must be a list of strings, got {columns!r}")
+    if not isinstance(plan.get("positive_label"), (str, int, float, bool)):
+        raise PlanError(f"positive_label must be a string or number, got {plan.get('positive_label')!r}")
+
+
 def contradictions(plan: dict, prof: dict) -> list[str]:
+    validate(plan)
     split = plan["split"]
     if split.get("kind") not in SPLIT_KINDS:
         raise PlanError(f"split.kind must be one of {list(SPLIT_KINDS)}, got {split.get('kind')!r}")
