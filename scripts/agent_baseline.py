@@ -18,8 +18,10 @@ from pathlib import Path
 import nbformat
 import pandas as pd
 
-from waldean.execute import execute, stdout_lines, with_appended_code_cell
-from waldean.repair import KERNEL_NAME, scrubbed_env
+from nbclient import NotebookClient
+
+from waldean.execute import stdout_lines, with_appended_code_cell
+from waldean.repair import scrubbed_env
 
 ROOT = Path(__file__).resolve().parent.parent
 BENCH = ROOT / "evals" / "agent-baseline"
@@ -27,6 +29,7 @@ MANIFEST = BENCH / "MANIFEST.json"
 SCORING = BENCH / "scoring.tsv"
 VARIANTS = (("default", 0), ("default", 1), ("hinted", 0))
 AGENT_ROOT = Path("/private/tmp/waldean-agent-baseline")
+AGENT_KERNEL = "waldean-agent-baseline"
 CLAUDE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit",
                 "Bash(python *)", "Bash(python3 *)", "Bash(jupyter *)", "Bash(ls *)", "Bash(head *)"]
 HOME = str(Path.home())
@@ -199,10 +202,11 @@ def probe(d: dict, nb, run_dir: Path, digest: str, reviewed: tuple[str, str] | N
     nb = with_appended_code_cell(nb, reviewed[1] + "\n" + d["probe"])
     try:
         with scrubbed_env():
-            done = execute(nb, timeout=timeout, cwd=str(run_dir), kernel_name=KERNEL_NAME)
+            NotebookClient(nb, timeout=timeout, kernel_name=AGENT_KERNEL,
+                           resources={"metadata": {"path": str(run_dir)}}).execute()
     except Exception as exc:
         return f"error:{type(exc).__name__}"
-    lines = stdout_lines(done, "PROBE")
+    lines = stdout_lines(nb, "PROBE")
     return "pass" if lines and lines[-1].split()[-1] == "True" else "fail"
 
 
@@ -210,6 +214,9 @@ def cmd_score(args) -> int:
     m = manifest()
     by_name = {d["name"]: d for d in m["datasets"]}
     bound = bindings()
+    subprocess.run([str(args.python / "python"), "-m", "ipykernel", "install", "--prefix", str(args.python.parent),
+                    "--name", AGENT_KERNEL], check=True, capture_output=True)
+    os.environ["JUPYTER_PATH"] = str(args.python.parent / "share" / "jupyter")
     stripped = BENCH / "runs"
     stripped.mkdir(exist_ok=True)
     rows = []
