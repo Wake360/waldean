@@ -17,7 +17,7 @@ def sha256(path: str | Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def parse_dates(values: pd.Series, dayfirst: bool) -> pd.Series:
+def parse_dates(values, dayfirst: bool):
     parsed = pd.to_datetime(values, errors="coerce", format="mixed", dayfirst=dayfirst)
     return parsed.where(parsed.dt.year.between(MIN_YEAR, MAX_YEAR))
 
