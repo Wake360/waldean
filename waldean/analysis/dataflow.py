@@ -142,6 +142,15 @@ class AssignEvent:
     ordered_targets: list[str] = field(default_factory=list)
 
 
+@dataclass
+class SliceEvent:
+    base: str
+    cell: int
+    line: int
+    lower: str
+    upper: str
+
+
 class _CellVisitor(cst.CSTVisitor):
     METADATA_DEPENDENCIES = (PositionProvider,)
 
@@ -152,6 +161,7 @@ class _CellVisitor(cst.CSTVisitor):
         self.calls: list[CallSite] = []
         self.assigns: list[AssignEvent] = []
         self.mutations: list[AssignEvent] = []
+        self.slices: list[SliceEvent] = []
         self._pending: dict[int, AssignEvent] = {}  # id(call node) -> its assign event
         self._loop_vars: list[set[str]] = []  # target names per enclosing for-loop
 
@@ -266,6 +276,29 @@ class _CellVisitor(cst.CSTVisitor):
             if isinstance(t.target, (cst.Tuple, cst.List)):
                 ordered = [el.value.value for el in t.target.elements if isinstance(el.value, cst.Name)]
         self._record_assign(targets, node.value, node, extra_sources=mutated, ordered=ordered)
+        self._record_slices(node.value)
+
+    def _record_slices(self, value: cst.BaseExpression) -> None:
+        if self.scope_depth > 0:
+            return
+        exprs = [el.value for el in value.elements] if isinstance(value, cst.Tuple) else [value]
+        code = cst.Module(body=[]).code_for_node
+        for expr in exprs:
+            if not isinstance(expr, cst.Subscript) or len(expr.slice) != 1:
+                continue
+            sl = expr.slice[0].slice
+            if not isinstance(sl, cst.Slice):
+                continue
+            head = expr.value
+            if isinstance(head, cst.Attribute) and head.attr.value == "iloc":
+                head = head.value
+            if not isinstance(head, cst.Name):
+                continue
+            self.slices.append(SliceEvent(
+                base=head.value, cell=self.cell, line=self._line(expr),
+                lower=code(sl.lower) if sl.lower is not None else "",
+                upper=code(sl.upper) if sl.upper is not None else "",
+            ))
 
     def visit_AnnAssign(self, node: cst.AnnAssign) -> None:
         if node.value is not None:
@@ -311,10 +344,26 @@ class NotebookDataflow:
     calls: list[CallSite] = field(default_factory=list)
     assigns: list[AssignEvent] = field(default_factory=list)
     mutations: list[AssignEvent] = field(default_factory=list)  # x.append(v)-style in-place updates
+    slices: list[SliceEvent] = field(default_factory=list)
     parse_errors: list[int] = field(default_factory=list)  # cell indices that failed to parse
     skipped_cells: list[int] = field(default_factory=list)  # cell indices skipped by a size/depth cap
     _by_name: dict[str, list[AssignEvent]] | None = field(default=None, repr=False)
     _by_name_mut: dict[str, list[AssignEvent]] | None = field(default=None, repr=False)
+
+    def slice_splits(self) -> list[CallSite]:
+        sinks: list[CallSite] = []
+        by_base: dict[str, list[SliceEvent]] = {}
+        for s in self.slices:
+            by_base.setdefault(s.base, []).append(s)
+        for base, events in by_base.items():
+            heads = [e for e in events if e.upper and not e.lower]
+            tails = [e for e in events if e.lower and not e.upper]
+            if not heads or not tails:
+                continue
+            last = max(heads + tails, key=lambda e: (e.cell, e.line))
+            sinks.append(CallSite(func="slice_split", name="slice_split", receiver=None,
+                                  cell=last.cell, line=last.line, loop_depth=0, pos_args=[{base}]))
+        return sinks
 
     def _index(self, mutations: bool) -> dict[str, list[AssignEvent]]:
         cached = self._by_name_mut if mutations else self._by_name
@@ -447,4 +496,5 @@ def analyze(nb: ParsedNotebook) -> NotebookDataflow:
         flow.calls.extend(visitor.calls)
         flow.assigns.extend(visitor.assigns)
         flow.mutations.extend(visitor.mutations)
+        flow.slices.extend(visitor.slices)
     return flow

@@ -250,7 +250,7 @@ def detect_leakage_temporal_shuffle(nb: ParsedNotebook, flow: NotebookDataflow) 
 
 
 def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) -> list[Flag]:
-    sinks = [c for c in flow.calls if c.name == "train_test_split" or c.name in CV_SINKS]
+    sinks = [c for c in flow.calls if c.name == "train_test_split" or c.name in CV_SINKS] + flow.slice_splits()
     if not sinks:
         return []
 
@@ -364,14 +364,15 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                 # assigned result, or through the receiver's .transform output
                 # (a bare `skb.fit(X, y)` produces no assign event)
                 on_chain = (my_event is not None and id(my_event) in chain_ids) or recv_bind in bindings
-                if sink.name == "train_test_split":
+                if sink.name in {"train_test_split", "slice_split"}:
                     # (a) its output feeds the split, or (b) the fitted
                     # receiver later transforms a split output
                     if not (on_chain or transforms_split_part):
                         continue
+                    how = "`train_test_split`" if sink.name == "train_test_split" else "a row slice split"
                     emit(call, 0.92, leaked, (
                         f"`{call.func}(...)` consumes {_join_names(leaked)}, "
-                        f"feeding `train_test_split` (cell {sink.cell}) — "
+                        f"feeding {how} (cell {sink.cell}) — "
                         f"the fit happened before the split"
                     ))
                 else:
@@ -398,7 +399,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
             if base_bind not in arg_bindings:
                 continue  # fill values do not derive from the frame itself
             for sink, _ids, bindings in chains:
-                if sink.name != "train_test_split":
+                if sink.name not in {"train_test_split", "slice_split"}:
                     continue
                 if base_bind in bindings and pos < (sink.cell, sink.line):
                     # one flag per frame: imputing N columns is one violation
@@ -430,7 +431,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
             for sink, chain_ids, _bindings in chains:
                 if id(ev) not in chain_ids:
                     continue
-                if sink.name == "train_test_split":
+                if sink.name in {"train_test_split", "slice_split"}:
                     emit(stat, 0.85, {base}, (
                         f"`{stat.func}(...)` is computed over the full `{base}` and written back "
                         f"into `{base}` before `train_test_split` (cell {sink.cell}); "

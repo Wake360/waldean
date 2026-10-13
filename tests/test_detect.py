@@ -746,3 +746,22 @@ def test_fit_on_concat_of_train_and_test():
         ("code", "both = pd.concat([X_train, X_holdout])\nenc = OneHotEncoder()\nenc.fit(both)"),
     ])
     assert "leakage-fit-before-split" in flag_ids(notebook)
+
+
+def test_fit_before_slice_split_is_flagged():
+    notebook = nb([
+        ("code", "X = scaler.fit_transform(X)"),
+        ("code", "X_train, X_test = X[:800], X[800:]"),
+        ("code", "model.fit(X_train, y[:800])"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert flags and flags[0].confidence >= 0.8
+    assert "row slice" in flags[0].evidence
+
+
+def test_fit_after_slice_split_is_silent():
+    notebook = nb([
+        ("code", "X_train, X_test = X[:800], X[800:]"),
+        ("code", "X_train = scaler.fit_transform(X_train)\nX_test = scaler.transform(X_test)"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)

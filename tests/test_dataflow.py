@@ -184,3 +184,21 @@ def test_bang_line_inside_triple_quoted_string_keeps_cell_parseable():
 def test_tuple_assign_keeps_target_order():
     flow = analyze(nb_from_sources("a, b, c, d = train_test_split(X, y)"))
     assert flow.assigns[0].ordered_targets == ["a", "b", "c", "d"]
+
+
+def test_complementary_slices_form_a_split_sink():
+    flow = analyze(nb_from_sources("n = 800\ntrain = X[:n]\ntest = X[n:]"))
+    sinks = flow.slice_splits()
+    assert [s.name for s in sinks] == ["slice_split"]
+    assert sinks[0].pos_args == [{"X"}]
+    assert (sinks[0].cell, sinks[0].line) == (0, 3)
+
+
+def test_iloc_slices_form_a_split_sink():
+    flow = analyze(nb_from_sources("train = df.iloc[:800]\ntest = df.iloc[800:]"))
+    assert len(flow.slice_splits()) == 1
+
+
+def test_single_slice_peek_is_not_a_split():
+    flow = analyze(nb_from_sources("sample = df[:5]"))
+    assert flow.slice_splits() == []
