@@ -66,6 +66,25 @@ On the mutation corpus the verifier accepted all 16 true repairs and rejected al
 
 Limits: one flaw class so far (`leakage-temporal-shuffle`). Comparison is cell by cell, so an added cell is rejected. `--execute` runs code on your machine with your permissions. It hides secret-looking environment variables and isolates nothing else. `verify` trusts the files in the repair directory, so do not let the agent write there. The static check reads names and literal arguments, not behaviour, so a disguised split can pass; read the delta in `evidence.json`. `train_test_split(shuffle=False)` on rows not sorted by time passes the static check; only `--execute` plus reading the evidence catches it. A `.py` file without `# %%` markers is one cell, so the scope check covers the whole file. The metric regex is yours; one that matches unrelated lines gives a misleading delta. The kernel runs with Waldean's Python, so the notebook's dependencies must be installed there. Both runs share the repaired notebook's directory, so files one run writes can affect the other.
 
+## Experiment builder (temporal only)
+
+Experimental. For a CSV with a binary target and a time column, Waldean writes a notebook in which every reported score trains on earlier time periods than it tests on. No LLM is involved. The notebook is rendered from `plan.yaml`.
+
+```bash
+pip install 'waldean[builder]'
+waldean create data.csv --target churned --out exp      # profiles the CSV, writes exp/plan.yaml
+waldean build exp                                       # renders exp/experiment.ipynb from the plan
+waldean run exp                                         # executes it, writes exp/evidence/
+```
+
+`--target` is required. If the CSV has several date-like columns, `create` exits 3 and lists them; pass `--time-column`. `build` blocks a non-temporal `split.kind` unless `override_reason` is set, and `run` refuses if the CSV, `plan.yaml` or notebook changed since `build`. Exit codes: 0 clean, 1 medium, 2 high or blocking contradiction, 3 input or usage error.
+
+Fixed values: test fraction 0.2, 5 CV folds, a time column needs at least 10 distinct values and at least 95% of non-null values parsing as dates. Models are `DummyClassifier(strategy="prior")` and `HistGradientBoostingClassifier(early_stopping=False, random_state=seed)`. Metrics are ROC AUC, average precision and balanced accuracy (threshold 0.5).
+
+Measured with the v3 temporal probe on two synthetic datasets: the Builder passed on maintenance and subscriptions (1/1 each). Claude sonnet default runs in v3 passed 15/15 on maintenance and 7/15 on subscriptions. Indicative only ([`evals/2026-10-13-builder-vs-agents.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-builder-vs-agents.md)).
+
+Limits: binary classification only. Two synthetic datasets from one generator, and the Builder was designed by someone who knows that generator, so the result shows it implements the rule, not that it generalises. It does not detect ID columns or leaking columns; a human passed `--exclude` for those. `run` executes the notebook on your machine in the `waldean-verify` kernel with secret-looking environment variables hidden. It is not a sandbox.
+
 ## Status
 
 | | What |
@@ -73,6 +92,7 @@ Limits: one flaw class so far (`leakage-temporal-shuffle`). Comparison is cell b
 | **Available now** | `waldean check` on `.ipynb` and `.py` (plain and `# %%`); five static flaw classes (below); a survivorship candidate; Markdown, JSON and SARIF output; GitHub Action; pre-commit hooks; `waldean rules`; `waldean eval --predictions` for scoring other tools on the corpus |
 | **Experimental** | `--llm` / `--llm-subscription` narrative layer (prose claims vs computation). No validated precision or recall; its quality gates never ran |
 | **Experimental** | Repair loop: `waldean propose` / `waldean verify` for one class (`leakage-temporal-shuffle`). Measured on the synthetic corpus and in a 7-run agent trial, indicative (see Repair loop) |
+| **Experimental** | Experiment builder: `waldean create` / `build` / `run`, temporal split only, binary target. Checked on 2 synthetic datasets, indicative (see Experiment builder) |
 | **Planned** | Repair contracts for more flaw classes, starting with `leakage-fit-before-split`. Not shipped |
 
 Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
