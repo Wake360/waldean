@@ -442,16 +442,18 @@ def render_arms(m: dict, rows: list[dict]) -> str:
            "| arm | runs | notebook | valid (95% CI) | " + " | ".join(f"{c} fail" for c in crits)
            + " | median abs gap (n) |",
            "|---|---|---|---|" + "---|" * len(crits) + "---|"]
-    fails = {}
+    fails, medians, done = {}, {}, {}
     for a in m["arms"]:
         mine = [r for r in rows if r["variant"] == a]
         bad = sum(not valid(r, by_name[r["dataset"]]) for r in mine)
         fails[a] = (bad, len(mine))
         low, high = wilson(len(mine) - bad, len(mine))
         gaps = [abs(g) for r in mine if (g := gap(r)) is not None]
+        medians[a] = statistics.median(gaps) if gaps else None
+        done[a] = sum(bool(r["sha256"]) for r in mine)
         per = [f"{sum(r.get(c, 'pass') != 'pass' for r in mine)}/{sum(c in r for r in mine)}" for c in crits]
         med = f"{statistics.median(gaps):.3f} ({len(gaps)})" if gaps else "- (0)"
-        out.append(f"| {a} | {len(mine)} | {sum(bool(r['sha256']) for r in mine)} | {len(mine) - bad}/{len(mine)} "
+        out.append(f"| {a} | {len(mine)} | {done[a]} | {len(mine) - bad}/{len(mine)} "
                    f"({low:.0%}-{high:.0%}) | " + " | ".join(per) + f" | {med} |")
     out += ["", "## Differences in failure rate", "", "| comparison | difference | 95% CI (Newcombe) |",
             "|---|---|---|"]
@@ -464,9 +466,27 @@ def render_arms(m: dict, rows: list[dict]) -> str:
         a, b = m["primary"]
         (k1, n1), (k2, n2) = fails[a], fails[b]
         if n1 and n2:
-            low = newcombe(k1, n1, k2, n2)[0]
-            out += ["", f"Primary: {a} minus {b} lower bound {low:+.1%}: "
-                    + (f"{b} better" if low > 0 else f"no evidence that {b} is better") + "."]
+            low, high = newcombe(k1, n1, k2, n2)
+            ma, mb = medians[a], medians[b]
+            if ma is None and mb is None:
+                gap_ok = True
+            elif mb is None:
+                gap_ok = False
+            elif ma is None:
+                gap_ok = True
+            else:
+                gap_ok = mb <= ma + 0.02
+            ca, cb = done[a] / n1, done[b] / n2
+            comp_ok = cb >= ca - 0.05
+            if low > 0 and gap_ok and comp_ok:
+                verdict = f"{b} better"
+            elif high < 0:
+                verdict = f"{b} worse"
+            else:
+                verdict = f"no evidence that {b} is better"
+            out += ["", f"Primary: {a} minus {b} failure rate lower bound {low:+.1%}, "
+                    f"median gap {a} {'-' if ma is None else format(ma, '.3f')} vs {b} {'-' if mb is None else format(mb, '.3f')}, "
+                    f"completion {a} {ca:.0%} vs {b} {cb:.0%}: {verdict}."]
     out += ["", "## Runs", "", "| run | arm | cli | " + " | ".join(crits) + " | headline | future AUC | waldean check |",
             "|---|---|---|" + "---|" * len(crits) + "---|---|---|"]
     out += [f"| {r['run']} | {r['variant']} | {r['cli_version']} | " + " | ".join(r.get(c) or "n/a" for c in crits)
@@ -483,7 +503,7 @@ def code_lines(path: Path) -> list[str]:
 
 def cmd_similar(args) -> int:
     lines = {p.parent.name: code_lines(p) for p in sorted(args.runs.glob("*/experiment.ipynb"))}
-    pairs = sorted(((difflib.SequenceMatcher(None, lines[a], lines[b]).ratio(), a, b)
+    pairs = sorted(((difflib.SequenceMatcher(None, lines[a], lines[b], autojunk=False).ratio(), a, b)
                     for a, b in itertools.combinations(lines, 2)), reverse=True)
     for ratio, a, b in pairs[:10]:
         print(f"{ratio:.2f} {a} {b}")
@@ -496,14 +516,20 @@ ARM_WORDS = re.compile(r"protocol\.yaml|holdout\.csv|unused\.csv|evidence\.json|
 
 def cmd_redact(args) -> int:
     paths = sorted(args.runs.glob("*/experiment.ipynb"))
+    if args.arms:
+        paths = [p for p in paths if p.parent.name.rsplit("-", 2)[1] in args.arms]
     order = random.Random(args.seed).sample(paths, len(paths))
     out = args.runs.parent / f"{args.runs.name}-redacted"
     out.mkdir(exist_ok=True)
+    for old in out.glob("nb-*.ipynb"):
+        old.unlink()
     key = {}
     for i, path in enumerate(order):
         nb = nbformat.read(path, as_version=4)
+        nb.metadata = {}
         for c in nb.cells:
             c.source = ARM_WORDS.sub("[redacted]", c.source)
+            c.metadata = {}
             if c.cell_type == "code":
                 c.outputs, c.execution_count = [], None
         nbformat.write(nb, out / f"nb-{i:03d}.ipynb")
@@ -592,6 +618,7 @@ def main() -> int:
         s.add_argument("--jobs", type=int, default=4)
         s.add_argument("--threshold", type=float, default=0.6)
         s.add_argument("--seed", type=int, default=20261020)
+        s.add_argument("--arms", nargs="*")
     args = p.parse_args()
     BENCH = ROOT / "evals" / args.bench
     MANIFEST = BENCH / "MANIFEST.json"

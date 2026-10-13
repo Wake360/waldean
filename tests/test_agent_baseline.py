@@ -145,12 +145,30 @@ def test_redact_hides_arm_words(tmp_path):
     import json
     import nbformat
     runs = tmp_path / "runs"
-    (runs / "s-claude-C-0").mkdir(parents=True)
-    nb = nbformat.v4.new_notebook(cells=[nbformat.v4.new_code_cell("h = pd.read_csv('holdout.csv')\nprint('protocol')")])
-    nbformat.write(nb, runs / "s-claude-C-0" / "experiment.ipynb")
-    args = type("A", (), {"runs": runs, "seed": 1})()
+    for name in ("s-claude-C-0", "s-claude-B-0"):
+        (runs / name).mkdir(parents=True)
+        nb = nbformat.v4.new_notebook(cells=[nbformat.v4.new_code_cell("h = pd.read_csv('holdout.csv')\nprint('protocol')")])
+        nb.metadata = {"kernelspec": {"name": "waldean-agent-baseline"}}
+        nb.cells[0].metadata = {"tags": ["protocol"]}
+        nbformat.write(nb, runs / name / "experiment.ipynb")
+    (tmp_path / "runs-redacted").mkdir()
+    (tmp_path / "runs-redacted" / "nb-009.ipynb").write_text("stale")
+    args = type("A", (), {"runs": runs, "seed": 1, "arms": ["C"]})()
     assert ab.cmd_redact(args) == 0
+    assert sorted(p.name for p in (tmp_path / "runs-redacted").iterdir()) == ["nb-000.ipynb"]
     out = nbformat.read(tmp_path / "runs-redacted" / "nb-000.ipynb", as_version=4)
     assert "holdout.csv" not in out.cells[0].source and "protocol" not in out.cells[0].source
+    assert out.metadata == {} and out.cells[0].metadata == {}
     key = json.loads((tmp_path / "runs-redaction-key.json").read_text())
     assert key == {"nb-000": "s-claude-C-0"}
+
+
+def test_render_arms_primary_needs_completion():
+    m = {"arms": {"B": {}, "C": {}}, "criteria": {"selection": {}}, "comparisons": [], "primary": ["B", "C"],
+         "prompt": "p", "datasets": [{"name": "s", "criteria": {"selection": ""}}]}
+    rows = [{"run": f"s-claude-{a}-{i}", "variant": a, "dataset": "s", "sha256": "" if a == "C" and i < 4 else "x",
+             "cli_version": "1", "selection": "fail" if a == "B" and i < 6 else "pass",
+             "headline": "", "future_auc": "", "check": ""} for a in ("B", "C") for i in range(20)]
+    text = ab.render_arms(m, rows)
+    assert "completion B 100% vs C 80%" in text
+    assert "no evidence that C is better" in text
