@@ -307,6 +307,24 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
         events, bindings = flow.chain(seed, (s.cell, s.line))
         chains.append((s, {id(e) for e in events}, bindings))
 
+    calls_in_order = sorted(flow.calls, key=lambda c: (c.cell, c.line))
+
+    def reaches_score(call, reached: set) -> bool:
+        reached = set(reached)
+        for c in calls_in_order:
+            at = (c.cell, c.line)
+            if at < (call.cell, call.line) or c is call:
+                continue
+            names = c.arg_names | ({c.receiver_base} if c.receiver_base else set())
+            _, binds = flow.chain(names, at)
+            if not binds & reached:
+                continue
+            if c.name in PREDICT_CALLS or c.name in SCORE_FUNCS or c.name in CV_SINKS or c.name == "score":
+                return True
+            if c.name == "fit" and c.receiver_base and c.receiver_base.isidentifier():
+                reached.add(flow.binding(c.receiver_base, at))
+        return False
+
     best: dict[object, Flag] = {}
 
     def emit(call, confidence, leaked, evidence, key=None, sink_cell=None, **more):
@@ -353,9 +371,14 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
             _, arg_chain = flow.chain(call.arg_names, pos)
             touched_test = {n for n, _ in arg_chain & test_binds}
             if touched_test:
-                emit(call, 0.9, touched_test, (
+                reached = {(t, id(my_event)) for t in my_event.targets} if my_event is not None else set()
+                if call.receiver_base and call.receiver_base.isidentifier():
+                    reached.add(flow.binding(call.receiver_base, pos))
+                scored = reaches_score(call, reached)
+                emit(call, 0.9 if scored else 0.75, touched_test, (
                     f"`{call.func}(...)` is fitted on {_join_names(touched_test)}, "
                     f"a test split output; the transformer learns from the rows it is scored on"
+                    + ("" if scored else "; no later scoring call reads its output (candidate)")
                 ))
                 continue
             for sink, chain_ids, bindings in chains:

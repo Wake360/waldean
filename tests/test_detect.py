@@ -716,6 +716,7 @@ def test_refit_on_split_output_by_position():
     notebook = nb([
         ("code", SPLIT4),
         ("code", "X_train = scaler.fit_transform(X_train)\nX_holdout = scaler.fit_transform(X_holdout)"),
+        ("code", "model.fit(X_train, y_train)\nprint(model.score(X_holdout, y_holdout))"),
     ])
     flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
     assert len(flags) == 1
@@ -744,6 +745,7 @@ def test_fit_on_concat_of_train_and_test():
     notebook = nb([
         ("code", SPLIT4),
         ("code", "both = pd.concat([X_train, X_holdout])\nenc = OneHotEncoder()\nenc.fit(both)"),
+        ("code", "model.fit(enc.transform(X_train), y_train)\nprint(model.score(enc.transform(X_holdout), y_holdout))"),
     ])
     assert "leakage-fit-before-split" in flag_ids(notebook)
 
@@ -907,3 +909,34 @@ def test_reread_test_name_filled_with_its_own_statistic_is_not_a_test_fill():
         ("code", "X_te = pd.read_csv('holdout.csv')\nX_te['a'] = X_te['a'].fillna(X_te['a'].median())"),
     ])
     assert not any("test split output" in f.evidence for f in run_static(notebook))
+
+
+def _refit_flags(notebook):
+    return [f for f in run_static(notebook) if "test split output" in f.evidence]
+
+
+def test_final_refit_on_all_rows_for_deployment_is_a_candidate():
+    notebook = nb([
+        ("code", "X_train, X_test, y_train, y_test = train_test_split(X, y)\nsc = StandardScaler().fit(X_train)\nclf = LogisticRegression().fit(sc.transform(X_train), y_train)\nprint(clf.score(sc.transform(X_test), y_test))"),
+        ("code", "X_all = pd.concat([X_train, X_test])\nfinal_sc = StandardScaler()\nX_all_s = final_sc.fit_transform(X_all)\nfinal = LogisticRegression().fit(X_all_s, pd.concat([y_train, y_test]))\njoblib.dump(final, 'model.pkl')"),
+    ])
+    flags = _refit_flags(notebook)
+    assert flags and all(f.confidence == 0.75 for f in flags)
+
+
+def test_embedding_fit_on_test_for_plotting_is_a_candidate():
+    notebook = nb([
+        ("code", "X_train, X_test, y_train, y_test = train_test_split(X, y)\nclf = RandomForestClassifier().fit(X_train, y_train)\nprint(clf.score(X_test, y_test))"),
+        ("code", "emb = TSNE(n_components=2).fit_transform(X_test)\nplt.scatter(emb[:,0], emb[:,1], c=clf.predict(X_test))"),
+    ])
+    flags = _refit_flags(notebook)
+    assert flags and all(f.confidence == 0.75 for f in flags)
+
+
+def test_refit_on_test_whose_transform_feeds_a_scored_model_is_confident():
+    notebook = nb([
+        ("code", SPLIT4),
+        ("code", "sc = MinMaxScaler().fit(X_holdout)\nXh = sc.transform(X_holdout)\nmodel.fit(sc.transform(X_train), y_train)\nprint(accuracy_score(y_holdout, model.predict(Xh)))"),
+    ])
+    flags = _refit_flags(notebook)
+    assert flags and flags[0].confidence == 0.9
