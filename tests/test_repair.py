@@ -408,3 +408,11 @@ def test_repair_line_only_for_flags_at_the_default_floor():
     assert "**Repair:**" not in to_markdown("nb.ipynb", [flag], floor=0.5)
     flag.confidence = 0.9
     assert "**Repair:**" in to_markdown("nb.ipynb", [flag], floor=0.5)
+
+
+def test_provenance_lives_in_runtime():
+    from waldean.runtime.execute import provenance
+
+    info = provenance()
+    assert set(info) == {"waldean", "python", "platform", "packages"}
+    assert "scikit-learn" in info["packages"]
