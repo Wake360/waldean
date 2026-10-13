@@ -668,6 +668,9 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
         return frozenset(out)
 
     def score_bearing(name: str, at: tuple[int, int] | tuple[int, int, int]) -> bool:
+        own = flow.last_assign(name, at, mutations=True)
+        if own is not None and SELECT_RE.search(span_text(own)):
+            return False
         events, _ = flow.chain({name}, at, mutations=True)
         return any(is_metric(c) or c.name in PREDICT_CALLS for ev in events for c in calls_in(ev))
 
