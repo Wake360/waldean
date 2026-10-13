@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "registered": "2026-10-13",
+  "agents": {
+    "claude": {
+      "cli": "claude",
+      "model": "sonnet"
+    },
+    "codex": {
+      "cli": "codex",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "medium"
+    }
+  },
+  "runs_per_cell": {
+    "default": 2,
+    "hinted": 1
+  },
+  "prompt": "Here is data.csv. I want to know whether we can predict {question}. Build a notebook and save it as experiment.ipynb.",
+  "hinted_suffix": " Note: {hint}",
+  "gate": {
+    "solved_by_agents": "at least 3 of the 4 default runs pass the probe",
+    "builder_rule": "at least 2 of the 4 default runs fail the probe",
+    "counted": "default runs only; control excluded; hinted runs reported separately"
+  },
+  "binding": "Per run, scoring.tsv holds a Python snippet the scorer writes after reading the notebook. It sets PROBE_SPLITS, a list of (train_labels, test_labels) row labels of data.csv for the split that produces the reported test metric, and PROBE_FEATURES, the column names the final model was fitted on. A run whose notebook fails to execute fails its probe.",
+  "datasets": [
+    {
+      "name": "temporal",
+      "source": "UCI Occupancy Detection, id 357",
+      "url": "https://archive.ics.uci.edu/static/public/357/data.csv",
+      "doi": "10.24432/C5X01N",
+      "license": "CC BY 4.0",
+      "prep": "drop the two embedded header rows and the id column, sort by date",
+      "target": "Occupancy",
+      "question": "whether the room is occupied (the Occupancy column)",
+      "hint": "rows are ordered by the date column.",
+      "criterion": "every training row is earlier than every test row",
+      "probe": "print('PROBE', all(max(tr) < min(te) for tr, te in PROBE_SPLITS))",
+      "csv_sha256": "7f84fc99a679e9562ed1d5945ac9f6864cf54b6334a09e220b8fac8e7c743e4c"
+    },
+    {
+      "name": "group",
+      "source": "UCI Diabetes 130-US Hospitals for Years 1999-2008, id 296",
+      "url": "https://archive.ics.uci.edu/static/public/296/data.csv",
+      "license": "CC BY 4.0",
+      "prep": "none",
+      "target": "readmitted",
+      "question": "whether a patient is readmitted (the readmitted column)",
+      "hint": "patient_nbr identifies a patient, and one patient can have several rows.",
+      "criterion": "no patient_nbr appears in both train and test",
+      "probe": "import pandas as _pd\n_p = _pd.read_csv('data.csv', usecols=['patient_nbr'], low_memory=False)['patient_nbr']\nprint('PROBE', all(not set(_p.loc[list(tr)]) & set(_p.loc[list(te)]) for tr, te in PROBE_SPLITS))",
+      "csv_sha256": "0ee4c49545f267b7817954b90f7f81dd2cca20c352a2ff547ff859d2ad6a4aa6"
+    },
+    {
+      "name": "imbalance",
+      "source": "OpenML mammography, id 310",
+      "url": "https://openml.org/data/v1/download/52214/mammography.arff",
+      "license": "Public (OpenML licence field)",
+      "prep": "ARFF to CSV, class -1/1 to 0/1",
+      "target": "class",
+      "question": "whether a finding is malignant (the class column)",
+      "hint": "about 2% of rows are in the positive class.",
+      "criterion": "a test metric other than accuracy is computed",
+      "probe_source_regex": "f1_score|roc_auc_score|average_precision_score|balanced_accuracy_score|recall_score|precision_score|classification_report|precision_recall_curve|matthews_corrcoef|fbeta_score|cohen_kappa_score",
+      "csv_sha256": "0d668bc3fb85a6b81e7ebabf6e193a732e8e51bb1c3aef0e56fdfe895cc54127"
+    },
+    {
+      "name": "leak",
+      "source": "UCI Bank Marketing, id 222",
+      "url": "https://archive.ics.uci.edu/static/public/222/data.csv",
+      "license": "CC BY 4.0",
+      "prep": "none",
+      "target": "y",
+      "question": "whether a client subscribes to a term deposit after a marketing call (the y column)",
+      "hint": "duration is the length of the call, known only after the call has ended.",
+      "criterion": "duration is not among the fitted features",
+      "probe": "print('PROBE', not any(str(f) == 'duration' or str(f).endswith('__duration') for f in PROBE_FEATURES))",
+      "csv_sha256": "1ae070f431c41d2cc27ebd0e9039409a7fb880d3b1044046f622a266db4c89be"
+    },
+    {
+      "name": "control",
+      "source": "UCI Spambase, id 94",
+      "url": "https://archive.ics.uci.edu/static/public/94/data.csv",
+      "license": "CC BY 4.0",
+      "prep": "none",
+      "target": "Class",
+      "question": "whether an email is spam (the Class column)",
+      "hint": null,
+      "criterion": null,
+      "csv_sha256": "68df02d322b0a20140f7aeaa8b8094ce94b7b6c5ff17ab6900a6252ebe0cf72b"
+    }
+  ]
+}
