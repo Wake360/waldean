@@ -136,3 +136,45 @@ def test_values_alias_of_a_different_label_stays_candidate():
         "yt = y_te.values\nprint(roc_auc_score(yt, fitted[best].predict_proba(X_te)[:, 1]))",
     ]
     assert not confident(cells)
+
+
+def test_wrapper_with_global_label_counts_as_reuse():
+    cells = [
+        "def evaluate(model):\n"
+        "    p = cross_val_predict(model, X, y, cv=5, method='predict_proba')[:, 1]\n"
+        "    return roc_auc_score(y, p), p",
+        "out = {n: evaluate(m) for n, m in models.items()}\nbest = max(out, key=lambda n: out[n][0])",
+        "print(roc_auc_score(y, out[best][1]))",
+    ]
+    assert confident(cells)
+
+
+def test_wrapper_label_parameter_maps_to_call_argument():
+    cells = [
+        "def rep(name, yt, p):\n    return {'model': name, 'auc': roc_auc_score(yt, p)}",
+        PROBS,
+        "res = pd.DataFrame([rep(n, y_te, p) for n, p in P.items()]).set_index('model')\nbest = res['auc'].idxmax()",
+        "print(rep(best, y_te, P[best]))",
+    ]
+    assert confident(cells)
+
+
+def test_wrapper_then_fresh_test_rows_is_silent_or_candidate():
+    cells = [
+        "def evaluate(model):\n"
+        "    p = cross_val_predict(model, X, y, cv=5, method='predict_proba')[:, 1]\n"
+        "    return roc_auc_score(y, p), p",
+        "out = {n: evaluate(m) for n, m in models.items()}\nbest = max(out, key=lambda n: out[n][0])",
+        "print(roc_auc_score(y_test, models[best].fit(X, y).predict_proba(X_test)[:, 1]))",
+    ]
+    assert not confident(cells)
+
+
+def test_wrapper_local_label_is_not_a_free_name():
+    cells = [
+        "yy = y_te.values",
+        "def evaluate(model, p):\n    yy = y_va\n    return roc_auc_score(yy, p)",
+        "res = {n: evaluate(n, p) for n, p in P.items()}\nbest = max(res, key=res.get)",
+        "print(roc_auc_score(y_te, P[best]))",
+    ]
+    assert not confident(cells)

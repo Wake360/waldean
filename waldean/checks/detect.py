@@ -8,6 +8,7 @@ comes from the taxonomy.
 
 from __future__ import annotations
 
+import ast
 import re
 
 from ..analysis.dataflow import NotebookDataflow, analyze
@@ -610,6 +611,7 @@ IFCMP_RE = re.compile(r"\bif\b[^\n]*?(?:>=|<=|>|<)[^\n]*?\belse\b")
 ATTR_PASSTHROUGH_RE = re.compile(r"^\w+\s*=\s*\w+\.(?:values|T)\s*(?:;|$)")
 LABEL_PASSTHROUGH = {"to_numpy", "values", "copy", "astype", "reset_index", "ravel", "squeeze"}
 DEF_RE = re.compile(r"^def (\w+)\(", re.MULTILINE)
+WRAP_DEF_RE = re.compile(r"^def (\w+)\(([^)]*)\)", re.MULTILINE)
 
 
 def _metric_functions(nb: ParsedNotebook) -> set[str]:
@@ -628,8 +630,45 @@ def _metric_functions(nb: ParsedNotebook) -> set[str]:
     return names
 
 
+def _assigned_names(source: str) -> set[str]:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, (ast.AugAssign, ast.AnnAssign)) else []
+        for t in targets:
+            out |= {n.id for n in ast.walk(t) if isinstance(n, ast.Name)}
+    return out
+
+
+def _wrapper_labels(nb: ParsedNotebook, flow: NotebookDataflow) -> dict[str, tuple[list[str], set[str]]]:
+    out = {}
+    for cell in nb.code_cells:
+        lines = cell.source.splitlines()
+        for m in WRAP_DEF_RE.finditer(cell.source):
+            start = cell.source[:m.start()].count("\n") + 1
+            end = start
+            for i, line in enumerate(lines[start:], start + 1):
+                if line.strip() and not line[:1].isspace():
+                    break
+                end = i
+            params = [p.split("=")[0].split(":")[0].strip().lstrip("*") for p in m.group(2).split(",") if p.strip()]
+            local = _assigned_names("\n".join(lines[start - 1:end]))
+            names: set[str] = set()
+            for c in flow.calls:
+                if c.cell == cell.index and start < c.line <= end and c.name in SCORE_FUNCS:
+                    names |= c.pos_args[0] if c.pos_args else c.kw_args.get("y_true", set())
+            names = {n for n in names if n in params or n not in local}
+            if names:
+                out[m.group(1)] = (params, names)
+    return out
+
+
 def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) -> list[Flag]:
     metric_names = _metric_functions(nb)
+    wrappers = _wrapper_labels(nb, flow)
     src = {c.index: c.source.splitlines() for c in nb.code_cells}
     calls_by_cell: dict[int, list] = {}
     for c in flow.calls:
@@ -647,6 +686,17 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
         return c.name in metric_names or c.name in CV_SCORERS or (c.name == "score" and c.receiver is not None)
 
     def label_names(c) -> set[str]:
+        if c.name in wrappers and c.name not in SCORE_FUNCS:
+            params, inner = wrappers[c.name]
+            out: set[str] = set()
+            for n in inner:
+                if n not in params:
+                    out.add(n)
+                elif params.index(n) < len(c.pos_args):
+                    out |= c.pos_args[params.index(n)]
+                else:
+                    out |= c.kw_args.get(n, set())
+            return out
         if c.name in CV_SCORERS:
             return c.pos_args[2] if len(c.pos_args) > 2 else c.kw_args.get("y", set())
         if c.name == "score":
