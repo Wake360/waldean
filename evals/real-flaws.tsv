@@ -1,10 +1,10 @@
 notebook_id	class	license	kind	why_real
-nb01	leakage-fit-before-split	NONE	flagged-TP	imputer.fit_transform is called on X_dev (the entire dev dataset) before train_test_split is ever in
-nb01	leakage-fit-before-split	NONE	flagged-TP	scaler.fit_transform runs on X_dev_imputed, which covers the whole dev population, prior to the trai
-nb01	leakage-fit-before-split	NONE	flagged-TP	select_k_best.fit_transform(X_dev_scaled, y_dev) uses the FULL y_dev label vector (including what be
-nb02	leakage-fit-before-split	NONE	miss	StandardScaler is fit on the full train_data_munged[features] and transform is applied to produce tr
-nb03	leakage-fit-before-split	NONE	flagged-TP	data['Age'].fillna(data['Age'].mean()) and data['Embarked'].fillna(data['Embarked'].mode()[0]) compu
-nb04	leakage-fit-before-split	NONE	flagged-TP	X[col].mode() is computed on the full X (all rows, pre-split) for used_chip/used_pin_number/online_o
+nb01	leakage-fit-before-split	NONE	flagged-TP	imputer fitted on the full development frame before the train/test split
+nb01	leakage-fit-before-split	NONE	flagged-TP	scaler fitted on the full imputed frame before the train/test split
+nb01	leakage-fit-before-split	NONE	flagged-TP	feature selector fitted with the full label vector before the train/test split
+nb02	leakage-fit-before-split	NONE	miss	scaler fitted on the full feature frame, then applied to produce the training matrix
+nb03	leakage-fit-before-split	NONE	flagged-TP	missing values filled with whole-column mean and mode statistics before the split
+nb04	leakage-fit-before-split	NONE	flagged-TP	per-column mode computed on all rows before the split and used to fill missing values
 nb05	leakage-fit-before-split	mit	flagged-TP	Same leak mechanism: mms.fit_transform on the full df4['estimated_salary'] column before the split a
 nb05	leakage-fit-before-split	mit	flagged-TP	Same mechanism as the credit_score leak: mms.fit_transform is called on the full df4['balance'] colu
 nb05	leakage-fit-before-split	mit	flagged-TP	Same rs.fit_transform full-data leak applied to balance/tenure, fit before the split at cell 117, fe
@@ -14,21 +14,21 @@ nb05	leakage-fit-before-split	mit	flagged-TP	Same rs.fit_transform full-data lea
 nb05	leakage-fit-before-split	mit	flagged-TP	mms (MinMaxScaler) is fit_transform'd on df4 which at this point contains all rows (both future trai
 nb05	leakage-fit-before-split	mit	flagged-TP	rs (RobustScaler) is fit_transform'd on the full df4['age'] column before train_test_split (cell 117
 nb06	leakage-fit-before-split	mit	flagged-TP	Exact match to leakage-fit-before-split: the leaking transformer is sklearn MinMaxScaler; it is fit_
-nb07	leakage-fit-before-split	NONE	miss	train.groupby('Title')['Age'].transform('median') (and the analogous Pclass-median fills for Fare an
+nb07	leakage-fit-before-split	NONE	miss	group-wise median imputation computed over the full frame without a fitted transformer
 nb08	leakage-fit-before-split	mit	flagged-TP	StandardScaler is fit_transform'd on the full X (all 284,807 rows, before Class is dropped only) in 
-nb09	leakage-fit-before-split	NONE	flagged-TP	The transformer (StandardScaler) is fitted on the entire dataset column before the split, and the re
+nb09	leakage-fit-before-split	NONE	flagged-TP	scaler fitted on a whole column before the split
 nb10	leakage-fit-before-split	mit	miss	Mean imputation statistic df.LotFrontage.mean() and df.GarageYrBlt.mean() are computed over the full
 nb11	leakage-fit-before-split	mit	flagged-TP	The ColumnTransformer contains real statistical transformers (median/mode imputers, StandardScaler) 
-nb12	leakage-temporal-shuffle	NONE	miss	X_train columns are all time-ordered rolling/EMA/lag technical indicators (EMA_9, SMA_50/100/200 fro
-nb13	leakage-temporal-shuffle	NONE	flagged-TP	df is time-ordered rainfall data (has a 'date' column, per-location groups). A lag feature rainfall_
-nb14	leakage-fit-before-split	NONE	flagged-TP	Identical duplicate of the pipeline in cell gjgHpQbOHJo1: StandardScaler fit_transform on full X pri
-nb14	leakage-fit-before-split	NONE	flagged-TP	StandardScaler is a genuine transformer (not a model), fit_transform is called on the full X (includ
-nb14	leakage-temporal-shuffle	NONE	flagged-TP	Data is time-ordered (df['Date'] parsed to datetime) and three lag features (Demand_lag1/7/30, built
-nb14	leakage-temporal-shuffle	NONE	flagged-TP	Same construction as the first cell: Demand_lag1/7/30 shift-based features are part of X, split via 
-nb15	leakage-temporal-shuffle	NONE	miss	feature_engineering builds time-ordered lag features (demand_lag_1/2/3 via .shift()), rolling_mean (
-nb16	leakage-fit-before-split	NONE	flagged-TP	Cell 11 builds a ColumnTransformer wrapping OneHotEncoder over the 'Profession' column and calls one
+nb12	leakage-temporal-shuffle	NONE	miss	time-ordered rolling, moving-average and lag indicator features evaluated with a shuffled split
+nb13	leakage-temporal-shuffle	NONE	flagged-TP	lag feature on time-ordered per-group data evaluated with a shuffled split
+nb14	leakage-fit-before-split	NONE	flagged-TP	duplicate of an earlier pipeline: scaler fitted on the full feature frame before the split
+nb14	leakage-fit-before-split	NONE	flagged-TP	scaler fitted on the full feature frame, including rows later used for testing
+nb14	leakage-temporal-shuffle	NONE	flagged-TP	shift-based lag features on time-ordered data evaluated with a shuffled split
+nb14	leakage-temporal-shuffle	NONE	flagged-TP	same construction as the previous cell: shift-based lag features evaluated with a shuffled split
+nb15	leakage-temporal-shuffle	NONE	miss	helper builds shift-based lag and rolling-mean features on time-ordered data evaluated with a shuffled split
+nb16	leakage-fit-before-split	NONE	flagged-TP	column transformer with a one-hot encoder fitted on the full frame before the split
 nb17	leakage-fit-before-split	MIT	miss	TfidfVectorizer (cell 8) and TruncatedSVD(n_components=100) (cell 10) are fit_transform'd on the ent
-nb18	leakage-fit-before-split	NONE	miss	standScaler = StandardScaler().fit_transform(dataset[columns_to_scale]) is fit on the ENTIRE dataset
+nb18	leakage-fit-before-split	NONE	miss	scaler fitted on the entire dataset before the split
 nb19	leakage-fit-before-split	mit	miss	The one-hot encoder vocabulary is fitted on data including the test set: column_keys = pd.get_dummie
 nb20	leakage-fit-before-split	mit	flagged-TP	StandardScaler().fit_transform(X) is called on the full feature matrix in cell 22, one cell before X
 nb20	leakage-fit-before-split	mit	flagged-TP	X.mean() is computed over the entire feature matrix (cell 18), which at that point still contains th
