@@ -48,6 +48,24 @@ with `TimeSeriesSplit`, numbers computed in the notebook
 (run record:
 [`evals/2026-10-12-temporal-cv-demo.md`](https://github.com/Wake360/waldean/blob/v0.4.0/evals/2026-10-12-temporal-cv-demo.md)).
 
+## Repair loop (experimental)
+
+Waldean does not stop at the finding. For a shuffled split on time-ordered data it writes a repair contract that a coding agent or a person applies, and then checks the result.
+
+```bash
+waldean propose forecast.ipynb          # writes .waldean/repairs/forecast--leakage-temporal-shuffle/brief.md
+claude -p "$(cat .waldean/repairs/forecast--leakage-temporal-shuffle/brief.md)"
+waldean verify .waldean/repairs/forecast--leakage-temporal-shuffle
+pip install 'waldean[execute]'
+waldean verify .waldean/repairs/forecast--leakage-temporal-shuffle --execute --metric 'R2=(-?\d+\.\d+)'
+```
+
+`verify` rejects edits outside the cells the contract names, a deleted evaluation call, a finding that is still there, and any new finding. With `--execute` it runs the original and the repaired notebook and records both metrics, package versions and file hashes in `evidence.json`. A repair is `static-pass` without execution and `verified` with it. Neither status says the new number is right.
+
+On the mutation corpus the verifier accepted all 16 true repairs and rejected all 48 bad ones ([`evals/2026-10-13-repair-loop.md`](evals/2026-10-13-repair-loop.md)). Agent trial: 5 of 5 demo runs verified, 2 of 2 real notebooks static-pass, N=7, indicative ([`evals/2026-10-13-repair-trial.md`](evals/2026-10-13-repair-trial.md)).
+
+Limits: one flaw class so far (`leakage-temporal-shuffle`). Comparison is cell by cell, so an added cell is rejected. `--execute` runs code on your machine with your permissions. It hides secret-looking environment variables and isolates nothing else. `verify` trusts the files in the repair directory, so do not let the agent write there.
+
 ## Status
 
 | | What |
@@ -88,7 +106,7 @@ Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
 - The 0.0% false-positive rate holds on the curated corpus, not on messy
   real code.
 - Flaws with no imprint in code, outputs or prose are invisible to Waldean.
-- Waldean never executes your notebook.
+- Waldean never executes your notebook unless you run `waldean verify --execute`.
 
 Full evaluation, corpus method and dogfood history:
 [`docs/EVALUATION.md`](https://github.com/Wake360/waldean/blob/v0.4.0/docs/EVALUATION.md).
@@ -254,8 +272,7 @@ summary line gains a `, N failed` suffix.
 `waldean rules` lists the flaw classes from the taxonomy (id, layer, severity,
 definition); `--format json` emits the same data as a JSON array.
 
-Waldean never executes *your* notebook (static analysis + stored outputs
-only). Only self-authored corpus notebooks are executed, at corpus build
+Waldean never executes *your* notebook unless you pass `waldean verify --execute` (static analysis + stored outputs otherwise). Only self-authored corpus notebooks are executed, at corpus build
 time, to verify mutations.
 
 ## Roadmap
