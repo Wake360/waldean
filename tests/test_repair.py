@@ -7,6 +7,7 @@ from pathlib import Path
 import nbformat
 import pytest
 
+from waldean.cli import main
 from waldean.repair import counterfactual, metric_values, propose, render_brief, scrubbed_env, supported, verify
 from waldean.taxonomy import load_taxonomy
 
@@ -268,3 +269,55 @@ def test_live_counterfactual_hides_secrets(tmp_path, monkeypatch):
         pytest.skip(run["error"])
     assert run["complete"], run["error"]
     assert run["before"] == run["after"] == [0.0]
+
+
+def test_cli_propose_then_verify(leaky, tmp_path, capsys):
+    out = tmp_path / "repairs"
+    assert main(["propose", str(leaky), "--out", str(out)]) == 0
+    repair_dir = out / "demand--leakage-temporal-shuffle"
+    assert f"proposed: {(repair_dir / 'brief.md').as_posix()}" in capsys.readouterr().out
+    assert main(["verify", str(repair_dir)]) == 2
+    assert "status: rejected" in capsys.readouterr().out
+    write_nb(leaky, [IMPORTS, DATA, FEATURES, TEMPORAL])
+    assert main(["verify", str(repair_dir)]) == 0
+    report = capsys.readouterr().out
+    assert "status: static-pass" in report
+    assert "execution: not run" in report
+
+
+def test_cli_propose_nothing_to_do_exits_1(tmp_path, capsys):
+    clean = write_nb(tmp_path / "clean.ipynb", ["x = 1"])
+    assert main(["propose", str(clean), "--out", str(tmp_path / "r")]) == 1
+    assert "nothing to propose" in capsys.readouterr().out
+
+
+def test_cli_propose_unwritable_out_exits_3(leaky, tmp_path, capsys):
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory")
+    assert main(["propose", str(leaky), "--out", str(blocker / "repairs")]) == 3
+    assert "Traceback" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("argv, message", [
+    (["--execute"], "--execute and --metric go together"),
+    (["--metric", "R2=(.*)"], "--execute and --metric go together"),
+    (["--execute", "--metric", "R2=.*"], "exactly one capture group"),
+    (["--execute", "--metric", "R2=("], "--metric:"),
+])
+def test_cli_verify_metric_usage_errors(leaky, tmp_path, capsys, argv, message):
+    repair_dir = _repair(leaky, tmp_path)
+    assert main(["verify", str(repair_dir), *argv]) == 3
+    assert message in capsys.readouterr().err
+
+
+def test_cli_verify_missing_contract_exits_3(tmp_path, capsys):
+    assert main(["verify", str(tmp_path / "nope")]) == 3
+    assert "no such file" in capsys.readouterr().err
+
+
+def test_cli_verify_execute_on_script_exits_3(tmp_path, capsys):
+    script = tmp_path / "demand.py"
+    script.write_text("\n\n".join([IMPORTS, DATA, FEATURES, SHUFFLED]) + "\n", encoding="utf-8")
+    written, _ = propose(script, out_root=tmp_path / "repairs")
+    assert main(["verify", str(written[0]), "--execute", "--metric", r"R2=(\S+)"]) == 3
+    assert ".ipynb notebooks only" in capsys.readouterr().err

@@ -1,4 +1,4 @@
-"""waldean CLI: check / eval / corpus."""
+"""waldean CLI: check / propose / verify / eval / corpus."""
 
 from __future__ import annotations
 
@@ -323,6 +323,62 @@ def cmd_rules(args) -> int:
     return 0
 
 
+VERIFY_EXIT = {"verified": 0, "static-pass": 0, "inconclusive": 1, "rejected": 2}
+EXECUTE_WARNING = ("waldean: --execute runs both notebooks on this machine with your permissions. "
+                   "Secret-looking environment variables are hidden from the kernel; nothing else "
+                   "is isolated.")
+
+
+def cmd_propose(args) -> int:
+    from .repair import propose
+
+    try:
+        written, unsupported = propose(args.file, out_root=Path(args.out), floor=args.floor)
+    except Exception as exc:
+        print(f"waldean: {args.file}: {_input_error(exc)}", file=sys.stderr)
+        return 3
+    for line in unsupported:
+        print(f"unsupported: {line}")
+    for repair_dir in written:
+        print(f"proposed: {(repair_dir / 'brief.md').as_posix()}")
+    if not written:
+        print("nothing to propose: no confident finding has a repair contract")
+    return 0 if written else 1
+
+
+def cmd_verify(args) -> int:
+    import re
+
+    from .repair import render_evidence, verify
+
+    if args.execute != bool(args.metric):
+        print("waldean: --execute and --metric go together", file=sys.stderr)
+        return 3
+    metric = None
+    if args.metric:
+        try:
+            metric = re.compile(args.metric)
+        except re.error as exc:
+            print(f"waldean: --metric: {exc}", file=sys.stderr)
+            return 3
+        if metric.groups != 1:
+            print("waldean: --metric needs exactly one capture group around the number",
+                  file=sys.stderr)
+            return 3
+        print(EXECUTE_WARNING, file=sys.stderr)
+    try:
+        evidence = verify(args.repair_dir, args.fixed, metric, args.timeout)
+    except ImportError:
+        print("waldean: --execute needs the execute extra: pip install 'waldean[execute]'",
+              file=sys.stderr)
+        return 3
+    except Exception as exc:
+        print(f"waldean: {args.repair_dir}: {_input_error(exc)}", file=sys.stderr)
+        return 3
+    print(render_evidence(evidence, Path(args.repair_dir)))
+    return VERIFY_EXIT[evidence["status"]]
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="waldean", description="Statistical-integrity linter for notebooks.")
     try:
@@ -393,6 +449,33 @@ def main(argv=None) -> int:
     p_rules.add_argument("--format", choices=["text", "json"], default="text",
                          help="json emits a JSON array of flaw objects (default: %(default)s)")
     p_rules.set_defaults(func=cmd_rules)
+
+    p_propose = sub.add_parser(
+        "propose",
+        help="write a repair contract for a fixable finding; exit 0 written / 1 nothing / 3 error",
+    )
+    p_propose.add_argument("file", help="notebook or .py script")
+    p_propose.add_argument("--out", default=".waldean/repairs",
+                           help="directory for repair contracts (default: %(default)s)")
+    p_propose.add_argument("--floor", type=float, default=DEFAULT_CONFIDENCE_FLOOR,
+                           help="confidence floor (default: %(default)s)")
+    p_propose.set_defaults(func=cmd_propose)
+
+    p_verify = sub.add_parser(
+        "verify",
+        help="check a repair against its contract; exit 0 verified or static-pass / "
+             "1 inconclusive / 2 rejected / 3 error",
+    )
+    p_verify.add_argument("repair_dir", help="directory written by waldean propose")
+    p_verify.add_argument("--fixed", help="repaired file (default: the file the contract names)")
+    p_verify.add_argument("--execute", action="store_true",
+                          help="run the original and the repaired notebook and compare the metric")
+    p_verify.add_argument("--metric",
+                          help="regex with one capture group for the number, matched against "
+                               "printed output lines")
+    p_verify.add_argument("--timeout", type=int, default=600,
+                          help="seconds per cell when executing (default: %(default)s)")
+    p_verify.set_defaults(func=cmd_verify)
 
     args = parser.parse_args(argv)
     return args.func(args)

@@ -295,3 +295,20 @@ def counterfactual(original: Path, fixed: Path, metric: re.Pattern, timeout: int
         run["delta"] = [round(a - b, 6) for b, a in zip(run["before"], run["after"])]
         run["complete"] = True
     return run
+
+
+def render_evidence(evidence: dict, repair_dir: Path) -> str:
+    lines = [f"# Waldean repair — {evidence['id']}", "", f"status: {evidence['status']}", ""]
+    static = evidence["static"]
+    lines.append(f"- static checks: {'passed' if static['passed'] else 'failed'}")
+    lines += [f"  - {r}" for r in static["reasons"]]
+    run = evidence["execution"]
+    if run is None:
+        lines.append("- execution: not run (add --execute --metric REGEX to measure both protocols)")
+    elif run["complete"]:
+        lines.append(f"- metric `{run['metric']}`: before {run['before']}, after {run['after']}, "
+                     f"delta {run['delta']}")
+    else:
+        lines.append(f"- execution: {run['error']}")
+    lines += ["", f"evidence: {(repair_dir / 'evidence.json').as_posix()}", ""]
+    return "\n".join(lines)
