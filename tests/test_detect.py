@@ -891,3 +891,19 @@ def test_attribute_target_in_split_keeps_test_positions():
         ("code", "sc = StandardScaler().fit(y_train)"),
     ])
     assert not any("test split output" in f.evidence for f in run_static(notebook))
+
+
+def test_reread_test_name_is_not_a_test_split_output():
+    notebook = nb([
+        ("code", "X_train, X_test, y_train, y_test = train_test_split(X, y)\nsc = StandardScaler().fit(X_train)"),
+        ("code", "X_test = pd.read_csv('holdout.csv')\nother = MinMaxScaler()\nother.fit(X_test)"),
+    ])
+    assert not any("test split output" in f.evidence for f in run_static(notebook))
+
+
+def test_reread_test_name_filled_with_its_own_statistic_is_not_a_test_fill():
+    notebook = nb([
+        ("code", "X_tr, X_te, y_tr, y_te = train_test_split(X, y)"),
+        ("code", "X_te = pd.read_csv('holdout.csv')\nX_te['a'] = X_te['a'].fillna(X_te['a'].median())"),
+    ])
+    assert not any("test split output" in f.evidence for f in run_static(notebook))

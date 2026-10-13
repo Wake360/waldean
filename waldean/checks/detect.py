@@ -256,11 +256,13 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
 
     # names assigned from a train_test_split call (X_train, X_test, ...)
     split_outputs: set[str] = set()
-    test_outputs: set[str] = set()
+    split_binds: set[tuple[str, int | None]] = set()
+    test_binds: set[tuple[str, int | None]] = set()
     for ev in flow.assigns:
         if ev.call is not None and ev.call.name == "train_test_split":
             split_outputs |= ev.targets
-            test_outputs |= set(ev.ordered_targets[1::2])
+            split_binds |= {(t, id(ev)) for t in ev.targets}
+            test_binds |= {(t, id(ev)) for t in ev.ordered_targets[1::2]}
     # every .transform call, for binding-aware receiver checks
     transform_calls = [c for c in flow.calls if c.name == "transform" and c.receiver]
     assign_event_of: dict[int, "object"] = {
@@ -349,7 +351,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                 for t in transform_calls
             )
             _, arg_chain = flow.chain(call.arg_names, pos)
-            touched_test = {n for n, _ in arg_chain if n in test_outputs}
+            touched_test = {n for n, _ in arg_chain & test_binds}
             if touched_test:
                 emit(call, 0.9, touched_test, (
                     f"`{call.func}(...)` is fitted on {_join_names(touched_test)}, "
@@ -399,9 +401,8 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
             if base_bind not in arg_bindings:
                 continue  # fill values do not derive from the frame itself
             _, base_chain = flow.chain({base}, pos)
-            base_names = {n for n, _ in base_chain}
-            filled_test = base_names & test_outputs
-            if filled_test and not base_names & (split_outputs - test_outputs):
+            filled_test = {n for n, _ in base_chain & test_binds}
+            if filled_test and not base_chain & (split_binds - test_binds):
                 emit(call, 0.85, filled_test, (
                     f"`{call.func}(...)` fills `{base}` with statistics of {_join_names(filled_test)}, "
                     f"a test split output; the imputation learns from the rows it is scored on"
