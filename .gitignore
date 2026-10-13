@@ -1,6 +1,8 @@
 __pycache__/
+*.py[cod]
 *.egg-info/
 .pytest_cache/
+.ruff_cache/
 .ipynb_checkpoints/
 .DS_Store
 build/
@@ -13,3 +15,17 @@ tmp/
 scratch/
 
 .env
+.env.*
+
+# Local agent state
+.claude/
+.superpowers/
+
+# Private planning and business strategy
+plans/
+WALDEAN_STRATEGIE*.md
+
+# Local agent instructions
+CLAUDE.md
+docs/adr/
+docs/agents/
