@@ -1,6 +1,8 @@
+import time
+
 import libcst as cst
 
-from waldean.analysis.dataflow import analyze, expr_names
+from waldean.analysis.dataflow import NotebookDataflow, SliceEvent, analyze, expr_names
 from waldean.analysis.ingest import Cell, ParsedNotebook
 
 
@@ -266,3 +268,29 @@ def test_column_slices_are_not_a_split():
 def test_tail_with_lookback_window_forms_a_split_sink():
     flow = analyze(nb_from_sources("train = X[:n]\ntest = X[n - 60:]"))
     assert len(flow.slice_splits()) == 1
+
+
+def test_inlining_stops_at_four_times_the_notebook_own_events():
+    body = "def f(d):\n" + "".join(f"    a{i} = d\n" for i in range(200)) + "    return d\n"
+    start = time.perf_counter()
+    flow = analyze(nb_from_sources(body, "x = 1\n" + "f(x)\n" * 200))
+    assert time.perf_counter() - start < 2.0
+    own = 200 + 1 + 200
+    assert len(flow.assigns) + len(flow.calls) <= 5 * own
+    assert flow.skipped_cells == [1]
+
+
+def test_slice_split_pairing_does_not_materialise_every_pair():
+    slices = [SliceEvent(base="X", cell=0, line=2 * i + 1, lower="", upper=f"n{i}") for i in range(3000)]
+    slices += [SliceEvent(base="X", cell=0, line=2 * i + 2, lower=f"m{i}", upper="") for i in range(3000)]
+    slices.append(SliceEvent(base="X", cell=1, line=1, lower="n2999-5", upper=""))
+    flow = NotebookDataflow(slices=slices)
+    start = time.perf_counter()
+    sinks = flow.slice_splits()
+    assert time.perf_counter() - start < 0.1
+    assert [(s.cell, s.line) for s in sinks] == [(1, 1)]
+
+
+def test_slice_split_picks_the_first_head_with_a_matching_tail():
+    flow = analyze(nb_from_sources("a = X[:5]\nb = X[:n]\nc = X[n:]\nd = X[:m]\ne = X[m:]"))
+    assert [(s.cell, s.line) for s in flow.slice_splits()] == [(0, 3)]

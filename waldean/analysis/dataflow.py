@@ -398,13 +398,27 @@ class NotebookDataflow:
         for s in self.slices:
             by_base.setdefault(s.base, []).append(s)
         for base, events in by_base.items():
-            heads = [e for e in events if e.upper and not e.lower]
-            tails = [e for e in events if e.lower]
-            pairs = [(h, t) for h in heads for t in tails
-                     if t.lower == h.upper or (not t.upper and t.lower.startswith(h.upper + "-"))]
-            if not pairs:
+            first_tail: dict[str, int] = {}
+            first_open_tail: dict[str, int] = {}
+            for i, e in enumerate(events):
+                if not e.lower:
+                    continue
+                first_tail.setdefault(e.lower, i)
+                if not e.upper:
+                    for j, ch in enumerate(e.lower):
+                        if ch == "-":
+                            first_open_tail.setdefault(e.lower[:j], i)
+            pair = None
+            for h in events:
+                if not h.upper or h.lower:
+                    continue
+                hits = [k for k in (first_tail.get(h.upper), first_open_tail.get(h.upper)) if k is not None]
+                if hits:
+                    pair = (h, events[min(hits)])
+                    break
+            if pair is None:
                 continue
-            last = max(pairs[0], key=lambda e: (e.cell, e.line))
+            last = max(pair, key=lambda e: (e.cell, e.line))
             sinks.append(CallSite(func="slice_split", name="slice_split", receiver=None,
                                   cell=last.cell, line=last.line, loop_depth=0, pos_args=[{base}]))
         return sinks
@@ -584,10 +598,17 @@ def analyze(nb: ParsedNotebook) -> NotebookDataflow:
         flow.mutations.extend(visitor.mutations)
         flow.slices.extend(visitor.slices)
         flow.functions.update({f.name: f for f in visitor.functions})
+    own_events = len(flow.calls) + len(flow.assigns) + sum(len(f.calls) + len(f.assigns) for f in flow.functions.values())
+    inline_budget = 4 * own_events
+    inlined = 0
     for site in list(flow.calls):
         fn, args = _call_target(site, flow.functions)
         if fn is None:
             continue
+        inlined += len(fn.calls) + len(fn.assigns)
+        if inlined > inline_budget:
+            flow.skipped_cells.append(site.cell)
+            break
         rename = {p: a for p, a in zip(fn.params, args) if a}
         for c in fn.calls:
             flow.calls.append(_rename_call(c, rename, site))
