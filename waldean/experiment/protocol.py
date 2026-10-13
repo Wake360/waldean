@@ -21,7 +21,7 @@ RULES = [
     "Cross-validate as the cv section says, inside the training rows.",
     "Fit every preprocessing step inside the cross-validation folds.",
     "Name all candidate models, including a trivial baseline, before scoring any of them.",
-    "Choose the candidate with the highest mean CV roc_auc. Choose features, tuning settings and thresholds on CV too.",
+    "Choose the candidate with the highest mean CV roc_auc. Choose features, hyperparameters and thresholds on CV too.",
     "Refit the chosen candidate on all training rows and score it once on the holdout rows. That score is the headline.",
     "Use only features known at prediction time. Read columns.csv for when each column is recorded.",
     "Write evidence.json with the fields listed under evidence. Row labels are 0-based row positions in data.csv.",
@@ -47,6 +47,8 @@ def holdout_mask(df: pd.DataFrame, kind: str, column: str | None, usable: np.nda
     if kind == "temporal_holdout":
         t = parse_dates(df[column].astype(str), dayfirst=False)
         periods = np.sort(pd.unique(t[usable]))
+        if len(periods) < 2:
+            raise PlanError(f"{column!r} has fewer than 2 usable periods: a temporal holdout needs earlier rows to train on")
         cutoff = periods[len(periods) - math.ceil(TEST_FRACTION * len(periods))]
         return (t >= cutoff).to_numpy() & usable
     rng = np.random.default_rng(seed)

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import numpy as np
@@ -103,4 +104,14 @@ def test_protocol_source_names_no_benchmark_dataset():
     src = Path("waldean/experiment/protocol.py").read_text()
     names = ("shipments", "tutoring", "meters", "warranty", "maintenance", "clinic", "subscriptions",
              "consignment", "student_key", "meter_ref", "person_key", "account_ref", "asset_tag")
-    assert not [n for n in names if n in src]
+    assert not [n for n in names if re.search(rf"\b{re.escape(n)}\b", src)]
+
+
+def test_single_period_time_split_refused(tmp_path):
+    csv, cols = write_data(tmp_path, n=100)
+    df = pd.read_csv(csv)
+    df["snapshot"] = [f"2024-{1 + i % 12:02d}" for i in range(100)]
+    df.loc[df["snapshot"] != "2024-01", "churn"] = np.nan
+    df.to_csv(csv, index=False)
+    with pytest.raises(PlanError, match="fewer than 2 usable periods"):
+        create_protocol(csv, cols, "churn", tmp_path)
