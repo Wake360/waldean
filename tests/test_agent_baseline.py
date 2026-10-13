@@ -96,3 +96,61 @@ def test_tmp_entries_lists_user_tmp(tmp_path, monkeypatch):
     assert ab.tmp_entries() == {"build", "nbdump_1.txt"}
     monkeypatch.setattr(ab, "USER_TMP", tmp_path / "absent")
     assert ab.tmp_entries() == set()
+
+
+def test_newcombe_matches_published_example():
+    low, high = ab.newcombe(56, 70, 48, 80)
+    assert round(low, 4) == 0.0524 and round(high, 4) == 0.3339
+
+
+def test_headline_value_reads_numpy_float():
+    assert ab.headline_value("('roc_auc', np.float64(0.7566))") == 0.7566
+    assert ab.headline_value("('roc_auc', 0.71)") == 0.71
+
+
+def test_headline_value_rejects_text():
+    assert ab.headline_value("('roc_auc', 'text: about 0.69')") is None
+    assert ab.headline_value("") is None
+
+
+def test_gap_needs_both_numbers():
+    assert round(ab.gap({"headline": "('roc_auc', 0.75)", "future_auc": "0.70"}), 3) == 0.05
+    assert ab.gap({"headline": "('roc_auc', 0.75)", "future_auc": "None"}) is None
+
+
+def test_render_arms_counts_invalid_runs():
+    m = {"arms": {"B": {}, "C": {}}, "criteria": {"selection": {}, "temporal": {}},
+         "comparisons": [["B", "C"]], "primary": ["B", "C"], "prompt": "p",
+         "datasets": [{"name": "s", "criteria": {"selection": "", "temporal": ""}}]}
+    rows = [{"run": f"s-claude-{a}-{i}", "variant": a, "dataset": "s", "sha256": "x", "cli_version": "1",
+             "selection": "fail" if a == "B" and i < 6 else "pass", "temporal": "pass",
+             "headline": "", "future_auc": "", "check": ""} for a in ("B", "C") for i in range(20)]
+    text = ab.render_arms(m, rows)
+    assert "| B | 20 | 20 | 14/20" in text
+    assert "| C | 20 | 20 | 20/20" in text
+    assert "C better" in text
+
+
+def test_similar_finds_copy(tmp_path):
+    import nbformat
+    for name, src in (("a", "x = 1\ny = 2\nprint(x + y)"), ("b", "x = 1\ny = 2\nprint(x + y)"), ("c", "z = 9")):
+        (tmp_path / name).mkdir()
+        nb = nbformat.v4.new_notebook(cells=[nbformat.v4.new_code_cell(src)])
+        nbformat.write(nb, tmp_path / name / "experiment.ipynb")
+    args = type("A", (), {"runs": tmp_path, "threshold": 0.6})()
+    assert ab.cmd_similar(args) == 1
+
+
+def test_redact_hides_arm_words(tmp_path):
+    import json
+    import nbformat
+    runs = tmp_path / "runs"
+    (runs / "s-claude-C-0").mkdir(parents=True)
+    nb = nbformat.v4.new_notebook(cells=[nbformat.v4.new_code_cell("h = pd.read_csv('holdout.csv')\nprint('protocol')")])
+    nbformat.write(nb, runs / "s-claude-C-0" / "experiment.ipynb")
+    args = type("A", (), {"runs": runs, "seed": 1})()
+    assert ab.cmd_redact(args) == 0
+    out = nbformat.read(tmp_path / "runs-redacted" / "nb-000.ipynb", as_version=4)
+    assert "holdout.csv" not in out.cells[0].source and "protocol" not in out.cells[0].source
+    key = json.loads((tmp_path / "runs-redaction-key.json").read_text())
+    assert key == {"nb-000": "s-claude-C-0"}

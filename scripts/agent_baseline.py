@@ -1,13 +1,16 @@
 import argparse
 import csv
+import difflib
 import hashlib
 import io
+import itertools
 import json
 import math
 import os
 import random
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -285,7 +288,8 @@ def probes(d: dict, nb, run_dir: Path, digest: str, reviewed: tuple[str, str] | 
     if reviewed is None or reviewed[0] != digest:
         return {c: "unbound" if reviewed is None else "unreviewed" for c in crits}
     code = "\n".join([reviewed[1], *(src.replace("print('PROBE',", f"print('PROBE:{c}',") for c, src in crits.items()),
-                      "print('HEADLINE:', globals().get('HEADLINE'))"])
+                      "print('HEADLINE:', globals().get('HEADLINE'))",
+                      "print('FUTURE:', globals().get('PROBE_FUTURE_AUC'))"])
     nb = with_appended_code_cell(nb, code)
     try:
         with scrubbed_env():
@@ -299,6 +303,8 @@ def probes(d: dict, nb, run_dir: Path, digest: str, reviewed: tuple[str, str] | 
         out[c] = "pass" if lines and lines[-1].split()[-1] == "True" else "fail"
     headline = stdout_lines(nb, "HEADLINE:")
     out["headline"] = headline[-1].removeprefix("HEADLINE:").strip() if headline else ""
+    future = stdout_lines(nb, "FUTURE:")
+    out["future_auc"] = future[-1].removeprefix("FUTURE:").strip() if future else ""
     return out
 
 
@@ -334,11 +340,15 @@ def cmd_score(args) -> int:
             nbformat.write(nb, stripped / f"{run}.ipynb")
             row["sha256"] = digest
             row["check"] = ",".join(waldean_check(stripped / f"{run}.ipynb"))
+            future_src = args.data / d["name"] / "future.csv"
+            if future_src.exists():
+                shutil.copyfile(future_src, meta_path.parent / "future.csv")
             if "criteria" in d:
                 row.update(probes(d, nb, meta_path.parent, digest, bound.get(run), args.timeout))
             else:
                 row["probe"] = "n/a" if not d["criterion"] else probe(
                     d, nb, meta_path.parent, digest, bound.get(run), args.timeout)
+            (meta_path.parent / "future.csv").unlink(missing_ok=True)
         rows.append(row)
         print(run, {k: v for k, v in row.items() if k not in ("dataset", "agent", "variant", "cli_version", "model")},
               flush=True)
@@ -347,7 +357,8 @@ def cmd_score(args) -> int:
         w.writeheader()
         w.writerows(rows)
     report = ROOT / "evals" / f"{date.today().isoformat()}-{BENCH.name}.md"
-    report.write_text(render_v2(m, rows) if m["schema"] >= 2 else render(m, rows), encoding="utf-8")
+    text = render_arms(m, rows) if "arms" in m else render_v2(m, rows) if m["schema"] >= 2 else render(m, rows)
+    report.write_text(text, encoding="utf-8")
     print("wrote", report)
     return 0
 
@@ -392,6 +403,113 @@ def wilson(k: int, n: int) -> tuple[float, float]:
     low = (centre - half) / (1 + z * z / n)
     high = (centre + half) / (1 + z * z / n)
     return (max(0.0, low), min(1.0, high))
+
+
+def newcombe(k1: int, n1: int, k2: int, n2: int) -> tuple[float, float]:
+    p1, p2 = k1 / n1, k2 / n2
+    l1, u1 = wilson(k1, n1)
+    l2, u2 = wilson(k2, n2)
+    d = p1 - p2
+    return (d - math.sqrt((p1 - l1) ** 2 + (u2 - p2) ** 2), d + math.sqrt((u1 - p1) ** 2 + (p2 - l2) ** 2))
+
+
+HEADLINE_RE = re.compile(r"^\('[^']*', (?:np\.float64\()?([-+]?\d+(?:\.\d+)?)\)?\)$")
+
+
+def headline_value(text: str) -> float | None:
+    match = HEADLINE_RE.match(text.strip())
+    return float(match.group(1)) if match else None
+
+
+def gap(row: dict) -> float | None:
+    value = headline_value(row.get("headline", ""))
+    try:
+        future = float(row.get("future_auc", ""))
+    except ValueError:
+        return None
+    return None if value is None or math.isnan(future) else value - future
+
+
+def valid(row: dict, d: dict) -> bool:
+    return all(row.get(c) == "pass" for c in d["criteria"])
+
+
+def render_arms(m: dict, rows: list[dict]) -> str:
+    by_name = {d["name"]: d for d in m["datasets"]}
+    crits = list(m["criteria"])
+    out = [f"# {BENCH.name}, {date.today().isoformat()}", "",
+           f"Indicative only. Pre-registered arms, criteria and decision rule in `{BENCH.name}/MANIFEST.json`.", "",
+           "| arm | runs | notebook | valid (95% CI) | " + " | ".join(f"{c} fail" for c in crits)
+           + " | median abs gap (n) |",
+           "|---|---|---|---|" + "---|" * len(crits) + "---|"]
+    fails = {}
+    for a in m["arms"]:
+        mine = [r for r in rows if r["variant"] == a]
+        bad = sum(not valid(r, by_name[r["dataset"]]) for r in mine)
+        fails[a] = (bad, len(mine))
+        low, high = wilson(len(mine) - bad, len(mine))
+        gaps = [abs(g) for r in mine if (g := gap(r)) is not None]
+        per = [f"{sum(r.get(c, 'pass') != 'pass' for r in mine)}/{sum(c in r for r in mine)}" for c in crits]
+        med = f"{statistics.median(gaps):.3f} ({len(gaps)})" if gaps else "- (0)"
+        out.append(f"| {a} | {len(mine)} | {sum(bool(r['sha256']) for r in mine)} | {len(mine) - bad}/{len(mine)} "
+                   f"({low:.0%}-{high:.0%}) | " + " | ".join(per) + f" | {med} |")
+    out += ["", "## Differences in failure rate", "", "| comparison | difference | 95% CI (Newcombe) |",
+            "|---|---|---|"]
+    for a, b in m["comparisons"]:
+        (k1, n1), (k2, n2) = fails[a], fails[b]
+        if n1 and n2:
+            low, high = newcombe(k1, n1, k2, n2)
+            out.append(f"| {a} minus {b} | {k1 / n1 - k2 / n2:+.0%} | {low:+.0%} to {high:+.0%} |")
+    if m.get("primary"):
+        a, b = m["primary"]
+        (k1, n1), (k2, n2) = fails[a], fails[b]
+        if n1 and n2:
+            low = newcombe(k1, n1, k2, n2)[0]
+            out += ["", f"Primary: {a} minus {b} lower bound {low:+.1%}: "
+                    + (f"{b} better" if low > 0 else f"no evidence that {b} is better") + "."]
+    out += ["", "## Runs", "", "| run | arm | cli | " + " | ".join(crits) + " | headline | future AUC | waldean check |",
+            "|---|---|---|" + "---|" * len(crits) + "---|---|---|"]
+    out += [f"| {r['run']} | {r['variant']} | {r['cli_version']} | " + " | ".join(r.get(c) or "n/a" for c in crits)
+            + f" | {r.get('headline') or '-'} | {r.get('future_auc') or '-'} | {r['check'] or '-'} |" for r in rows]
+    out += ["", "## Prompt", "", f"`{m['prompt']}`", ""]
+    out += [f"Arm {a} appends `{arm['suffix']}`." for a, arm in m["arms"].items() if arm.get("suffix")]
+    return "\n".join(out) + "\n"
+
+
+def code_lines(path: Path) -> list[str]:
+    nb = nbformat.read(path, as_version=4)
+    return [ln.strip() for c in nb.cells if c.cell_type == "code" for ln in c.source.splitlines() if ln.strip()]
+
+
+def cmd_similar(args) -> int:
+    lines = {p.parent.name: code_lines(p) for p in sorted(args.runs.glob("*/experiment.ipynb"))}
+    pairs = sorted(((difflib.SequenceMatcher(None, lines[a], lines[b]).ratio(), a, b)
+                    for a, b in itertools.combinations(lines, 2)), reverse=True)
+    for ratio, a, b in pairs[:10]:
+        print(f"{ratio:.2f} {a} {b}")
+    return 1 if pairs and pairs[0][0] >= args.threshold else 0
+
+
+ARM_WORDS = re.compile(r"protocol\.yaml|holdout\.csv|unused\.csv|evidence\.json|checklist\.md|"
+                       r"waldean|protocol|checklist", re.IGNORECASE)
+
+
+def cmd_redact(args) -> int:
+    paths = sorted(args.runs.glob("*/experiment.ipynb"))
+    order = random.Random(args.seed).sample(paths, len(paths))
+    out = args.runs.parent / f"{args.runs.name}-redacted"
+    out.mkdir(exist_ok=True)
+    key = {}
+    for i, path in enumerate(order):
+        nb = nbformat.read(path, as_version=4)
+        for c in nb.cells:
+            c.source = ARM_WORDS.sub("[redacted]", c.source)
+            if c.cell_type == "code":
+                c.outputs, c.execution_count = [], None
+        nbformat.write(nb, out / f"nb-{i:03d}.ipynb")
+        key[f"nb-{i:03d}"] = path.parent.name
+    (args.runs.parent / f"{args.runs.name}-redaction-key.json").write_text(json.dumps(key, indent=2) + "\n")
+    return 0
 
 
 def detector_counts(rows: list[dict]) -> dict[str, int]:
@@ -462,7 +580,7 @@ def main() -> int:
     global BENCH, MANIFEST, SCORING
     p = argparse.ArgumentParser(prog="agent_baseline")
     sub = p.add_subparsers(dest="cmd", required=True)
-    for name in ("prep", "run", "score"):
+    for name in ("prep", "run", "score", "similar", "redact"):
         s = sub.add_parser(name)
         s.add_argument("--bench", default="agent-baseline")
         s.add_argument("--data", type=Path)
@@ -472,6 +590,8 @@ def main() -> int:
         s.add_argument("--agents", nargs="*")
         s.add_argument("--timeout", type=int, default=1800)
         s.add_argument("--jobs", type=int, default=4)
+        s.add_argument("--threshold", type=float, default=0.6)
+        s.add_argument("--seed", type=int, default=20261020)
     args = p.parse_args()
     BENCH = ROOT / "evals" / args.bench
     MANIFEST = BENCH / "MANIFEST.json"
@@ -479,7 +599,8 @@ def main() -> int:
     suffix = args.bench.removeprefix("agent-baseline")
     args.data = args.data or ROOT / "scratch" / args.bench / "data"
     args.runs = args.runs or AGENT_ROOT / f"runs{suffix}"
-    return {"prep": cmd_prep, "run": cmd_run, "score": cmd_score}[args.cmd](args)
+    return {"prep": cmd_prep, "run": cmd_run, "score": cmd_score,
+            "similar": cmd_similar, "redact": cmd_redact}[args.cmd](args)
 
 
 if __name__ == "__main__":
