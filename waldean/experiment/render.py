@@ -27,8 +27,10 @@ EVALUATE = """def scores(y_true, p):
 
 
 results = {"cv": {}, "holdout": {}, "skipped_folds": 0}
-usable = [(a, b) for a, b in folds if y.iloc[b].nunique() == 2]
+usable = [(a, b) for a, b in folds if y.iloc[a].nunique() == 2 and y.iloc[b].nunique() == 2]
 results["skipped_folds"] = len(folds) - len(usable)
+if y[test].nunique() < 2:
+    raise ValueError("the test periods hold one class; roc_auc is undefined")
 for name, model in models.items():
     results["cv"][name] = []
     for a, b in usable:

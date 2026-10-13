@@ -57,7 +57,7 @@ def limitations(plan: dict, metrics: dict) -> str:
     if reason:
         lines.append(f"- The split was overridden by the user: \"{reason}\".")
     if metrics.get("skipped_folds"):
-        lines.append(f"- {metrics['skipped_folds']} CV fold(s) were skipped because their test rows hold one class.")
+        lines.append(f"- {metrics['skipped_folds']} CV fold(s) were skipped because their train or test rows hold one class.")
     return "\n".join(lines) + "\n"
 
 
@@ -74,7 +74,9 @@ def run(exp_dir, timeout: int = 600) -> Path:
         try:
             executed = execute(nb, timeout=timeout, cwd=str(exp), kernel_name=KERNEL_NAME)
         except Exception as exc:
-            raise RuntimeError(f"experiment.ipynb failed: {str(exc).splitlines()[0] if str(exc) else type(exc).__name__}")
+            ename, evalue = getattr(exc, "ename", None), getattr(exc, "evalue", None)
+            reason = f"{ename}: {evalue}" if ename else str(exc)
+            raise RuntimeError(f"experiment.ipynb failed: {reason}") from exc
     lines = stdout_lines(executed, "WALDEAN_METRICS ")
     if not lines:
         raise RuntimeError("experiment.ipynb printed no WALDEAN_METRICS line")

@@ -367,3 +367,24 @@ def test_day_first_dates_are_ambiguous_and_refused(tmp_path):
 def test_iso_and_month_columns_are_not_ambiguous(tmp_path):
     prof = profile(write_csv(tmp_path / "d.csv", extra_dates=True), "churn")
     assert {t["column"]: t["ambiguous"] for t in prof["time_columns"]} == {"snapshot": False, "birth_date": False}
+
+
+def test_one_class_holdout_fails_with_the_reason(tmp_path):
+    csv = write_csv(tmp_path / "d.csv")
+    df = pd.read_csv(csv)
+    df.loc[df["snapshot"] >= "2025-08", "churn"] = 0
+    df.to_csv(csv, index=False)
+    exp = create(csv, "churn", tmp_path / "exp")
+    build(exp)
+    with pytest.raises(RuntimeError, match="one class"):
+        run(exp)
+
+
+def test_single_class_train_fold_is_skipped(tmp_path):
+    csv = write_csv(tmp_path / "d.csv", single_class_month=0)
+    plan = design(profile(csv, "churn"), csv, tmp_path / "exp", "", [], None, 0)
+    plan["split"]["n_splits"] = 18
+    (tmp_path / "exp").mkdir()
+    line = stdout_lines(run_rendered(tmp_path, render(plan)), "WALDEAN_METRICS ")[-1]
+    metrics = json.loads(line.removeprefix("WALDEAN_METRICS "))
+    assert metrics["skipped_folds"] >= 1 and len(metrics["cv"]["candidate"]) == 18 - metrics["skipped_folds"]
