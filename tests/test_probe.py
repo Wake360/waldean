@@ -52,3 +52,10 @@ def test_probe_error_keeps_static_confidence():
 def test_probe_passes_other_classes_through():
     other = Flag("leakage-temporal-shuffle", "high", 0.9, 0, 1, "", "", "")
     assert probe_fit_before_split(LEAKY, [other]) == [other]
+
+
+def test_probe_timeout_keeps_static_confidence():
+    nb = notebook(LEAKY.cells[0].source, "scaler = StandardScaler()\nX = scaler.fit_transform(X)", "import time; time.sleep(5)")
+    out = probe_fit_before_split(nb, [flag(receiver="scaler", arg="X", sink_cell=2)], timeout=1)
+    assert out[0].confidence == 0.92
+    assert "probe: error" in out[0].evidence

@@ -374,7 +374,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                         f"`{call.func}(...)` consumes {_join_names(leaked)}, "
                         f"feeding {how} (cell {sink.cell}) — "
                         f"the fit happened before the split"
-                    ), sink_cell=sink.cell, receiver=call.receiver, arg=next(iter(call.arg_names), ""))
+                    ), sink_cell=sink.cell, receiver=call.receiver, arg=probe_arg(call))
                 else:
                     if not on_chain:
                         continue
@@ -387,7 +387,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                         f"transformed output feeds `{sink.name}` (cell {sink.cell}); "
                         f"every CV fold's test rows were in the transformer fit"
                         + (" (fitted with labels)" if supervised else "")
-                    ), sink_cell=sink.cell, receiver=call.receiver, arg=next(iter(call.arg_names), ""))
+                    ), sink_cell=sink.cell, receiver=call.receiver, arg=probe_arg(call))
 
         # -- imputation with statistics of the same frame, before the split --
         elif call.name in {"fillna", "replace"} and call.receiver is not None:
@@ -831,6 +831,11 @@ STATIC_DECIDABLE = {
     "baserate-accuracy-imbalanced",
     "leakage-test-selection",
 }
+
+
+def probe_arg(call) -> str:
+    names = call.pos_args[0] if call.pos_args else call.kw_args.get("X", set())
+    return next(iter(names)) if len(names) == 1 else ""
 
 
 def run_static(nb: ParsedNotebook, flow: NotebookDataflow | None = None) -> list[Flag]:

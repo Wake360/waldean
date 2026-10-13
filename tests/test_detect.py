@@ -870,3 +870,16 @@ def test_min_max_inside_helper_before_split_is_flagged():
         ("code", "prep(df)"),
     ])
     assert "leakage-fit-before-split" in flag_ids(notebook)
+
+
+def fit_flag_arg(fit_source):
+    notebook = nb([
+        ("code", fit_source),
+        ("code", "X_tr, X_te, y_tr, y_te = train_test_split(X, y)"),
+    ])
+    return next(f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split").extra["arg"]
+
+
+def test_probe_arg_is_single_name_or_empty():
+    assert fit_flag_arg("X = scaler.fit_transform(X)") == "X"
+    assert fit_flag_arg("X = scaler.fit_transform(df[features])") == ""

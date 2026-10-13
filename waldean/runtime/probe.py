@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import dataclasses
-import re
 
 from nbclient.exceptions import CellExecutionError
 
@@ -12,7 +11,6 @@ from waldean.runtime import execute as ex
 PREFIX = "WALDEAN_PROBE"
 CONFIRMED = 0.97
 DEMOTED = 0.5
-ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _probe_source(receiver: str, arg: str) -> str:
@@ -22,6 +20,15 @@ def _probe_source(receiver: str, arg: str) -> str:
         f"_rows = {rows}\n"
         f"print('{PREFIX}', -1 if _seen is None else int(_seen), int(_rows))"
     )
+
+
+def _describe(exc: Exception) -> str:
+    if isinstance(exc, CellExecutionError):
+        name, text = exc.ename, exc.evalue
+    else:
+        name, text = type(exc).__name__, str(exc)
+    lines = text.strip().splitlines()
+    return f"{name}: {lines[0][:120] if lines else ''}"
 
 
 def _with(flag: Flag, confidence: float, note: str) -> Flag:
@@ -41,8 +48,8 @@ def probe_fit_before_split(nb_node, flags: list[Flag], timeout: int = 180, cwd: 
         try:
             with ex.scrubbed_env():
                 executed = ex.execute(nb, timeout=timeout, cwd=cwd, kernel_name=ex.KERNEL_NAME)
-        except CellExecutionError as exc:
-            out.append(_with(flag, flag.confidence, f"error ({ANSI_RE.sub('', str(exc)).strip().splitlines()[-1][:120]})"))
+        except Exception as exc:
+            out.append(_with(flag, flag.confidence, f"error ({_describe(exc)})"))
             continue
         lines = ex.stdout_lines(executed, PREFIX)
         if not lines:
