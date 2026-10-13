@@ -257,3 +257,18 @@ def test_features_must_be_a_list(tmp_path):
     ev, _ = setup_check(tmp_path)
     ev["features"] = "row_ref"
     assert any("features must be a list" in p for p in run_check(tmp_path, ev))
+
+
+def test_reference_script_passes_and_cv_over_all_rows_fails(tmp_path):
+    csv, cols = write_data(tmp_path)
+    create_protocol(csv, cols, "churn", tmp_path)
+    src = Path("tests/fixtures/protocol/compliant.py").read_text()
+    script = tmp_path / "experiment.py"
+    script.write_text(src)
+    subprocess.run([sys.executable, script.name], cwd=tmp_path, check=True)
+    assert check_protocol(tmp_path / "protocol.yaml", script) == []
+    cheat = src.replace("train = [r for r in range(len(df)) if r not in set(holdout)]", "train = list(range(len(df)))")
+    assert cheat != src
+    script.write_text(cheat)
+    subprocess.run([sys.executable, script.name], cwd=tmp_path, check=True)
+    assert any("holdout or unused rows" in p for p in check_protocol(tmp_path / "protocol.yaml", script))
