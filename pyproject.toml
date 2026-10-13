@@ -45,8 +45,8 @@ builder = [
     "nbclient>=0.9",
     "ipykernel",
     "numpy",
-    "pandas",
-    "scikit-learn",
+    "pandas>=2.0",
+    "scikit-learn>=1.2",
 ]
 dev = ["pytest>=8.0"]
 
