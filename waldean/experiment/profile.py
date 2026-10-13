@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -16,6 +17,8 @@ TASKS = ("binary", "multiclass", "regression")
 HIGH_CARDINALITY_SHARE = 0.5
 LEAK_CORRELATION = 0.95
 MAX_PURITY_LEVELS = 50
+MIN_GROUPS = 20
+ID_NAME_RE = re.compile(r"(?i)(^|_)(id|key|code|no|num)($|_)|id$")
 
 
 def sha256(path: str | Path) -> str:
@@ -122,6 +125,23 @@ def suspect_columns(df: pd.DataFrame, target: str, task: str, skip: set[str]) ->
     return found
 
 
+def group_columns(df: pd.DataFrame, target: str, skip: set[str]) -> list[dict]:
+    found = []
+    for col in df.columns:
+        if col == target or col in skip:
+            continue
+        values = df[col].dropna()
+        if pd.api.types.is_float_dtype(values) or pd.api.types.is_bool_dtype(values):
+            continue
+        if pd.api.types.is_numeric_dtype(values) and not ID_NAME_RE.search(str(col)):
+            continue
+        n = values.nunique()
+        if n < MIN_GROUPS or n > len(values) / 2:
+            continue
+        found.append({"column": str(col), "groups": int(n), "max_size": int(values.value_counts().max())})
+    return found
+
+
 def profile(csv_path: str | Path, target: str, task: str | None = None) -> dict:
     path = Path(csv_path)
     df = pd.read_csv(path)
@@ -131,7 +151,9 @@ def profile(csv_path: str | Path, target: str, task: str | None = None) -> dict:
     if task not in TASKS:
         raise ValueError(f"task must be one of {list(TASKS)}, got {task!r}")
     labelled = df[df[target].notna()]
+    info = target_info(labelled[target], task)
     times = time_columns(df, target)
+    suspects = suspect_columns(df, target, task, {t["column"] for t in times})
     return {
         "rows": int(len(df)),
         "columns": [str(c) for c in df.columns],
@@ -139,8 +161,9 @@ def profile(csv_path: str | Path, target: str, task: str | None = None) -> dict:
         "target": target,
         "task": task,
         "target_distinct": int(labelled[target].nunique()),
-        **target_info(labelled[target], task),
+        **info,
         "time_columns": times,
-        "suspects": suspect_columns(df, target, task, {t["column"] for t in times}),
+        "suspects": suspects,
+        "group_columns": group_columns(df, target, {t["column"] for t in times} | {s["column"] for s in suspects}),
         "sha256": sha256(path),
     }

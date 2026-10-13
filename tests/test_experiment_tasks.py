@@ -167,3 +167,28 @@ def test_time_columns_are_not_suspects(tmp_path):
     prof = profile(path, target)
     assert "day" in [t["column"] for t in prof["time_columns"]]
     assert "day" not in suspects(prof)
+
+
+def test_repeated_text_entity_is_a_group_candidate(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    prof = profile(path, target)
+    assert prof["group_columns"] == [{"column": "store", "groups": 40, "max_size": 30}]
+
+
+def test_integer_column_is_a_group_only_with_an_id_like_name(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    df = pd.read_csv(path)
+    df["age"] = [18 + i % 60 for i in range(len(df))]
+    df["household_id"] = [i % 100 for i in range(len(df))]
+    df.to_csv(path, index=False)
+    names = [g["column"] for g in profile(path, target)["group_columns"]]
+    assert "age" not in names and "household_id" in names
+
+
+def test_id_time_and_binary_columns_are_not_groups(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    df = pd.read_csv(path)
+    df["day"] = pd.date_range("2024-01-01", periods=len(df), freq="h").strftime("%Y-%m-%d %H:%M")
+    df.to_csv(path, index=False)
+    names = [g["column"] for g in profile(path, target)["group_columns"]]
+    assert names == ["store"]
