@@ -4,9 +4,7 @@ import ast
 import contextlib
 import difflib
 import hashlib
-import importlib.metadata
 import json
-import platform
 import re
 import shutil
 from datetime import datetime, timezone
@@ -19,11 +17,10 @@ from ..checks.detect import _TEMPORAL_SPLITTERS, CV_SINKS, run_static
 from ..core.flag import DEFAULT_CONFIDENCE_FLOOR, Flag
 from ..analysis.ingest import ParsedNotebook, parse_notebook
 from ..core.taxonomy import load_taxonomy
-from ..runtime.execute import KERNEL_NAME, scrubbed_env
+from ..runtime.execute import KERNEL_NAME, provenance, scrubbed_env
 
 SCHEMA = 1
 DEFAULT_OUT = Path(".waldean") / "repairs"
-PROVENANCE_PACKAGES = ("numpy", "pandas", "scikit-learn")
 GUARDED_NAMES = _TEMPORAL_SPLITTERS | CV_SINKS | {"train_test_split"}
 RULES = (
     "Edit only the cells in the edit scope.",
@@ -250,25 +247,6 @@ def load_repair(repair_dir: Path) -> tuple[dict, Path]:
     ):
         raise ValueError("protocol.json does not match the snapshot; the contract was edited")
     return protocol, snapshot
-
-
-def provenance() -> dict:
-    packages = {}
-    for name in PROVENANCE_PACKAGES:
-        try:
-            packages[name] = importlib.metadata.version(name)
-        except importlib.metadata.PackageNotFoundError:
-            packages[name] = None
-    try:
-        waldean_version = importlib.metadata.version("waldean")
-    except importlib.metadata.PackageNotFoundError:
-        waldean_version = "unknown"
-    return {
-        "waldean": waldean_version,
-        "python": platform.python_version(),
-        "platform": platform.system(),
-        "packages": packages,
-    }
 
 
 def verify(repair_dir: str | Path, fixed_path: str | Path | None = None,

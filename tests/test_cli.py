@@ -667,3 +667,41 @@ def test_eval_predictions_rejects_split(fake_corpus, capsys):
                "--split", "dev"])
     assert rc == 3
     assert "--split does not apply" in capsys.readouterr().err
+
+
+def test_create_build_run_cli(tmp_path, capsys):
+    from test_experiment import write_csv
+
+    from waldean.cli import main
+
+    csv = write_csv(tmp_path / "d.csv")
+    assert main(["create", str(csv), "--target", "churn", "--out", str(tmp_path / "exp")]) == 0
+    assert main(["build", str(tmp_path / "exp")]) == 0
+    assert main(["run", str(tmp_path / "exp")]) == 0
+    assert "evidence" in capsys.readouterr().out
+
+
+def test_build_blocks_non_temporal_split(tmp_path, capsys):
+    from test_experiment import write_csv
+
+    from waldean.cli import main
+    from waldean.experiment.plan import read_plan, write_plan
+
+    csv = write_csv(tmp_path / "d.csv")
+    main(["create", str(csv), "--target", "churn", "--out", str(tmp_path / "exp")])
+    plan = read_plan(tmp_path / "exp" / "plan.yaml")
+    plan["split"]["kind"] = "stratified_kfold"
+    write_plan(plan, tmp_path / "exp" / "plan.yaml")
+    assert main(["build", str(tmp_path / "exp")]) == 2
+    assert "split.kind" in capsys.readouterr().err
+
+
+def test_create_input_errors_exit_3(tmp_path, capsys):
+    from test_experiment import write_csv
+
+    from waldean.cli import main
+
+    csv = write_csv(tmp_path / "d.csv", extra_dates=True)
+    assert main(["create", str(csv), "--target", "churn", "--out", str(tmp_path / "exp")]) == 3
+    assert "--time-column" in capsys.readouterr().err
+    assert main(["create", str(tmp_path / "missing.csv"), "--target", "y", "--out", str(tmp_path / "e")]) == 3

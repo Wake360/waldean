@@ -1924,6 +1924,17 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+builder = [
+    { name = "ipykernel" },
+    { name = "nbclient" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pandas", version = "3.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
 corpus = [
     { name = "ipykernel" },
     { name = "nbclient" },
@@ -1948,20 +1959,25 @@ execute = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ipykernel", marker = "extra == 'builder'" },
     { name = "ipykernel", marker = "extra == 'corpus'" },
     { name = "ipykernel", marker = "extra == 'execute'" },
     { name = "libcst", specifier = ">=1.0" },
+    { name = "nbclient", marker = "extra == 'builder'", specifier = ">=0.9" },
     { name = "nbclient", marker = "extra == 'corpus'", specifier = ">=0.9" },
     { name = "nbclient", marker = "extra == 'execute'", specifier = ">=0.9" },
     { name = "nbformat", specifier = ">=5.9" },
+    { name = "numpy", marker = "extra == 'builder'" },
     { name = "numpy", marker = "extra == 'corpus'" },
+    { name = "pandas", marker = "extra == 'builder'", specifier = ">=2.0" },
     { name = "pandas", marker = "extra == 'corpus'" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "scikit-learn", marker = "extra == 'builder'", specifier = ">=1.2" },
     { name = "scikit-learn", marker = "extra == 'corpus'" },
     { name = "scipy", marker = "extra == 'corpus'" },
 ]
-provides-extras = ["corpus", "execute", "dev"]
+provides-extras = ["corpus", "execute", "builder", "dev"]
 
 [[package]]
 name = "wcwidth"

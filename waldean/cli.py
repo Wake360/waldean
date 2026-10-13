@@ -271,6 +271,63 @@ def cmd_verify(args) -> int:
     return VERIFY_EXIT[evidence["status"]]
 
 
+BUILDER_HINT = "waldean: create, build and run need the builder extra: pip install 'waldean[builder]'"
+RUN_WARNING = ("waldean: run executes experiment.ipynb on this machine with your permissions, "
+               "in the waldean-verify kernel with secret-looking environment variables hidden. It is not a sandbox.")
+
+
+def cmd_create(args) -> int:
+    try:
+        from .experiment.workflow import create
+        out = create(args.csv, args.target, args.out, goal=args.goal, exclude=args.exclude,
+                     time_column=args.time_column, seed=args.seed)
+    except ImportError:
+        print(BUILDER_HINT, file=sys.stderr)
+        return 3
+    except Exception as exc:
+        print(f"waldean: {args.csv}: {_input_error(exc)}", file=sys.stderr)
+        return 3
+    print(f"created: {(out / 'plan.yaml').as_posix()}")
+    print(f"created: {(out / 'design.md').as_posix()}")
+    return 0
+
+
+def cmd_build(args) -> int:
+    try:
+        from .experiment.workflow import build
+        fields, flags = build(args.exp_dir)
+    except ImportError:
+        print(BUILDER_HINT, file=sys.stderr)
+        return 3
+    except Exception as exc:
+        print(f"waldean: {args.exp_dir}: {_input_error(exc)}", file=sys.stderr)
+        return 3
+    if fields:
+        print(f"waldean: plan.yaml contradicts the data profile at {', '.join(fields)}; "
+              "change it back or add split.override_reason", file=sys.stderr)
+        return 2
+    print(f"built: {(Path(args.exp_dir) / 'experiment.ipynb').as_posix()}")
+    for f in flags:
+        if f.confidence >= DEFAULT_CONFIDENCE_FLOOR:
+            print(f"check: {f.flaw_id} in cell {f.cell} line {f.line}: {f.evidence}")
+    return exit_code(flags)
+
+
+def cmd_run(args) -> int:
+    print(RUN_WARNING, file=sys.stderr)
+    try:
+        from .experiment.workflow import run
+        evidence = run(args.exp_dir, timeout=args.timeout)
+    except ImportError:
+        print(BUILDER_HINT, file=sys.stderr)
+        return 3
+    except Exception as exc:
+        print(f"waldean: {args.exp_dir}: {_input_error(exc)}", file=sys.stderr)
+        return 3
+    print(f"evidence: {evidence.as_posix()}")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="waldean", description="Statistical-integrity linter for notebooks.")
     try:
@@ -368,6 +425,25 @@ def main(argv=None) -> int:
     p_verify.add_argument("--timeout", type=int, default=600,
                           help="seconds per cell when executing (default: %(default)s)")
     p_verify.set_defaults(func=cmd_verify)
+
+    p_create = sub.add_parser("create", help="profile a CSV and write plan.yaml + design.md (experimental)")
+    p_create.add_argument("csv")
+    p_create.add_argument("--target", required=True)
+    p_create.add_argument("--out", required=True)
+    p_create.add_argument("--goal", default="")
+    p_create.add_argument("--exclude", action="append", default=[])
+    p_create.add_argument("--time-column")
+    p_create.add_argument("--seed", type=int, default=0)
+    p_create.set_defaults(func=cmd_create)
+
+    p_bld = sub.add_parser("build", help="check plan.yaml against the data and render experiment.ipynb")
+    p_bld.add_argument("exp_dir")
+    p_bld.set_defaults(func=cmd_build)
+
+    p_run = sub.add_parser("run", help="execute experiment.ipynb and write evidence/")
+    p_run.add_argument("exp_dir")
+    p_run.add_argument("--timeout", type=int, default=600)
+    p_run.set_defaults(func=cmd_run)
 
     try:
         args = parser.parse_args(argv)

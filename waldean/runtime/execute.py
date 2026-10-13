@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import importlib.metadata
 import os
+import platform
 import re
 import sys
 
@@ -65,3 +67,25 @@ def scrubbed_env():
         yield sorted(removed)
     finally:
         os.environ.update(removed)
+
+
+PROVENANCE_PACKAGES = ("numpy", "pandas", "scikit-learn")
+
+
+def provenance() -> dict:
+    packages = {}
+    for name in PROVENANCE_PACKAGES:
+        try:
+            packages[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            packages[name] = None
+    try:
+        waldean_version = importlib.metadata.version("waldean")
+    except importlib.metadata.PackageNotFoundError:
+        waldean_version = "unknown"
+    return {
+        "waldean": waldean_version,
+        "python": platform.python_version(),
+        "platform": platform.system(),
+        "packages": packages,
+    }
