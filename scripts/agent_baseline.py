@@ -107,6 +107,22 @@ def agent_command(agent: str, m: dict, text: str, codex_home: Path, python_bin: 
              "-c", 'shell_environment_policy.inherit="core"', "-s", "workspace-write", text], env)
 
 
+def read_own(path: Path) -> bytes:
+    if path.parent.is_symlink():
+        raise OSError(f"symlinked run dir: {path.parent}")
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as f:
+        return f.read()
+
+
+def write_own(path: Path, text: str) -> None:
+    if path.is_symlink() or path.exists():
+        path.unlink()
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
 def version(cli: str) -> str:
     return subprocess.run([cli, "--version"], capture_output=True, text=True).stdout.strip()
 
@@ -131,7 +147,7 @@ def cmd_run(args) -> int:
 
 def run_one(args, m: dict, codex_home: Path, d: dict, agent: str, variant: str, n: int) -> None:
     run_dir = args.runs / f"{d['name']}-{agent}-{variant}-{n}"
-    if (run_dir / "meta.json").exists():
+    if (run_dir / "meta.json").exists() or run_dir.is_symlink():
         return
     run_dir.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(args.data / f"{d['name']}.csv", run_dir / "data.csv")
@@ -149,15 +165,16 @@ def run_one(args, m: dict, codex_home: Path, d: dict, agent: str, variant: str, 
             "model": m["agents"][agent]["model"], "exit": code,
             "seconds": round(time.time() - start),
             "notebook": (run_dir / "experiment.ipynb").exists()}
-    (run_dir / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
+    write_own(run_dir / "meta.json", json.dumps(meta, indent=2) + "\n")
     print(run_dir.name, "exit", code, "notebook", meta["notebook"], flush=True)
 
 
-def bindings() -> dict[str, str]:
+def bindings() -> dict[str, tuple[str, str]]:
     if not SCORING.exists():
         return {}
     with SCORING.open(encoding="utf-8") as f:
-        return {r["run"]: r["binding"].replace("\\n", "\n") for r in csv.DictReader(f, delimiter="\t")}
+        return {r["run"]: (r["sha256"], r["binding"].replace("\\n", "\n"))
+                for r in csv.DictReader(f, delimiter="\t")}
 
 
 def waldean_check(path: Path) -> list[str]:
@@ -170,17 +187,18 @@ def waldean_check(path: Path) -> list[str]:
     return sorted({f["flaw_id"] for f in flags if f.get("confidence", 0) >= 0.8})
 
 
-def probe(d: dict, nb_path: Path, binding: str | None, timeout: int) -> str:
+def probe(d: dict, nb, run_dir: Path, digest: str, reviewed: tuple[str, str] | None, timeout: int) -> str:
     if "probe_source_regex" in d:
-        nb = nbformat.read(nb_path, as_version=4)
         source = "\n".join(c.source for c in nb.cells if c.cell_type == "code")
         return "pass" if re.search(d["probe_source_regex"], source) else "fail"
-    if binding is None:
+    if reviewed is None:
         return "unbound"
-    nb = with_appended_code_cell(nbformat.read(nb_path, as_version=4), binding + "\n" + d["probe"])
+    if reviewed[0] != digest:
+        return "unreviewed"
+    nb = with_appended_code_cell(nb, reviewed[1] + "\n" + d["probe"])
     try:
         with scrubbed_env():
-            done = execute(nb, timeout=timeout, cwd=str(nb_path.parent), kernel_name=KERNEL_NAME)
+            done = execute(nb, timeout=timeout, cwd=str(run_dir), kernel_name=KERNEL_NAME)
     except Exception as exc:
         return f"error:{type(exc).__name__}"
     lines = stdout_lines(done, "PROBE")
@@ -195,21 +213,25 @@ def cmd_score(args) -> int:
     stripped.mkdir(exist_ok=True)
     rows = []
     for meta_path in sorted(args.runs.glob("*/meta.json")):
-        meta = json.loads(meta_path.read_text())
+        meta = json.loads(read_own(meta_path))
         run = meta_path.parent.name
         nb_path = meta_path.parent / "experiment.ipynb"
         d = by_name[meta["dataset"]]
         row = {"run": run, **{k: meta[k] for k in ("dataset", "agent", "variant", "cli_version", "model")}}
         if not nb_path.exists():
-            row.update(probe="fail:no-notebook", check="")
+            row.update(sha256="", probe="fail:no-notebook", check="")
         else:
-            nb = nbformat.read(nb_path, as_version=4)
+            raw = read_own(nb_path)
+            digest = hashlib.sha256(raw).hexdigest()
+            nb = nbformat.reads(raw.decode("utf-8"), as_version=4)
             for c in nb.cells:
                 if c.cell_type == "code":
                     c.outputs, c.execution_count = [], None
             nbformat.write(nb, stripped / f"{run}.ipynb")
-            row["check"] = ",".join(waldean_check(nb_path))
-            row["probe"] = "n/a" if not d["criterion"] else probe(d, nb_path, bound.get(run), args.timeout)
+            row["sha256"] = digest
+            row["check"] = ",".join(waldean_check(stripped / f"{run}.ipynb"))
+            row["probe"] = "n/a" if not d["criterion"] else probe(
+                d, nb, meta_path.parent, digest, bound.get(run), args.timeout)
         rows.append(row)
         print(run, row["probe"], row["check"], flush=True)
     with (BENCH / "results.tsv").open("w", encoding="utf-8", newline="") as f:
