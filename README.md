@@ -68,7 +68,7 @@ Limits: one flaw class so far (`leakage-temporal-shuffle`). Comparison is cell b
 
 ## Experiment builder (temporal only)
 
-Experimental. For a CSV with a binary target and a time column, Waldean writes a notebook in which every reported score trains on earlier time periods than it tests on. No LLM is involved. The notebook is rendered from `plan.yaml`.
+Experimental. For a CSV with a binary target and a time column, Waldean writes a notebook. The split is built so that every score trains only on earlier time periods than it tests on; checked by a probe on two synthetic datasets. No LLM is involved. The notebook is rendered from `plan.yaml`.
 
 ```bash
 pip install 'waldean[builder]'
@@ -77,11 +77,11 @@ waldean build exp                                       # renders exp/experiment
 waldean run exp                                         # executes it, writes exp/evidence/
 ```
 
-`--target` is required. If the CSV has several date-like columns, `create` exits 3 and lists them; pass `--time-column`. `build` blocks a non-temporal `split.kind` unless `override_reason` is set, and `run` refuses if the CSV, `plan.yaml` or notebook changed since `build`. Exit codes: 0 clean, 1 medium, 2 high or blocking contradiction, 3 input or usage error.
+`--target` is required. If the CSV has several date-like columns, `create` exits 3 and lists them; pass `--time-column`. `build` blocks a non-temporal `split.kind` unless `override_reason` is set, and `run` refuses if the CSV, `plan.yaml` or notebook changed since `build`. `build` exits 0/1/2 (clean, medium, high or blocking contradiction); `create` and `run` exit 0, or 3 on input or usage error.
 
 Fixed values: test fraction 0.2, 5 CV folds, a time column needs at least 10 distinct values and at least 95% of non-null values parsing as dates. Models are `DummyClassifier(strategy="prior")` and `HistGradientBoostingClassifier(early_stopping=False, random_state=seed)`. Metrics are ROC AUC, average precision and balanced accuracy (threshold 0.5).
 
-Measured with the v3 temporal probe on two synthetic datasets: the Builder passed on maintenance and subscriptions (1/1 each). Claude sonnet default runs in v3 passed 15/15 on maintenance and 7/15 on subscriptions. Indicative only ([`evals/2026-10-13-builder-vs-agents.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-builder-vs-agents.md)).
+Measured with the v3 temporal probe on two synthetic datasets: the Builder passed on maintenance and subscriptions (1/1 each). Claude sonnet default runs in v3 passed 15/15 on maintenance and 7/15 on subscriptions. Indicative only. The Builder has one deterministic run per dataset, against 30 sampled agent runs. The agent was sonnet. The scored result is from commit 15c61d3; later renderer changes mean a fresh build differs ([`evals/2026-10-13-builder-vs-agents.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-builder-vs-agents.md)).
 
 Limits: binary classification only. Two synthetic datasets from one generator, and the Builder was designed by someone who knows that generator, so the result shows it implements the rule, not that it generalises. It does not detect ID columns or leaking columns; a human passed `--exclude` for those. `run` executes the notebook on your machine in the `waldean-verify` kernel with secret-looking environment variables hidden. It is not a sandbox.
 
