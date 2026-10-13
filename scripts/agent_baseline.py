@@ -104,7 +104,8 @@ def agent_command(agent: str, m: dict, text: str, codex_home: Path, python_bin: 
     env["CODEX_HOME"] = str(codex_home)
     return (["codex", "exec", "--skip-git-repo-check", "-m", cfg["model"],
              "-c", f"model_reasoning_effort={cfg['reasoning_effort']}",
-             "-c", 'shell_environment_policy.inherit="core"', "-s", "workspace-write", text], env)
+             "-c", 'shell_environment_policy.inherit="core"',
+             "-c", 'shell_environment_policy.set={MPLBACKEND="Agg"}', "-s", "workspace-write", text], env)
 
 
 def read_own(path: Path) -> bytes:
