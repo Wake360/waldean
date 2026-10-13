@@ -222,3 +222,38 @@ def test_cli_create(tmp_path):
                            "--target", "churn", "--out", str(out)], capture_output=True, text=True)
     assert proc.returncode == 0
     assert (out / "protocol.yaml").exists() and (out / "holdout.csv").exists()
+
+
+def test_non_finite_and_empty_cv_scores(tmp_path):
+    ev, _ = setup_check(tmp_path)
+    ev["chosen"] = "dummy"
+    ev["holdout_scores"] = {"dummy": 0.5}
+    ev["cv_scores"]["logreg"] = [float("nan"), 0.9, 0.9]
+    assert any("cv_scores['logreg'] must be a non-empty list of finite numbers" in p for p in run_check(tmp_path, ev))
+    ev["cv_scores"]["logreg"] = []
+    assert any("cv_scores['logreg'] must be a non-empty list of finite numbers" in p for p in run_check(tmp_path, ev))
+
+
+def test_malformed_evidence_is_a_problem(tmp_path):
+    ev, _ = setup_check(tmp_path)
+    (tmp_path / "evidence.json").write_text("{not json")
+    problems = check_protocol(tmp_path / "protocol.yaml", tmp_path / "experiment.ipynb")
+    assert any("evidence.json malformed" in p for p in problems)
+    ev["cv_folds"][0] = [[0], [1], [2]]
+    assert any("evidence.json malformed" in p for p in run_check(tmp_path, ev))
+    cmd = [sys.executable, "-m", "waldean.cli", "protocol", "check", str(tmp_path / "experiment.ipynb"),
+           "--protocol", str(tmp_path / "protocol.yaml")]
+    assert subprocess.run(cmd, capture_output=True).returncode == 2
+
+
+def test_non_integer_fold_labels(tmp_path):
+    ev, _ = setup_check(tmp_path)
+    for fold in ([[True], [False]], [[5.0], [1]]):
+        ev["cv_folds"] = ev["cv_folds"][:2] + [fold]
+        assert any("not integer positions" in p for p in run_check(tmp_path, ev))
+
+
+def test_features_must_be_a_list(tmp_path):
+    ev, _ = setup_check(tmp_path)
+    ev["features"] = "row_ref"
+    assert any("features must be a list" in p for p in run_check(tmp_path, ev))

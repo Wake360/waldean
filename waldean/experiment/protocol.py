@@ -124,11 +124,18 @@ def create_protocol(csv_path, columns_path, target: str, out_dir, question: str 
     return out
 
 
+def finite_scores(v) -> bool:
+    return isinstance(v, list) and bool(v) and all(
+        isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) for x in v)
+
+
 def fold_problems(i: int, train: list, test: list, n_rows: int, blocked: set, split: dict, key) -> list[str]:
     rows = list(train) + list(test)
     if not train or not test:
         return [f"CV fold {i} has an empty train or test side"]
-    if not all(isinstance(r, int) and 0 <= r < n_rows for r in rows):
+    if not all(isinstance(r, int) and not isinstance(r, bool) for r in rows):
+        return [f"CV fold {i} has row labels that are not integer positions in data.csv"]
+    if not all(0 <= r < n_rows for r in rows):
         return [f"CV fold {i} has row labels outside data.csv"]
     problems = []
     if set(rows) & blocked:
@@ -158,34 +165,43 @@ def check_protocol(protocol_path, notebook_path) -> list[str]:
     ev_path = nb_path.parent / proto["evidence"]["file"]
     if not ev_path.exists():
         return problems + [f"{ev_path.name} missing: the notebook must write it"]
-    ev = json.loads(ev_path.read_text(encoding="utf-8"))
-    missing = [k for k in EVIDENCE_FIELDS if k not in ev]
-    if missing:
-        return problems + [f"{ev_path.name} lacks {missing}"]
-    df = pd.read_csv(csv)
-    holdout = set(pd.read_csv(base / split["holdout_file"])["row"].tolist())
-    unused = set(pd.read_csv(base / split["unused_file"])["row"].tolist()) if split["unused_file"] else set()
-    if set(ev["holdout_rows"]) != holdout:
-        problems.append("holdout_rows differ from holdout.csv")
-    banned = sorted(set(ev["features"]) & ({proto["target"]} | {e["column"] for e in proto["excluded_columns"]}))
-    if banned:
-        problems.append(f"features include excluded columns {banned}")
-    if len(ev["cv_folds"]) < 2:
-        problems.append("fewer than 2 CV folds")
-    key = None
-    if split["kind"] == "temporal_holdout":
-        key = parse_dates(df[split["column"]].astype(str), dayfirst=False)
-    elif split["kind"] == "group_holdout":
-        key = df[split["column"]].astype(str)
-    for i, (train, test) in enumerate(ev["cv_folds"]):
-        problems += fold_problems(i, train, test, len(df), holdout | unused, split, key)
-    scores = ev["cv_scores"]
-    if set(scores) != set(ev["candidates"]):
-        problems.append("cv_scores must have one entry per candidate")
-    elif ev["chosen"] not in scores:
-        problems.append(f"chosen {ev['chosen']!r} is not a candidate")
-    elif np.mean(scores[ev["chosen"]]) < max(np.mean(v) for v in scores.values()):
-        problems.append(f"chosen {ev['chosen']!r} is not the candidate with the highest mean CV {SELECTION_METRIC}")
-    if ev["chosen"] not in ev["holdout_scores"]:
-        problems.append("holdout_scores lacks the chosen candidate")
-    return problems
+    try:
+        ev = json.loads(ev_path.read_text(encoding="utf-8"))
+        missing = [k for k in EVIDENCE_FIELDS if k not in ev]
+        if missing:
+            return problems + [f"{ev_path.name} lacks {missing}"]
+        df = pd.read_csv(csv)
+        holdout = set(pd.read_csv(base / split["holdout_file"])["row"].tolist())
+        unused = set(pd.read_csv(base / split["unused_file"])["row"].tolist()) if split["unused_file"] else set()
+        if set(ev["holdout_rows"]) != holdout:
+            problems.append("holdout_rows differ from holdout.csv")
+        if not isinstance(ev["features"], list):
+            problems.append("features must be a list of column names")
+        else:
+            banned = sorted(set(ev["features"]) & ({proto["target"]} | {e["column"] for e in proto["excluded_columns"]}))
+            if banned:
+                problems.append(f"features include excluded columns {banned}")
+        if len(ev["cv_folds"]) < 2:
+            problems.append("fewer than 2 CV folds")
+        key = None
+        if split["kind"] == "temporal_holdout":
+            key = parse_dates(df[split["column"]].astype(str), dayfirst=False)
+        elif split["kind"] == "group_holdout":
+            key = df[split["column"]].astype(str)
+        for i, (train, test) in enumerate(ev["cv_folds"]):
+            problems += fold_problems(i, train, test, len(df), holdout | unused, split, key)
+        scores = ev["cv_scores"]
+        bad_scores = [n for n, v in scores.items() if not finite_scores(v)]
+        for name in bad_scores:
+            problems.append(f"cv_scores[{name!r}] must be a non-empty list of finite numbers")
+        if set(scores) != set(ev["candidates"]):
+            problems.append("cv_scores must have one entry per candidate")
+        elif ev["chosen"] not in scores:
+            problems.append(f"chosen {ev['chosen']!r} is not a candidate")
+        elif not bad_scores and np.mean(scores[ev["chosen"]]) < max(np.mean(v) for v in scores.values()):
+            problems.append(f"chosen {ev['chosen']!r} is not the candidate with the highest mean CV {SELECTION_METRIC}")
+        if ev["chosen"] not in ev["holdout_scores"]:
+            problems.append("holdout_scores lacks the chosen candidate")
+        return problems
+    except (json.JSONDecodeError, TypeError, ValueError, KeyError, AttributeError) as exc:
+        return problems + [f"{ev_path.name} malformed: {exc}"]
