@@ -77,14 +77,17 @@ Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
   recall; audited subset, one seed, likely lower over all 60). That
   evidence covers the two leakage classes only
   ([`evals/2026-07-07-dogfood-wide.md`](https://github.com/Wake360/waldean/blob/v0.4.0/evals/2026-07-07-dogfood-wide.md)).
-- On the 100 labeled notebooks of Yang et al. (ASE'22),
-  `leakage-fit-before-split` reached 0.58 precision and 0.37 recall
-  against the authors' `pre` label
+- On the 100 notebooks of Yang et al. (ASE'22), 66 of them labeled for
+  pre-split leakage, `leakage-fit-before-split` reached 0.58 precision and
+  0.37 recall against the authors' `pre` label. The labels were not
+  re-adjudicated, and two files Waldean could not analyse count as not
+  flagged
   ([`evals/2026-10-12-yang-pre.md`](https://github.com/Wake360/waldean/blob/v0.4.0/evals/2026-10-12-yang-pre.md)).
 - Misses cluster in pandas-arithmetic leaks with no syntactic anchor
-  (per-group imputation, `fillna(df[col].mean())` before the split), and
-  in named transformers whose fit Waldean does not connect to
-  `cross_val_score` or that are fit on a whole text corpus.
+  (per-group imputation, `fillna(df[col].mean())` before the split). A
+  scaler fit on full data that feeds `cross_val_score` is reported only as
+  a candidate below the 0.8 floor, by design. Python 2 cells are not
+  parsed, so leaks in them are missed.
 - The 0.0% false-positive rate holds on the curated corpus, not on messy
   real code.
 - Flaws with no imprint in code, outputs or prose are invisible to Waldean.

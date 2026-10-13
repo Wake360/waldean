@@ -13,8 +13,9 @@ supervised feature-selection code, Kaggle-style competition work, time
 series, accuracy on imbalanced classes, and broad ML tutorials. They were
 deduplicated by code-cell hash against the notebooks used in earlier
 runs and against Waldean's own real-notebook corpus. There were 0
-duplicates. Running `waldean check` over all 60 gave 0 crashes and 0 parse
-failures.
+duplicates. Running `waldean check` over all 60 gave 0 crashes. Nine
+notebooks had cells Waldean could not parse, three of them Python 2 code,
+so their results were partial.
 
 The eval is aggregate. No notebook or author is named, and 37 of the 60
 had no permissive license, so none of them is reproduced here. The
@@ -75,9 +76,10 @@ split feeds the metric.
 **A target-side `y.fillna`.** The eval describes this flag as a
 target-side `y.fillna` mistaken for a feature transform.
 
-**A duplicate scaler flag.** The eval counts one duplicate/borderline
-scaler flag among the three that did not survive. It gives no further
-detail.
+**A target encoder flag.** The third flag was a one-hot encoder fitted
+on the target column of the full training frame. The same notebook had a
+second flag that was a real leak. The eval first described this one as a
+duplicate scaler flag and corrected that on 2026-10-13.
 
 Corpus evals give Waldean a 0.0% false-positive rate on curated clean
 notebooks. That number does not transfer. On messy real code Waldean is not
@@ -86,12 +88,15 @@ perfect, and these three flags show where it slips.
 ## The eight misses
 
 Miss-hunting found 8 real leaks that Waldean did not flag, each in a
-different notebook. The eval describes all eight as leaks with no
-name-level syntactic anchor the static layer keys on. Two of the
-idioms, the scaler feeding `cross_val_score` and the TF-IDF/SVD case, do
-use named transformers, and the eval does not say which part of the pattern Waldean
-failed to connect. The snippets below are written fresh to show each
-idiom. They are not copied from any notebook.
+different notebook. Five have no name-level syntactic anchor the static
+layer keys on. Two are a scaler fit on full data that feeds
+`cross_val_score`. Waldean saw both and reported them as candidates at
+confidence 0.75, below its 0.8 reporting floor. That floor is a
+deliberate choice from the first dogfood, where reviewers disagreed on
+whether pre-CV scaling is a leak worth flagging. The last one, a TF-IDF
+and SVD fit, sits in a Python 2 notebook where most cells could not be
+parsed. The snippets below are written fresh to show each idiom. They
+are not copied from any notebook.
 
 **Per-group imputation before the split.** A group median is computed
 over every row, test rows included.
@@ -109,8 +114,9 @@ df["LotFrontage"] = df["LotFrontage"].fillna(df["LotFrontage"].mean())
 X_train, X_test, y_train, y_test = train_test_split(X, y)
 ```
 
-**A scaler fit on full data that feeds `cross_val_score`.** Every fold
-is scaled with statistics computed over all of them.
+**A scaler fit on full data that feeds `cross_val_score` (two
+notebooks).** Every fold is scaled with statistics computed over all of
+them. Waldean reports this as a candidate below the floor.
 
 ```python
 X_scaled = StandardScaler().fit_transform(X)
@@ -118,7 +124,9 @@ scores = cross_val_score(model, X_scaled, y)
 ```
 
 **TF-IDF and SVD fit on the whole corpus.** The vocabulary, the IDF
-weights and the SVD components all see the test documents.
+weights and the SVD components all see the test documents. Waldean missed
+this one because the notebook is Python 2. With the `print` statements
+rewritten, it reports both fits as candidates below the floor.
 
 ```python
 tfidf = TfidfVectorizer().fit_transform(all_texts)
@@ -153,11 +161,12 @@ such as `StandardScaler`, a `fit_transform` call, and a
 The misses are a mix of idioms. Some are pandas code,
 `groupby().transform()`, `fillna(df[col].mean())` and `get_dummies`,
 that computes a statistic over all rows without a fitted transformer
-object. Some use named transformers, where the evaluation happens
-through `cross_val_score` or the fit covers a whole text corpus. Two are
-temporal leaks inside cross-validation or a training helper. The eval's view is that closing
-these gaps needs narrative fusion or new dataflow, not more static
-heuristics.
+object. Two are temporal leaks inside cross-validation or a training
+helper. The eval's view is that closing these gaps needs narrative fusion
+or new dataflow, not more static heuristics. The two scaler cases are
+different: Waldean sees them and holds them below the floor, so they are
+a threshold choice, not a blind spot. The TF-IDF and SVD case is a parse
+gap: the notebook is Python 2.
 
 The gap is not total. The ledger shows some pandas statistics that Waldean
 did flag, including a column-mean `fillna`. The eval does not say why

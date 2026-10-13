@@ -199,9 +199,10 @@ notebooks went through one failed iteration — the first pass flagged 50%
 of files, 119 of 124 flags false positives — before the detector was
 rebuilt (flow-sensitive dataflow, transformer/estimator distinction,
 CV-aware sinks); after the fix, 3 confident flags on the same 34
-notebooks, all three confirmed real leaks, 0 known false positives. Real-
-flaw recall is measured against only 7 confirmed instances so far — enough
-to fix the detector, too few to report as a recall number.
+notebooks, all three confirmed real leaks, 0 known false positives. The
+wider dogfood (`evals/2026-07-07-dogfood-wide.md`) later confirmed 33 leak
+instances across 20 notebooks and measured 0.60 notebook-level recall over
+its audited subset, leakage classes only.
 
 What none of these recipes can catch, because no tool that reads notebooks
 can: a flaw with no imprint in code, stored outputs, or prose. Survivorship
