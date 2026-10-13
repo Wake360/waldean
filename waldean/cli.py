@@ -276,20 +276,60 @@ RUN_WARNING = ("waldean: run executes experiment.ipynb on this machine with your
                "in the waldean-verify kernel with secret-looking environment variables hidden. It is not a sandbox.")
 
 
-def cmd_create(args) -> int:
+def created(args) -> Path | None:
     try:
         from .experiment.workflow import create
-        out = create(args.csv, args.target, args.out, goal=args.goal, exclude=args.exclude,
-                     time_column=args.time_column, seed=args.seed)
+        return create(args.csv, args.target, args.out, goal=args.goal, exclude=args.exclude,
+                      time_column=args.time_column, seed=args.seed, keep=args.keep,
+                      group_column=args.group_column, task=args.task)
     except ImportError:
         print(BUILDER_HINT, file=sys.stderr)
-        return 3
     except Exception as exc:
         print(f"waldean: {args.csv}: {_input_error(exc)}", file=sys.stderr)
-        return 3
+    return None
+
+
+def print_created(out: Path) -> None:
     print(f"created: {(out / 'plan.yaml').as_posix()}")
     print(f"created: {(out / 'design.md').as_posix()}")
+
+
+def cmd_create(args) -> int:
+    out = created(args)
+    if out is None:
+        return 3
+    print_created(out)
     return 0
+
+
+def print_decisions(out: Path) -> None:
+    from .experiment.plan import read_plan, task_reason
+    from .experiment.profile import profile
+    plan = read_plan(out / "plan.yaml")
+    prof = profile(out / plan["dataset"]["path"], plan["target"], task=plan["task"])
+    split = plan["split"]
+    where = f" on {split['column']}" if split.get("column") else ""
+    print(f"task: {plan['task']} ({task_reason(prof)})")
+    print(f"split: {split['kind']}{where}")
+    user = {e["column"] for e in plan["excluded_columns"] if e["reason"].startswith("excluded by the user")}
+    for e in plan["excluded_columns"]:
+        if e["column"] in user or e["column"] == split.get("column"):
+            continue
+        print(f"excluded: {e['column']}: {e['reason']}. Keep it with --keep {e['column']}.")
+
+
+def cmd_experiment(args) -> int:
+    args.out = args.out or str(Path(args.csv).with_name(f"{Path(args.csv).stem}-experiment"))
+    out = created(args)
+    if out is None:
+        return 3
+    print_decisions(out)
+    print_created(out)
+    args.exp_dir = args.out
+    code = cmd_build(args)
+    if code or not args.run:
+        return code
+    return cmd_run(args)
 
 
 def cmd_build(args) -> int:
@@ -426,15 +466,31 @@ def main(argv=None) -> int:
                           help="seconds per cell when executing (default: %(default)s)")
     p_verify.set_defaults(func=cmd_verify)
 
+    def builder_options(p):
+        p.add_argument("--goal", default="")
+        p.add_argument("--exclude", action="append", default=[])
+        p.add_argument("--keep", action="append", default=[],
+                       help="keep a column the profile excluded automatically")
+        p.add_argument("--time-column")
+        p.add_argument("--group-column", help="entity column for a group split, or 'none'")
+        p.add_argument("--task", choices=["binary", "multiclass", "regression"])
+        p.add_argument("--seed", type=int, default=0)
+
     p_create = sub.add_parser("create", help="profile a CSV and write plan.yaml + design.md (experimental)")
     p_create.add_argument("csv")
     p_create.add_argument("--target", required=True)
     p_create.add_argument("--out", required=True)
-    p_create.add_argument("--goal", default="")
-    p_create.add_argument("--exclude", action="append", default=[])
-    p_create.add_argument("--time-column")
-    p_create.add_argument("--seed", type=int, default=0)
+    builder_options(p_create)
     p_create.set_defaults(func=cmd_create)
+
+    p_exp = sub.add_parser("experiment", help="profile a CSV, write the plan and build the notebook in one step")
+    p_exp.add_argument("csv")
+    p_exp.add_argument("--target", required=True)
+    p_exp.add_argument("--out", help="default: <csv stem>-experiment next to the CSV")
+    builder_options(p_exp)
+    p_exp.add_argument("--run", action="store_true", help="also execute the notebook and write evidence/")
+    p_exp.add_argument("--timeout", type=int, default=600)
+    p_exp.set_defaults(func=cmd_experiment)
 
     p_bld = sub.add_parser("build", help="check plan.yaml against the data and render experiment.ipynb")
     p_bld.add_argument("exp_dir")

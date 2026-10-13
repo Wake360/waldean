@@ -9,9 +9,11 @@ import pytest
 from waldean.analysis.dataflow import analyze
 from waldean.analysis.ingest import parse_notebook
 from waldean.checks.detect import run_static
-from waldean.experiment.plan import TASKS, PlanError, contradictions, design, design_md
+from waldean.cli import main
+from waldean.experiment.plan import TASKS, PlanError, contradictions, design, design_md, read_plan
 from waldean.experiment.profile import infer_task, profile
 from waldean.experiment.render import render
+from waldean.experiment.workflow import build, create
 from waldean.runtime.execute import execute, stdout_lines
 
 
@@ -419,3 +421,59 @@ def test_multiclass_fold_missing_a_class_is_skipped(tmp_path):
     assert plan["split"]["kind"] == "group_kfold"
     (tmp_path / "exp").mkdir()
     assert metrics_of(tmp_path, render(plan))["skipped_folds"] == 1
+
+
+def test_create_passes_task_keep_and_group(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    exp = create(path, target, tmp_path / "exp", keep=["status"], group_column="none")
+    plan = read_plan(exp / "plan.yaml")
+    assert plan["split"]["kind"] == "stratified_kfold" and plan["kept_columns"] == ["status"]
+    assert build(exp)[0] == []
+
+
+def test_build_reprofiles_with_the_plan_task(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "multiclass")
+    df = pd.read_csv(path)
+    df[target] = df[target].map({"low": 0, "mid": 1, "high": 2})
+    df.to_csv(path, index=False)
+    exp = create(path, target, tmp_path / "exp", task="regression", group_column="none")
+    assert read_plan(exp / "plan.yaml")["task"] == "regression"
+    assert build(exp)[0] == []
+
+
+def test_experiment_command_creates_and_builds(tmp_path, capsys):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    code = main(["experiment", str(path), "--target", target])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "task: binary (2 target values)" in out
+    assert "split: group_kfold on store" in out
+    assert "excluded: status: every value maps to one target class. Keep it with --keep status." in out
+    assert "excluded: customer_id: looks like an identifier" in out
+    exp = tmp_path / "d-experiment"
+    assert (exp / "plan.yaml").exists() and (exp / "experiment.ipynb").exists() and (exp / "design.md").exists()
+
+
+def test_experiment_command_respects_out_and_overrides(tmp_path, capsys):
+    path, target = make_csv(tmp_path / "d.csv", "regression")
+    code = main(["experiment", str(path), "--target", target, "--out", str(tmp_path / "e"),
+                 "--group-column", "none", "--keep", "spend_copy"])
+    out = capsys.readouterr().out
+    assert code == 0 and "split: kfold" in out and "excluded: spend_copy" not in out
+    assert read_plan(tmp_path / "e" / "plan.yaml")["kept_columns"] == ["spend_copy"]
+
+
+def test_experiment_command_reports_input_errors(tmp_path, capsys):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    assert main(["experiment", str(path), "--target", "nope"]) == 3
+    assert "target column 'nope'" in capsys.readouterr().err
+    assert main(["experiment", str(path), "--target", target, "--keep", "x1"]) == 3
+    assert "was not excluded" in capsys.readouterr().err
+
+
+def test_experiment_command_with_run_writes_evidence(tmp_path, capsys):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    code = main(["experiment", str(path), "--target", target, "--run"])
+    out = capsys.readouterr().out
+    assert code == 0 and "evidence:" in out
+    assert (tmp_path / "d-experiment" / "evidence" / "metrics.json").exists()
