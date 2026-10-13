@@ -13,7 +13,7 @@ from waldean.cli import main
 from waldean.experiment.plan import TASKS, PlanError, contradictions, design, design_md, read_plan
 from waldean.experiment.profile import infer_task, profile
 from waldean.experiment.render import render
-from waldean.experiment.workflow import build, create
+from waldean.experiment.workflow import build, create, run
 from waldean.runtime.execute import execute, stdout_lines
 
 
@@ -477,3 +477,11 @@ def test_experiment_command_with_run_writes_evidence(tmp_path, capsys):
     out = capsys.readouterr().out
     assert code == 0 and "evidence:" in out
     assert (tmp_path / "d-experiment" / "evidence" / "metrics.json").exists()
+
+
+def test_kept_columns_are_quoted_in_limitations(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    exp = create(path, target, tmp_path / "exp", keep=["status"])
+    build(exp)
+    text = (run(exp) / "limitations.md").read_text()
+    assert "status" in text and "kept by the user" in text

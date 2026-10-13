@@ -66,6 +66,22 @@ On the mutation corpus the verifier accepted all 16 true repairs and rejected al
 
 Limits: one flaw class so far (`leakage-temporal-shuffle`). Comparison is cell by cell, so an added cell is rejected. `--execute` runs code on your machine with your permissions. It hides secret-looking environment variables and isolates nothing else. `verify` trusts the files in the repair directory, so do not let the agent write there. The static check reads names and literal arguments, not behaviour, so a disguised split can pass; read the delta in `evidence.json`. `train_test_split(shuffle=False)` on rows not sorted by time passes the static check; only `--execute` plus reading the evidence catches it. A `.py` file without `# %%` markers is one cell, so the scope check covers the whole file. The metric regex is yours; one that matches unrelated lines gives a misleading delta. The kernel runs with Waldean's Python, so the notebook's dependencies must be installed there. Both runs share the repaired notebook's directory, so files one run writes can affect the other.
 
+## Experiment builder (experimental)
+
+```bash
+pip install 'waldean[builder]'
+waldean experiment data.csv --target churn          # plan.yaml, design.md, experiment.ipynb in data-experiment/
+waldean experiment data.csv --target churn --run    # also executes it and writes evidence/
+```
+
+The builder reads the CSV and decides: the task (binary, multi-class or regression, from the target), the split
+(time column > repeated-entity column > stratified or random), and the metrics (never accuracy). It excludes
+constant, identifier, high-cardinality and target-leaking columns and prints each exclusion with the flag that
+reverses it (`--keep COL`). Every notebook is a `ColumnTransformer` + model pipeline fitted inside each fold.
+`design.md` gives the reasons; `waldean check` runs on the result. Override with `--task`, `--time-column`,
+`--group-column COL|none`, `--exclude`, `--keep`. Leak detection is by near-perfect correlation or purity against
+the target only; a weaker future-derived feature passes.
+
 ## Status
 
 | | What |
@@ -73,6 +89,7 @@ Limits: one flaw class so far (`leakage-temporal-shuffle`). Comparison is cell b
 | **Available now** | `waldean check` on `.ipynb` and `.py` (plain and `# %%`); five static flaw classes (below); a survivorship candidate; Markdown, JSON and SARIF output; GitHub Action; pre-commit hooks; `waldean rules`; `waldean eval --predictions` for scoring other tools on the corpus |
 | **Experimental** | `--llm` / `--llm-subscription` narrative layer (prose claims vs computation). No validated precision or recall; its quality gates never ran |
 | **Experimental** | Repair loop: `waldean propose` / `waldean verify` for one class (`leakage-temporal-shuffle`). Measured on the synthetic corpus and in a 7-run agent trial, indicative (see Repair loop) |
+| **Experimental** | Experiment builder: `waldean experiment` for binary, multi-class and regression targets with time, group or random splits. Deterministic; not compared against hand-written notebooks on the new task types |
 | **Planned** | Repair contracts for more flaw classes, starting with `leakage-fit-before-split`. Not shipped |
 
 Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).

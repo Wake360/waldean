@@ -56,6 +56,8 @@ def limitations(plan: dict, metrics: dict) -> str:
     reason = plan["split"].get("override_reason")
     if reason:
         lines.append(f"- The split was overridden by the user: \"{reason}\".")
+    for col in plan.get("kept_columns", []):
+        lines.append(f"- {col} was flagged by the profile and kept by the user (--keep); its scores may be leaked.")
     if metrics.get("skipped_folds"):
         lines.append(f"- {metrics['skipped_folds']} CV fold(s) were skipped because their train or test rows hold one class.")
     return "\n".join(lines) + "\n"
