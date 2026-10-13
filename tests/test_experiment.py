@@ -335,3 +335,13 @@ def test_build_rejects_bad_field_types(tmp_path, edit, field):
     with pytest.raises(PlanError, match=field):
         build(exp)
     assert not (exp / "experiment.ipynb").exists()
+
+
+def test_ids_parsing_to_implausible_years_are_not_time_columns(tmp_path):
+    path = tmp_path / "d.csv"
+    pd.DataFrame({
+        "asset_tag": [f"AT-{i:05d}" for i in range(200)],
+        "inspected_at": pd.date_range("2024-01-01", periods=200, freq="D").strftime("%Y-%m-%d"),
+        "y": [i % 2 for i in range(200)],
+    }).to_csv(path, index=False)
+    assert [t["column"] for t in profile(path, "y")["time_columns"]] == ["inspected_at"]

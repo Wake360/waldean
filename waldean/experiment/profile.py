@@ -6,6 +6,8 @@ from pathlib import Path
 import pandas as pd
 
 MIN_PERIODS = 10
+MIN_YEAR = 1900
+MAX_YEAR = 2100
 PARSE_SHARE = 0.95
 NUMBER_RE = r"-?\d+(?:\.\d+)?"
 
@@ -23,6 +25,7 @@ def time_columns(df: pd.DataFrame, target: str) -> list[dict]:
         if values.empty or values.str.fullmatch(NUMBER_RE).mean() >= 0.5:
             continue
         parsed = pd.to_datetime(values, errors="coerce", format="mixed")
+        parsed = parsed.where(parsed.dt.year.between(MIN_YEAR, MAX_YEAR))
         if parsed.notna().mean() < PARSE_SHARE or parsed.nunique() < MIN_PERIODS:
             continue
         found.append({"column": str(col), "min": str(parsed.min()), "max": str(parsed.max()),
