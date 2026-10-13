@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import ast
 import re
+import textwrap
 
-from ..analysis.dataflow import NotebookDataflow, analyze
+from ..analysis.dataflow import NotebookDataflow, _strip_magics, analyze
 from ..analysis.ingest import ParsedNotebook
 from ..core.flag import Flag
 from ..core.taxonomy import load_taxonomy
@@ -607,11 +608,9 @@ SORT_RE = re.compile(r"\.(?:sort_values|nlargest|nsmallest|sort_index)\(|\bsorte
 FIRST_TRUE_RE = re.compile(r"\([^()]*(?:>=|<=|==|!=|>|<)[^()]*\)\s*\.(?:argmax|idxmax|argmin|idxmin)\(")
 ROW_SELECT_RE = re.compile(r"\.iloc\[0\]\s*$|\.loc\[[^\n]*\.(?:idxmax|idxmin|argmax|argmin)\(")
 IFEXP_RE = re.compile(r"\bif\b[^\n]*\belse\b")
-IFCMP_RE = re.compile(r"\bif\b[^\n]*?(?:>=|<=|>|<)[^\n]*?\belse\b")
 ATTR_PASSTHROUGH_RE = re.compile(r"^\w+\s*=\s*\w+\.(?:values|T)\s*(?:;|$)")
 LABEL_PASSTHROUGH = {"to_numpy", "values", "copy", "astype", "reset_index", "ravel", "squeeze"}
 DEF_RE = re.compile(r"^def (\w+)\(", re.MULTILINE)
-WRAP_DEF_RE = re.compile(r"^def (\w+)\(([^)]*)\)", re.MULTILINE)
 
 
 def _metric_functions(nb: ParsedNotebook) -> set[str]:
@@ -630,39 +629,59 @@ def _metric_functions(nb: ParsedNotebook) -> set[str]:
     return names
 
 
-def _assigned_names(source: str) -> set[str]:
+def _compares_named_scores(text: str, targets: set[str]) -> bool:
     try:
-        tree = ast.parse(source)
+        tree = ast.parse(textwrap.dedent(text))
     except SyntaxError:
-        return set()
-    out: set[str] = set()
+        return False
     for node in ast.walk(tree):
-        targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, (ast.AugAssign, ast.AnnAssign)) else []
-        for t in targets:
-            out |= {n.id for n in ast.walk(t) if isinstance(n, ast.Name)}
-    return out
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.IfExp):
+            continue
+        if not {n.id for t in node.targets for n in ast.walk(t) if isinstance(n, ast.Name)} & targets:
+            continue
+        e = node.value
+        if not (isinstance(e.body, ast.Constant) and isinstance(e.body.value, str)
+                and isinstance(e.orelse, ast.Constant) and isinstance(e.orelse.value, str)):
+            continue
+        t = e.test
+        if not (isinstance(t, ast.Compare) and len(t.ops) == 1 and isinstance(t.ops[0], (ast.Gt, ast.GtE, ast.Lt, ast.LtE))):
+            continue
+        left, right = t.left, t.comparators[0]
+        if not (isinstance(left, ast.Subscript) and isinstance(right, ast.Subscript)):
+            continue
+        kl, kr = (
+            {c.value for s in ast.walk(o) if isinstance(s, ast.Subscript) for c in ast.walk(s.slice) if isinstance(c, ast.Constant)}
+            for o in (left, right)
+        )
+        a, b = e.body.value, e.orelse.value
+        if (a in kl and b in kr) or (b in kl and a in kr):
+            return True
+    return False
 
 
-def _wrapper_labels(nb: ParsedNotebook, flow: NotebookDataflow) -> dict[str, tuple[list[str], set[str]]]:
+def _wrapper_labels(nb: ParsedNotebook, flow: NotebookDataflow) -> dict[str, tuple[list[str], list[str], set[str]]]:
     out = {}
     for cell in nb.code_cells:
-        lines = cell.source.splitlines()
-        for m in WRAP_DEF_RE.finditer(cell.source):
-            start = cell.source[:m.start()].count("\n") + 1
-            end = start
-            for i, line in enumerate(lines[start:], start + 1):
-                if line.strip() and not line[:1].isspace():
-                    break
-                end = i
-            params = [p.split("=")[0].split(":")[0].strip().lstrip("*") for p in m.group(2).split(",") if p.strip()]
-            local = _assigned_names("\n".join(lines[start - 1:end]))
+        try:
+            tree = ast.parse(_strip_magics(cell.source))
+        except SyntaxError:
+            continue
+        for fn in tree.body:
+            if not isinstance(fn, ast.FunctionDef):
+                continue
+            a = fn.args
+            positional = [p.arg for p in a.posonlyargs + a.args]
+            kwonly = [p.arg for p in a.kwonlyargs]
+            local = {n.id for stmt in fn.body for n in ast.walk(stmt) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
+            local |= {p.arg for p in (a.vararg, a.kwarg) if p is not None}
+            end = fn.end_lineno or fn.lineno
             names: set[str] = set()
             for c in flow.calls:
-                if c.cell == cell.index and start < c.line <= end and c.name in SCORE_FUNCS:
+                if c.cell == cell.index and fn.lineno < c.line <= end and c.name in SCORE_FUNCS:
                     names |= c.pos_args[0] if c.pos_args else c.kw_args.get("y_true", set())
-            names = {n for n in names if n in params or n not in local}
+            names = {n for n in names if n in positional or n in kwonly or n not in local}
             if names:
-                out[m.group(1)] = (params, names)
+                out[fn.name] = (positional, kwonly, names)
     return out
 
 
@@ -687,15 +706,15 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
 
     def label_names(c) -> set[str]:
         if c.name in wrappers and c.name not in SCORE_FUNCS:
-            params, inner = wrappers[c.name]
+            positional, kwonly, inner = wrappers[c.name]
             out: set[str] = set()
             for n in inner:
-                if n not in params:
-                    out.add(n)
-                elif params.index(n) < len(c.pos_args):
-                    out |= c.pos_args[params.index(n)]
-                else:
+                if n in positional and positional.index(n) < len(c.pos_args):
+                    out |= c.pos_args[positional.index(n)]
+                elif n in positional or n in kwonly:
                     out |= c.kw_args.get(n, set())
+                else:
+                    out.add(n)
             return out
         if c.name in CV_SCORERS:
             return c.pos_args[2] if len(c.pos_args) > 2 else c.kw_args.get("y", set())
@@ -734,7 +753,7 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
     for sel in flow.assigns:
         text = span_text(sel)
         if not SELECT_RE.search(text) and not (
-            IFEXP_RE.search(text) and (sum(c.name in metric_names for c in calls_in(sel)) >= 2 or IFCMP_RE.search(text))
+            IFEXP_RE.search(text) and (sum(c.name in metric_names for c in calls_in(sel)) >= 2 or _compares_named_scores(text, sel.targets))
         ):
             continue
         if FIRST_TRUE_RE.search(text) and not re.search(r"\b(?:max|min|sorted)\([^\n]*\bkey\s*=", text):

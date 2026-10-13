@@ -211,3 +211,63 @@ def test_wrapper_keyword_label_reuse_is_confident():
         "print(rep(best, yt=y_te, p=P[best]))",
     ]
     assert confident(cells)
+
+
+TEST_AUC = "clf.fit(X_tr, y_tr)\np = clf.predict_proba(X_te)[:, 1]\nauc = roc_auc_score(y_te, p)"
+TEST_SERIES = "res = pd.Series({n: roc_auc_score(y_te, p) for n, p in P.items()})"
+
+
+def test_ifelse_verdict_label_on_one_score_is_silent():
+    cells = [TEST_AUC, "label = 'good' if auc > 0.8 else 'poor'", "print(f'AUC {auc:.3f} ({label})')"]
+    assert not selection_flags(cells)
+
+
+def test_ifelse_beats_baseline_verdict_is_silent():
+    cells = [
+        "clf.fit(X_tr, y_tr)\nauc_m = roc_auc_score(y_te, clf.predict_proba(X_te)[:, 1])\n"
+        "auc_b = roc_auc_score(y_te, dummy.fit(X_tr, y_tr).predict_proba(X_te)[:, 1])",
+        "verdict = 'beats' if auc_m > auc_b else 'does not beat'",
+        "print(f'model {verdict} baseline: {auc_m:.3f} vs {auc_b:.3f}')",
+    ]
+    assert not selection_flags(cells)
+
+
+def test_ifelse_pass_fail_status_same_cell_is_silent():
+    cells = [TEST_AUC + "\nstatus = 'PASS' if auc >= 0.75 else 'FAIL'\nprint(status, auc)"]
+    assert not selection_flags(cells)
+
+
+def test_ifelse_display_count_is_silent():
+    cells = [PROBS, TEST_SERIES, "n_show = 10 if len(res) > 10 else len(res)", "print(res.head(n_show))"]
+    assert not selection_flags(cells)
+
+
+def test_ifelse_bar_colors_by_score_is_silent():
+    cells = [PROBS, TEST_SERIES, "colors = ['green' if v > 0.8 else 'red' for v in res]",
+             "plt.bar(res.index, res.values, color=colors)"]
+    assert not selection_flags(cells)
+
+
+PV = "PV = {n: m.fit(X_tr, y_tr).predict_proba(X_va)[:, 1] for n, m in models.items()}"
+
+
+def test_wrapper_parenthesised_default_before_label_param_is_silent():
+    cells = [
+        "def rep(name, figsize=(6, 4), yt=None, p=None):\n    return {'model': name, 'auc': roc_auc_score(yt, p)}",
+        PV,
+        "res = pd.DataFrame([rep(n, yt=y_va, p=p) for n, p in PV.items()]).set_index('model')\n"
+        "best = res['auc'].idxmax()",
+        "print(rep(best, yt=y_te, p=models[best].predict_proba(X_te)[:, 1]))",
+    ]
+    assert not selection_flags(cells)
+
+
+def test_wrapper_loop_target_label_is_local():
+    cells = [
+        "def evaluate(model, splits):\n    out = {}\n    for s, (Xs, ys) in splits.items():\n"
+        "        out[s] = roc_auc_score(ys, model.predict_proba(Xs)[:, 1])\n    return out",
+        "res = {n: evaluate(m.fit(X_tr, y_tr), {'val': (X_va, y_va)})['val'] for n, m in models.items()}\n"
+        "best = max(res, key=res.get)",
+        "print(evaluate(models[best], {'test': (X_te, y_te)}))",
+    ]
+    assert not selection_flags(cells)
