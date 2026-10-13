@@ -86,3 +86,13 @@ def test_sweep_shared_tmp_moves_everything(tmp_path, monkeypatch):
 def test_sweep_shared_tmp_missing_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(ab, "SHARED_TMP", tmp_path / "absent")
     assert ab.sweep_shared_tmp(tmp_path / "dest") == []
+
+
+def test_tmp_entries_lists_user_tmp(tmp_path, monkeypatch):
+    user = tmp_path / "claude-501"
+    (user / "build").mkdir(parents=True)
+    (user / "nbdump_1.txt").write_text("x")
+    monkeypatch.setattr(ab, "USER_TMP", user)
+    assert ab.tmp_entries() == {"build", "nbdump_1.txt"}
+    monkeypatch.setattr(ab, "USER_TMP", tmp_path / "absent")
+    assert ab.tmp_entries() == set()

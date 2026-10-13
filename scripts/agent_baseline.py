@@ -31,6 +31,7 @@ SCORING = BENCH / "scoring.tsv"
 AGENT_ROOT = Path("/private/tmp/waldean-agent-baseline")
 AGENT_KERNEL = "waldean-agent-baseline"
 SHARED_TMP = Path("/private/tmp/claude")
+USER_TMP = Path(f"/private/tmp/claude-{os.getuid()}")
 CLAUDE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit",
                 "Bash(python *)", "Bash(python3 *)", "Bash(jupyter *)", "Bash(ls *)", "Bash(head *)"]
 HOME = str(Path.home())
@@ -168,6 +169,12 @@ def sweep_shared_tmp(dest: Path) -> list[str]:
     return names
 
 
+def tmp_entries() -> set[str]:
+    if not USER_TMP.is_dir():
+        return set()
+    return {p.name for p in USER_TMP.iterdir()}
+
+
 def version(cli: str) -> str:
     return subprocess.run([cli, "--version"], capture_output=True, text=True).stdout.strip()
 
@@ -214,6 +221,7 @@ def run_one(args, m: dict, codex_home: Path, d: dict, agent: str, variant: str, 
     cmd, env = agent_command(agent, m, text, codex_home, args.python, arm.get("tools", []))
     if arm:
         sweep_shared_tmp(AGENT_ROOT / "stale-scratch" / run_dir.name)
+    before = tmp_entries()
     start = time.time()
     with (run_dir / "agent.log").open("w") as log:
         try:
@@ -229,7 +237,8 @@ def run_one(args, m: dict, codex_home: Path, d: dict, agent: str, variant: str, 
             "model": m["agents"][agent]["model"], "exit": code,
             "seconds": round(time.time() - start),
             "notebook": (run_dir / "experiment.ipynb").exists(),
-            "shared_tmp": sweep_shared_tmp(run_dir / ".agent-tmp") if arm else []}
+            "shared_tmp": sweep_shared_tmp(run_dir / ".agent-tmp") if arm else [],
+            "user_tmp_new": sorted(tmp_entries() - before) if arm else []}
     write_own(run_dir / "meta.json", json.dumps(meta, indent=2) + "\n")
     print(run_dir.name, "exit", code, "notebook", meta["notebook"], flush=True)
 
