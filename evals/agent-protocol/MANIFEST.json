@@ -249,7 +249,8 @@
         "adjudication": "Every disagreement, on any criterion, goes to a third fresh agent with the redacted notebook, the criterion text and both rulings unlabelled. Where the third agrees with the second, the first reviewer corrects the binding in scoring.tsv (PROBE_EVALS for temporal and group, PROBE_SELECTED_ON for selection) so that the mechanical probe gives the adjudicated ruling. The notebook sha256 does not change. Final scoring runs after all corrections.",
         "unchanged": "First reviewer procedure, probes, criteria, redaction, seed, decision rules."
       },
-      "integrity": "Written and committed before scoring; order proven by commit date against the first row of scoring.tsv."
+      "integrity": "Written and committed before scoring; order proven by commit date against the first row of scoring.tsv.",
+      "redaction": "ARM_WORDS additionally redact walk_forward and TimeSeriesSplit, since the protocol's cv.kind vocabulary and the generic sklearn splitter would otherwise hint at the arm. The second rater judges temporal CV from the index logic, not from the splitter name."
     }
   ]
 }

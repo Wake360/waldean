@@ -149,7 +149,7 @@ def test_redact_hides_arm_words(tmp_path):
     runs = tmp_path / "runs"
     for name in ("s-claude-C-0", "s-claude-B-0"):
         (runs / name).mkdir(parents=True)
-        nb = nbformat.v4.new_notebook(cells=[nbformat.v4.new_code_cell("h = pd.read_csv('holdout.csv')\nprint('protocol')")])
+        nb = nbformat.v4.new_notebook(cells=[nbformat.v4.new_code_cell("h = pd.read_csv('holdout.csv')\nprint('protocol')\ncv = TimeSeriesSplit(5)\nkind = 'walk_forward'")])
         nb.metadata = {"kernelspec": {"name": "waldean-agent-baseline"}}
         nb.cells[0].metadata = {"tags": ["protocol"]}
         nbformat.write(nb, runs / name / "experiment.ipynb")
@@ -160,6 +160,7 @@ def test_redact_hides_arm_words(tmp_path):
     assert sorted(p.name for p in (tmp_path / "runs-redacted").iterdir()) == ["nb-000.ipynb"]
     out = nbformat.read(tmp_path / "runs-redacted" / "nb-000.ipynb", as_version=4)
     assert "holdout.csv" not in out.cells[0].source and "protocol" not in out.cells[0].source
+    assert "TimeSeriesSplit" not in out.cells[0].source and "walk_forward" not in out.cells[0].source
     assert out.metadata == {} and out.cells[0].metadata == {}
     key = json.loads((tmp_path / "runs-redaction-key.json").read_text())
     assert key == {"nb-000": "s-claude-C-0"}

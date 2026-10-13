@@ -577,7 +577,7 @@ def cmd_similar(args) -> int:
 
 
 ARM_WORDS = re.compile(r"protocol\.yaml|holdout\.csv|unused\.csv|evidence\.json|checklist\.md|"
-                       r"waldean|protocol|checklist", re.IGNORECASE)
+                       r"waldean|protocol|checklist|walk_forward|TimeSeriesSplit", re.IGNORECASE)
 
 
 def cmd_redact(args) -> int:
