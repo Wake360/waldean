@@ -1,3 +1,5 @@
+import dataclasses
+
 import nbformat
 import pytest
 
@@ -59,3 +61,10 @@ def test_probe_timeout_keeps_static_confidence():
     out = probe_fit_before_split(nb, [flag(receiver="scaler", arg="X", sink_cell=2)], timeout=1)
     assert out[0].confidence == 0.92
     assert "probe: error" in out[0].evidence
+
+
+def test_probe_never_raises_a_candidate():
+    candidate = dataclasses.replace(flag(receiver="scaler", arg="X", sink_cell=2), confidence=0.75)
+    out = probe_fit_before_split(LEAKY, [candidate])
+    assert out[0].confidence == 0.75
+    assert "probe: n_samples_seen_ = 20 of 20 rows" in out[0].evidence

@@ -89,7 +89,7 @@ Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
 | `leakage-test-selection` | A model, feature set or threshold picked by its score on the rows that are then reported as the held-out result |
 | `selection-survivorship-cohort` | Candidate only: a filter on a survival-correlated column before aggregation |
 
-For `leakage-fit-before-split`, `waldean check --probe` runs an `.ipynb` up to the split in a separate `waldean-verify` kernel, reads the fitted transformer's `n_samples_seen_`, and raises the flag's confidence when the fit saw every row and lowers it when it saw fewer, executing your code with your permissions.
+For `leakage-fit-before-split`, `waldean check --probe` runs an `.ipynb` up to the split in a separate `waldean-verify` kernel, reads the fitted transformer's `n_samples_seen_`, and raises the flag's confidence when the fit saw every row and lowers it when it saw fewer. Candidates below the confidence floor keep their confidence and only gain the measurement note. The probe executes your code with your permissions.
 
 `waldean rules` prints the full list from `waldean/core/taxonomy/flaws.yaml`.
 

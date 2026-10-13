@@ -5,7 +5,7 @@ import dataclasses
 
 from nbclient.exceptions import CellExecutionError
 
-from waldean.core.flag import Flag
+from waldean.core.flag import DEFAULT_CONFIDENCE_FLOOR, Flag
 from waldean.runtime import execute as ex
 
 PREFIX = "WALDEAN_PROBE"
@@ -57,12 +57,13 @@ def probe_fit_before_split(nb_node, flags: list[Flag], timeout: int = 180, cwd: 
             continue
         _, seen, rows = lines[-1].split()
         seen, rows = int(seen), int(rows)
+        confident = flag.confidence >= DEFAULT_CONFIDENCE_FLOOR
         if seen < 0:
             out.append(_with(flag, flag.confidence, "no n_samples_seen_"))
         elif rows > 0 and seen == rows:
-            out.append(_with(flag, CONFIRMED, f"n_samples_seen_ = {seen} of {rows} rows"))
+            out.append(_with(flag, CONFIRMED if confident else flag.confidence, f"n_samples_seen_ = {seen} of {rows} rows"))
         elif rows > 0:
-            out.append(_with(flag, DEMOTED, f"n_samples_seen_ = {seen} of {rows} rows"))
+            out.append(_with(flag, DEMOTED if confident else flag.confidence, f"n_samples_seen_ = {seen} of {rows} rows"))
         else:
             out.append(_with(flag, flag.confidence, f"n_samples_seen_ = {seen}, rows unknown"))
     return out
