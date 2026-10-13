@@ -62,7 +62,7 @@ waldean verify .waldean/repairs/forecast--leakage-temporal-shuffle --execute --m
 
 `verify` rejects edits outside the cells the contract names, a deleted evaluation call, a finding that is still there, and any new finding. With `--execute` it runs the original and the repaired notebook and records both metrics, package versions and file hashes in `evidence.json`. A repair is `static-pass` without execution and `verified` with it. Neither status says the new number is right.
 
-On the mutation corpus the verifier accepted all 16 true repairs and rejected all 48 bad ones ([`evals/2026-10-13-repair-loop.md`](evals/2026-10-13-repair-loop.md)). Agent trial: 5 of 5 demo runs verified, 2 of 2 real notebooks static-pass, N=7, indicative ([`evals/2026-10-13-repair-trial.md`](evals/2026-10-13-repair-trial.md)).
+On the mutation corpus the verifier accepted all 16 true repairs and rejected all 48 bad ones ([`evals/2026-10-13-repair-loop.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-repair-loop.md)). Agent trial: 5 of 5 demo runs verified, 2 of 2 real notebooks static-pass, N=7, indicative ([`evals/2026-10-13-repair-trial.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-repair-trial.md)).
 
 Limits: one flaw class so far (`leakage-temporal-shuffle`). Comparison is cell by cell, so an added cell is rejected. `--execute` runs code on your machine with your permissions. It hides secret-looking environment variables and isolates nothing else. `verify` trusts the files in the repair directory, so do not let the agent write there.
 
@@ -71,8 +71,7 @@ Limits: one flaw class so far (`leakage-temporal-shuffle`). Comparison is cell b
 | | What |
 |---|---|
 | **Available now** | `waldean check` on `.ipynb` and `.py` (plain and `# %%`); four static flaw classes (below); a survivorship candidate; Markdown, JSON and SARIF output; GitHub Action; pre-commit hooks; `waldean rules`; `waldean eval --predictions` for scoring other tools on the corpus |
-| **Experimental** | `--llm` / `--llm-subscription` narrative layer (prose claims vs computation). No validated precision or recall; its quality gates never ran |
-| **Planned** | Generated fixes: a reviewable patch plus a verification recipe for one canonical leakage shape (`waldean propose`), then opt-in sandboxed verification. Not shipped |
+| **Experimental** | `--llm` / `--llm-subscription` narrative layer (prose claims vs computation). No validated precision or recall; its quality gates never ran; `waldean propose` / `waldean verify` repair loop (one class: `leakage-temporal-shuffle`) |
 
 Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
 
