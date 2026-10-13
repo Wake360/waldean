@@ -2,9 +2,9 @@ import json
 from pathlib import Path
 
 from waldean.cli import main
-from waldean.detect import Flag
+from waldean.core.flag import Flag
 from waldean.report import exit_code, parse_warning, to_json, to_markdown, to_sarif
-from waldean.taxonomy import load_taxonomy
+from waldean.core.taxonomy import load_taxonomy
 
 LEAKY = str(Path(__file__).parent.parent / "examples" / "leaky.ipynb")
 
@@ -90,8 +90,8 @@ def test_cli_single_notebook_json_is_bare_object(capsys):
 def test_from_nbnode_tolerates_null_and_missing_fields():
     from nbformat import NotebookNode
 
-    from waldean.detect import run_static
-    from waldean.ingest import from_nbnode
+    from waldean.checks.detect import run_static
+    from waldean.analysis.ingest import from_nbnode
 
     node = NotebookNode(cells=[
         NotebookNode(cell_type="code", source=None, outputs=None),  # both null

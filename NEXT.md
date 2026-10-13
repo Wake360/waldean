@@ -107,7 +107,7 @@ run the gate; nothing here needs re-deriving.
   build at a time. CI is unaffected (fresh runners, green every release);
   do not patch the executor until a standalone single-build hang is
   reproduced.
-- **`SURVIVOR_QUERY_ASSIGN_RE` in `waldean/detect.py` is O(n^2)** on long
+- **`SURVIVOR_QUERY_ASSIGN_RE` in `waldean/checks/detect.py` is O(n^2)** on long
   single-line inputs just under the 200KB cell cap (found in the 0.3.0
   review; the over-cap path is already fixed via `skipped_cells`).
   Follow-up: bound the leading `\w+` or pre-filter to lines containing

@@ -4,8 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from waldean.cli import _EmptyDir, _expand_notebooks, main
-from waldean.llm import BackendError
+from waldean.api import EmptyDir as _EmptyDir, expand_notebooks as _expand_notebooks
+from waldean.cli import main
+from waldean.llm.backends import BackendError
 
 REPO = Path(__file__).parent.parent
 LEAKY = str(REPO / "examples" / "leaky.ipynb")
@@ -67,7 +68,7 @@ class _OkDet:
 def test_cli_llm_run_reports_narrative_provenance(monkeypatch, capsys, tmp_path):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
-    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: (_OkDet(), _Ver()))
+    monkeypatch.setattr("waldean.cli.llm_backends", lambda rd, subscription=False: (_OkDet(), _Ver()))
     nb = {"cells": [
         {"cell_type": "code", "source": "x = 1\n", "outputs": [],
          "execution_count": None, "metadata": {}},
@@ -84,7 +85,7 @@ def test_cli_llm_backend_failure_exits_3_fail_loud(monkeypatch, capsys):
     # the dropped backend error propagates to the CLI, which exits 3.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
-    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: (_Det(), _Ver()))
+    monkeypatch.setattr("waldean.cli.llm_backends", lambda rd, subscription=False: (_Det(), _Ver()))
     assert main(["check", "--llm", LEAKY]) == 3
     err = capsys.readouterr().err
     assert "narrative layer failed" in err
@@ -204,7 +205,7 @@ def test_py_json_line_is_file_absolute(capsys):
 
 
 def test_py_oversized_single_cell_warns_partial(tmp_path, capsys):
-    from waldean.dataflow import MAX_CELL_SOURCE_BYTES
+    from waldean.analysis.dataflow import MAX_CELL_SOURCE_BYTES
 
     big = "a = 1  # " + "A" * (MAX_CELL_SOURCE_BYTES + 1) + "\n"
     p = _write(tmp_path, "big.py", big)
@@ -304,12 +305,12 @@ def test_rollup_on_tty_not_piped(monkeypatch, tmp_path, capsys):
 
 
 def test_rollup_buckets_by_severity_under_medium_gate(monkeypatch, tmp_path, capsys):
-    from waldean.detect import Flag
+    from waldean.core.flag import Flag
 
     medium = Flag(flaw_id="testing-multiple-uncorrected", severity="medium",
                   confidence=0.9, cell=1, line=1, evidence="e",
                   failure_scenario="f", fix="x")
-    monkeypatch.setattr("waldean.cli.run_static", lambda nb, flow: [medium])
+    monkeypatch.setattr("waldean.api.run_static", lambda nb, flow: [medium])
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     _write(tmp_path, "a.ipynb", CLEAN_NB)
     _write(tmp_path, "b.ipynb", CLEAN_NB)
@@ -335,7 +336,7 @@ def test_rollup_never_for_json_even_on_tty(monkeypatch, tmp_path, capsys):
 def test_llm_progress_on_tty_stderr_only(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
-    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: (_OkDet(), _Ver()))
+    monkeypatch.setattr("waldean.cli.llm_backends", lambda rd, subscription=False: (_OkDet(), _Ver()))
     monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
     _write(tmp_path, "a.ipynb", CLEAN_NB)
     _write(tmp_path, "b.ipynb", CLEAN_NB)
@@ -350,7 +351,7 @@ def test_llm_progress_on_tty_stderr_only(monkeypatch, tmp_path, capsys):
 def test_llm_progress_absent_when_piped(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
-    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: (_OkDet(), _Ver()))
+    monkeypatch.setattr("waldean.cli.llm_backends", lambda rd, subscription=False: (_OkDet(), _Ver()))
     p = _write(tmp_path, "a.ipynb", CLEAN_NB)
     main(["check", "--llm", p])
     assert "checking" not in capsys.readouterr().err
@@ -359,7 +360,7 @@ def test_llm_progress_absent_when_piped(monkeypatch, tmp_path, capsys):
 def test_llm_progress_closed_before_backend_error(monkeypatch, capsys):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
-    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: (_Det(), _Ver()))
+    monkeypatch.setattr("waldean.cli.llm_backends", lambda rd, subscription=False: (_Det(), _Ver()))
     monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
     rc = main(["check", "--llm", LEAKY])
     err = capsys.readouterr().err
@@ -420,7 +421,7 @@ def test_eval_llm_subscription_heldout_refused_before_backends(monkeypatch, caps
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     called = []
-    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: called.append(1))
+    monkeypatch.setattr("waldean.cli.llm_backends", lambda rd, subscription=False: called.append(1))
     rc = main(["eval", "--llm", "--llm-subscription", "--split", "heldout"])
     assert rc == 3
     assert "subscription runs cannot produce gate evidence" in capsys.readouterr().err
@@ -428,8 +429,8 @@ def test_eval_llm_subscription_heldout_refused_before_backends(monkeypatch, caps
 
 
 def test_llm_backends_subscription_ignores_replay_dir(monkeypatch, tmp_path):
-    from waldean.cli import _llm_backends
-    from waldean.llm import AgentBackend, CodexBackend
+    from waldean.api import llm_backends as _llm_backends
+    from waldean.llm.backends import AgentBackend, CodexBackend
 
     det, ver = _llm_backends(str(tmp_path / "replay"), subscription=True)
     assert isinstance(det, AgentBackend)
@@ -519,7 +520,7 @@ def test_keep_going_llm_backend_error_still_hard_aborts(monkeypatch, capsys):
     # the --llm backend-error abort must never soften, even with --keep-going.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setenv("OPENAI_API_KEY", "y")
-    monkeypatch.setattr("waldean.cli._llm_backends", lambda rd, subscription=False: (_Det(), _Ver()))
+    monkeypatch.setattr("waldean.cli.llm_backends", lambda rd, subscription=False: (_Det(), _Ver()))
     rc = main(["check", "--llm", "--keep-going", LEAKY])
     err = capsys.readouterr().err
     assert rc == 3
@@ -546,7 +547,7 @@ def test_keep_going_heldout_refusal_still_aborts(tmp_path, capsys):
 
 
 def test_llm_subscription_missing_clis_exits_3(monkeypatch, capsys):
-    monkeypatch.setattr("waldean.cli.shutil.which", lambda name: None)
+    monkeypatch.setattr("waldean.api.shutil.which", lambda name: None)
     rc = main(["check", "--llm", "--llm-subscription", LEAKY])
     assert rc == 3
     assert capsys.readouterr().err == (
@@ -555,7 +556,7 @@ def test_llm_subscription_missing_clis_exits_3(monkeypatch, capsys):
 
 
 def test_rules_lists_all_taxonomy_ids(capsys):
-    from waldean.taxonomy import load_taxonomy
+    from waldean.core.taxonomy import load_taxonomy
 
     rc = main(["rules"])
     out = capsys.readouterr().out
@@ -569,7 +570,7 @@ def test_rules_json_valid(capsys):
     out = capsys.readouterr().out
     assert rc == 0
     data = json.loads(out)
-    assert len(data) == 9
+    assert len(data) == 10
     for d in data:
         assert set(d) == {"id", "layer", "severity", "definition", "book_anchor"}
 

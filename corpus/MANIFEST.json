@@ -1,5 +1,5 @@
 {
-  "built": "2026-07-05",
+  "built": "2026-10-13",
   "clean": [
     {
       "file": "clean/churn-s11.ipynb",
@@ -170,6 +170,30 @@
       "split": "dev"
     },
     {
+      "file": "clean/selection-s11.ipynb",
+      "family": "selection",
+      "seed": 11,
+      "split": "dev"
+    },
+    {
+      "file": "clean/selection-s12.ipynb",
+      "family": "selection",
+      "seed": 12,
+      "split": "dev"
+    },
+    {
+      "file": "clean/selection-s13.ipynb",
+      "family": "selection",
+      "seed": 13,
+      "split": "dev"
+    },
+    {
+      "file": "clean/selection-s14.ipynb",
+      "family": "selection",
+      "seed": 14,
+      "split": "dev"
+    },
+    {
       "file": "clean/churn-s21.ipynb",
       "family": "churn",
       "seed": 21,
@@ -334,6 +358,30 @@
     {
       "file": "clean/forecast-s24.ipynb",
       "family": "forecast",
+      "seed": 24,
+      "split": "heldout"
+    },
+    {
+      "file": "clean/selection-s21.ipynb",
+      "family": "selection",
+      "seed": 21,
+      "split": "heldout"
+    },
+    {
+      "file": "clean/selection-s22.ipynb",
+      "family": "selection",
+      "seed": 22,
+      "split": "heldout"
+    },
+    {
+      "file": "clean/selection-s23.ipynb",
+      "family": "selection",
+      "seed": 23,
+      "split": "heldout"
+    },
+    {
+      "file": "clean/selection-s24.ipynb",
+      "family": "selection",
       "seed": 24,
       "split": "heldout"
     }
@@ -706,7 +754,7 @@
       "verified": true,
       "evidence": {
         "p": 0.002386637349583579,
-        "cohens_d": 0.030372565373671122,
+        "cohens_d": 0.03037256537367112,
         "effect_size_in_markdown": false,
         "recommendation": true
       },
@@ -721,7 +769,7 @@
       "verified": true,
       "evidence": {
         "p": 0.002386637349583579,
-        "cohens_d": 0.030372565373671122,
+        "cohens_d": 0.03037256537367112,
         "effect_size_in_markdown": false,
         "recommendation": true
       },
@@ -759,7 +807,7 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "p": 7.2984221853508654e-09,
+        "p": 7.298422185350921e-09,
         "cohens_d": 0.05782905992435963,
         "effect_size_in_markdown": false,
         "recommendation": true
@@ -774,7 +822,7 @@
       "split": "dev",
       "verified": true,
       "evidence": {
-        "p": 7.2984221853508654e-09,
+        "p": 7.298422185350921e-09,
         "cohens_d": 0.05782905992435963,
         "effect_size_in_markdown": false,
         "recommendation": true
@@ -1572,6 +1620,118 @@
       }
     },
     {
+      "file": "mutated/selection-s11__leakage-test-selection__m0.ipynb",
+      "base": "clean/selection-s11.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 0,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s11__leakage-test-selection__m1.ipynb",
+      "base": "clean/selection-s11.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s12__leakage-test-selection__m0.ipynb",
+      "base": "clean/selection-s12.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 0,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s12__leakage-test-selection__m1.ipynb",
+      "base": "clean/selection-s12.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s13__leakage-test-selection__m0.ipynb",
+      "base": "clean/selection-s13.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 0,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s13__leakage-test-selection__m1.ipynb",
+      "base": "clean/selection-s13.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s14__leakage-test-selection__m0.ipynb",
+      "base": "clean/selection-s14.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 0,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s14__leakage-test-selection__m1.ipynb",
+      "base": "clean/selection-s14.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": true
+      }
+    },
+    {
       "file": "mutated/churn-s21__leakage-fit-before-split__m2.ipynb",
       "base": "clean/churn-s21.ipynb",
       "flaw_id": "leakage-fit-before-split",
@@ -1991,8 +2151,8 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "p": 4.237234770038397e-06,
-        "cohens_d": 0.04598988846740186,
+        "p": 4.237234770039341e-06,
+        "cohens_d": 0.04598988846740139,
         "effect_size_in_markdown": false,
         "recommendation": true
       },
@@ -2006,8 +2166,8 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "p": 4.237234770038397e-06,
-        "cohens_d": 0.04598988846740186,
+        "p": 4.237234770039341e-06,
+        "cohens_d": 0.04598988846740139,
         "effect_size_in_markdown": false,
         "recommendation": true
       },
@@ -2801,6 +2961,118 @@
         "variant": 1,
         "train_max_date": "2025-12-30",
         "test_min_date": "2024-01-24"
+      }
+    },
+    {
+      "file": "mutated/selection-s21__leakage-test-selection__m2.ipynb",
+      "base": "clean/selection-s21.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 2,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s21__leakage-test-selection__m3.ipynb",
+      "base": "clean/selection-s21.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s22__leakage-test-selection__m2.ipynb",
+      "base": "clean/selection-s22.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 2,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": false
+      }
+    },
+    {
+      "file": "mutated/selection-s22__leakage-test-selection__m3.ipynb",
+      "base": "clean/selection-s22.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": false
+      }
+    },
+    {
+      "file": "mutated/selection-s23__leakage-test-selection__m2.ipynb",
+      "base": "clean/selection-s23.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 2,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s23__leakage-test-selection__m3.ipynb",
+      "base": "clean/selection-s23.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s24__leakage-test-selection__m2.ipynb",
+      "base": "clean/selection-s24.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 2,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": false
+      }
+    },
+    {
+      "file": "mutated/selection-s24__leakage-test-selection__m3.ipynb",
+      "base": "clean/selection-s24.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": false
       }
     }
   ],

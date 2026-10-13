@@ -1,0 +1,95 @@
+from waldean.analysis.dataflow import analyze
+from waldean.checks.detect import detect_leakage_test_selection
+
+from test_detect import nb
+
+FIT = (
+    "rows = []\n"
+    "probs = {}\n"
+    "for name, m in models.items():\n"
+    "    m.fit(X_tr, y_tr)\n"
+    "    p = m.predict_proba(X_te)[:, 1]\n"
+    "    probs[name] = p\n"
+    "    rows.append({'model': name, 'auc': roc_auc_score(y_te, p)})\n"
+    "res = pd.DataFrame(rows).set_index('model')"
+)
+
+
+def selection_flags(cells):
+    notebook = nb([("code", c) for c in cells])
+    return detect_leakage_test_selection(notebook, analyze(notebook))
+
+
+def confident(cells):
+    return [f for f in selection_flags(cells) if f.confidence >= 0.8]
+
+
+def test_idxmax_on_test_scores_then_reported():
+    flags = confident([FIT, "best = res['auc'].idxmax()", "print(roc_auc_score(y_te, probs[best]))"])
+    assert len(flags) == 1
+    assert flags[0].extra["selected"] == ["best"]
+
+
+def test_sorted_table_first_row_then_lookup():
+    cells = [FIT, "res = res.sort_values('auc', ascending=False)\nbest = res.index[0]", "print(res.loc[best])"]
+    assert confident(cells)
+
+
+def test_max_with_key_lambda_on_same_line_reuse():
+    cells = [FIT, "best = max(probs, key=lambda n: roc_auc_score(y_te, probs[n])); p = probs[best]",
+             "print(average_precision_score(y_te, p))"]
+    assert confident(cells)
+
+
+def test_threshold_tuned_and_reported_on_test():
+    cells = [
+        "p = model.predict_proba(X_te)[:, 1]\nprec, rec, thr = precision_recall_curve(y_te, p)",
+        "f1 = 2 * prec * rec / (prec + rec)\ni = np.argmax(f1[:-1])\nt = thr[i]",
+        "print(f1_score(y_te, p >= t))",
+    ]
+    assert confident(cells)
+
+
+def test_validation_selection_with_fresh_test_is_only_a_candidate():
+    cells = [
+        FIT.replace("X_te", "X_va").replace("y_te", "y_va"),
+        "best = res['auc'].idxmax()\nprint(res.loc[best])",
+        "print(roc_auc_score(y_test, models[best].predict_proba(X_test)[:, 1]))",
+    ]
+    flags = selection_flags(cells)
+    assert flags and all(f.confidence < 0.8 for f in flags)
+
+
+def test_selection_without_reuse_is_silent():
+    cells = [FIT, "best = res['auc'].idxmax()", "final = models[best].fit(X_all, y_all)"]
+    assert not selection_flags(cells)
+
+
+def test_unsorted_first_row_lookup_is_silent():
+    cells = [FIT, "a = res.query(\"model == 'lr'\").iloc[0]", "print(a)"]
+    assert not selection_flags(cells)
+
+
+def test_argmax_without_scores_is_silent():
+    cells = ["counts = df.groupby('city').size()", "top = counts.idxmax()", "print(df[df.city == top].price.mean())"]
+    assert not selection_flags(cells)
+
+
+def test_user_metric_function_counts_as_scoring():
+    cells = [
+        "def score(y, p):\n    return {'auc': roc_auc_score(y, p)}",
+        "oof = {n: cross_val_predict(m, X, y, cv=cv, method='predict_proba')[:, 1] for n, m in models.items()}",
+        "results = pd.DataFrame({n: score(y, p) for n, p in oof.items()}).T.sort_values('auc', ascending=False)",
+        "best = results.index[0]\nprint(score(y, oof[best]))",
+    ]
+    assert confident(cells)
+
+
+def test_first_index_meeting_a_condition_is_silent():
+    cells = [
+        "y_scores = cross_val_predict(clf, X, y, cv=3, method='decision_function')\n"
+        "prec, rec, thr = precision_recall_curve(y, y_scores)",
+        "idx = (prec >= 0.90).argmax()\nt = thr[idx]",
+        "print(recall_score(y, y_scores >= t))",
+    ]
+    assert not selection_flags(cells)

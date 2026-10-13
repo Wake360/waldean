@@ -13,7 +13,7 @@ a name. What code, stored output, or prose pattern signals it.
 **Book anchor**
 
 The statistics/ML reference that names this error (textbook, paper,
-section). Waldean's taxonomy cites one per class; see `waldean/taxonomy/flaws.yaml`
+section). Waldean's taxonomy cites one per class; see `waldean/core/taxonomy/flaws.yaml`
 for the existing format.
 
 **Mutation recipe sketch**

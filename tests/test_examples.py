@@ -53,7 +53,7 @@ def test_demo_outputs_show_the_measured_gap():
 
 def test_demo_rebuild_matches_stored_metrics():
     pytest.importorskip("sklearn")
-    from waldean.execute import execute
+    from waldean.runtime.execute import execute
 
     stored = _metrics(nbformat.read(DEMO, as_version=4))
     try:
@@ -69,7 +69,7 @@ LEAKY = REPO / "examples" / "temporal-cv-leaky.ipynb"
 
 
 def _repair_leaky_demo(tmp_path):
-    from waldean.repair import propose
+    from waldean.repair.loop import propose
 
     work = tmp_path / "demand.ipynb"
     shutil.copyfile(LEAKY, work)
@@ -88,7 +88,7 @@ def test_leaky_demo_matches_build_script():
 
 
 def test_leaky_demo_repair_passes_static_checks(tmp_path):
-    from waldean.repair import verify
+    from waldean.repair.loop import verify
 
     repair_dir = _repair_leaky_demo(tmp_path)
     assert json.loads((repair_dir / "protocol.json").read_text())["edit_scope"] == [4]
@@ -97,7 +97,7 @@ def test_leaky_demo_repair_passes_static_checks(tmp_path):
 
 def test_leaky_demo_repair_measures_the_gap(tmp_path):
     pytest.importorskip("sklearn")
-    from waldean.repair import verify
+    from waldean.repair.loop import verify
 
     evidence = verify(_repair_leaky_demo(tmp_path), metric=re.compile(r"R2=(-?\d+\.\d+)"))
     run = evidence["execution"]

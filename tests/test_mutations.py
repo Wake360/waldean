@@ -7,29 +7,11 @@ import re
 
 import pytest
 
-from waldean.corpus import (
-    FAMILIES,
-    _build_date,
-    abtest_notebook,
-    churn_notebook,
-    cohort_notebook,
-    forecast_notebook,
-    fraud_notebook,
-    program_notebook,
-)
-from waldean.detect import DEFAULT_CONFIDENCE_FLOOR, run_static
-from waldean.ingest import from_nbnode
-from waldean.mutate import (
-    BaserateAccuracyMutation,
-    FitBeforeSplitMutation,
-    MultipleTestingMutation,
-    MUTATIONS,
-    RegressionToMeanMutation,
-    SignificanceMeaninglessMutation,
-    SurvivorshipMutation,
-    TemporalShuffleMutation,
-    phrasing_variant,
-)
+from waldean.bench.corpus import FAMILIES, _build_date, abtest_notebook, churn_notebook, cohort_notebook, forecast_notebook, fraud_notebook, program_notebook
+from waldean.core.flag import DEFAULT_CONFIDENCE_FLOOR
+from waldean.checks.detect import run_static
+from waldean.analysis.ingest import from_nbnode
+from waldean.bench.mutate import BaserateAccuracyMutation, FitBeforeSplitMutation, MultipleTestingMutation, MUTATIONS, RegressionToMeanMutation, SignificanceMeaninglessMutation, SurvivorshipMutation, TemporalShuffleMutation, phrasing_variant
 
 
 def code_of(nb):
@@ -174,7 +156,7 @@ def test_normalize_strips_execution_and_is_serialization_stable():
     # second build of an unchanged notebook is byte-identical
     import nbformat
 
-    from waldean.corpus import _normalize
+    from waldean.bench.corpus import _normalize
 
     nb = churn_notebook(7)
     nb.cells[1]["metadata"]["execution"] = {"iopub.status.busy": "2026-01-01T00:00:00Z"}
@@ -243,7 +225,7 @@ def test_forecast_mutants_are_confidently_flagged(seed):
 
 
 def test_render_report_survives_zero_clean_notebooks():
-    from waldean.eval import render_report
+    from waldean.bench.eval import render_report
 
     results = {
         "date": "2026-01-01", "corpus_built": "2026-01-01",
@@ -256,7 +238,7 @@ def test_render_report_survives_zero_clean_notebooks():
 
 
 def test_evaluate_missing_corpus_raises_systemexit(tmp_path):
-    from waldean.eval import evaluate
+    from waldean.bench.eval import evaluate
 
     with pytest.raises(SystemExit):
         evaluate(tmp_path / "nonexistent-corpus")

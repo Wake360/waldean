@@ -195,7 +195,7 @@ remaining four classes in the taxonomy — `leakage-future-feature`,
 `regression-to-mean-claim`, `linearity-extrapolation` — need the narrative
 layer (`--llm`, an API key, and per the README the G2/G3 quality gates
 haven't run yet), so none of these recipes catch them. The full, versioned
-list of what Waldean checks lives in `waldean/taxonomy/flaws.yaml`.
+list of what Waldean checks lives in `waldean/core/taxonomy/flaws.yaml`.
 
 On measured quality: mutation testing gives precision 1.00 and recall 1.00
 on `leakage-fit-before-split` (24 mutants), `leakage-temporal-shuffle`

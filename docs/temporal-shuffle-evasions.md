@@ -1,6 +1,6 @@
 # leakage-temporal-shuffle: documented evasions
 
-Four notebook shapes evade the detector (`waldean/detect.py`,
+Four notebook shapes evade the detector (`waldean/checks/detect.py`,
 `detect_leakage_temporal_shuffle`). Each was confirmed during the
 adversarial round that shipped the class (commit 096606f) and ruled
 residual risk: the root fix re-adds a measured false-positive class or
