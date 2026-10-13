@@ -5,6 +5,7 @@ import io
 import json
 import math
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -29,6 +30,7 @@ MANIFEST = BENCH / "MANIFEST.json"
 SCORING = BENCH / "scoring.tsv"
 AGENT_ROOT = Path("/private/tmp/waldean-agent-baseline")
 AGENT_KERNEL = "waldean-agent-baseline"
+SHARED_TMP = Path("/private/tmp/claude")
 CLAUDE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit",
                 "Bash(python *)", "Bash(python3 *)", "Bash(jupyter *)", "Bash(ls *)", "Bash(head *)"]
 HOME = str(Path.home())
@@ -94,6 +96,11 @@ def check_generated(args, m: dict) -> int:
             if digest != d[key]:
                 print(f"{d['name']}/{name}: sha256 {digest} != manifest {d[key]}", file=sys.stderr)
                 return 3
+        for name, expected in d.get("files_sha256", {}).items():
+            digest = sha256(args.data / d["name"] / name)
+            if digest != expected:
+                print(f"{d['name']}/{name}: sha256 {digest} != manifest {expected}", file=sys.stderr)
+                return 3
         print(d["name"], "ok")
     return 0
 
@@ -104,6 +111,8 @@ def variants(m: dict) -> list[tuple[str, int]]:
 
 def prompt(m: dict, d: dict, variant: str) -> str:
     text = m["prompt"].format(question=d["question"])
+    if variant in m.get("arms", {}):
+        return text + m["arms"][variant]["suffix"]
     return text + m["hinted_suffix"].format(hint=d["hint"]) if variant == "hinted" else text
 
 
@@ -113,13 +122,14 @@ def agent_env(python_bin: Path, cli: str) -> dict:
     return {**keep, "TMPDIR": "/private/tmp", "MPLBACKEND": "Agg", "PATH": os.pathsep.join([str(python_bin), cli_dir, "/usr/bin", "/bin"])}
 
 
-def agent_command(agent: str, m: dict, text: str, codex_home: Path, python_bin: Path) -> tuple[list[str], dict]:
+def agent_command(agent: str, m: dict, text: str, codex_home: Path, python_bin: Path,
+                  tools=()) -> tuple[list[str], dict]:
     cfg = m["agents"][agent]
     env = agent_env(python_bin, cfg["cli"])
     if agent == "claude":
         return (["claude", "-p", text, "--model", cfg["model"], "--setting-sources", "project",
                  "--strict-mcp-config", "--settings", CLAUDE_SETTINGS, "--permission-mode", "acceptEdits",
-                 "--allowedTools", *CLAUDE_TOOLS], env)
+                 "--allowedTools", *CLAUDE_TOOLS, *tools], env)
     env["CODEX_HOME"] = str(codex_home)
     return (["codex", "exec", "--skip-git-repo-check", "-m", cfg["model"],
              "-c", f"model_reasoning_effort={cfg['reasoning_effort']}",
@@ -147,6 +157,17 @@ def write_own(path: Path, text: str) -> None:
         f.write(text)
 
 
+def sweep_shared_tmp(dest: Path) -> list[str]:
+    if not SHARED_TMP.is_dir():
+        return []
+    names = sorted(p.name for p in SHARED_TMP.iterdir())
+    if names:
+        dest.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        shutil.move(str(SHARED_TMP / name), dest / name)
+    return names
+
+
 def version(cli: str) -> str:
     return subprocess.run([cli, "--version"], capture_output=True, text=True).stdout.strip()
 
@@ -157,9 +178,15 @@ def cmd_run(args) -> int:
         print("--runs and --python must be outside the home directory, which the agent sandbox cannot read",
               file=sys.stderr)
         return 3
+    if "arms" in m and args.jobs != 1:
+        print("benches with arms run with --jobs 1, so files left in /private/tmp/claude belong to one run",
+              file=sys.stderr)
+        return 3
     jobs = [(d, agent, variant, n) for d in m["datasets"] if not args.only or d["name"] in args.only
             for agent in m["agents"] if not args.agents or agent in args.agents
-            for variant, n in variants(m) if variant == "default" or d.get("hint")]
+            for variant, n in variants(m) if variant == "default" or d.get("hint") or variant in m.get("arms", {})]
+    if "arms" in m:
+        random.Random(20261020).shuffle(jobs)
     codex_home = Path(tempfile.mkdtemp(prefix="waldean-codex-home-"))
     (codex_home / "auth.json").symlink_to(Path.home() / ".codex" / "auth.json")
     try:
@@ -180,8 +207,13 @@ def run_one(args, m: dict, codex_home: Path, d: dict, agent: str, variant: str, 
             shutil.copyfile(args.data / d["name"] / name, run_dir / name)
     else:
         shutil.copyfile(args.data / f"{d['name']}.csv", run_dir / "data.csv")
+    arm = m.get("arms", {}).get(variant, {})
+    for name in arm.get("files", []):
+        shutil.copyfile(args.data / d["name"] / name, run_dir / name)
     text = prompt(m, d, variant)
-    cmd, env = agent_command(agent, m, text, codex_home, args.python)
+    cmd, env = agent_command(agent, m, text, codex_home, args.python, arm.get("tools", []))
+    if arm:
+        sweep_shared_tmp(AGENT_ROOT / "stale-scratch" / run_dir.name)
     start = time.time()
     with (run_dir / "agent.log").open("w") as log:
         try:
@@ -196,7 +228,8 @@ def run_one(args, m: dict, codex_home: Path, d: dict, agent: str, variant: str, 
             "prompt": text, "cli_version": version(m["agents"][agent]["cli"]),
             "model": m["agents"][agent]["model"], "exit": code,
             "seconds": round(time.time() - start),
-            "notebook": (run_dir / "experiment.ipynb").exists()}
+            "notebook": (run_dir / "experiment.ipynb").exists(),
+            "shared_tmp": sweep_shared_tmp(run_dir / ".agent-tmp") if arm else []}
     write_own(run_dir / "meta.json", json.dumps(meta, indent=2) + "\n")
     print(run_dir.name, "exit", code, "notebook", meta["notebook"], flush=True)
 

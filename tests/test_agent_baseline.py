@@ -47,3 +47,42 @@ def test_detector_counts_skips_unscored_rows():
         {"check": ""},
     ]
     assert ab.detector_counts(rows) == {"flag_fail": 1, "flag_pass": 1, "noflag_fail": 1, "noflag_pass": 1}
+
+
+ARMS_MANIFEST = {
+    "prompt": "Predict {question}.",
+    "arms": {
+        "A": {"suffix": "", "files": [], "tools": []},
+        "C": {"suffix": " Follow protocol.yaml.", "files": ["protocol.yaml"], "tools": ["Bash(waldean *)"]},
+    },
+    "agents": {"claude": {"cli": "claude", "model": "sonnet"}},
+}
+
+
+def test_prompt_appends_arm_suffix():
+    d = {"question": "churn"}
+    assert ab.prompt(ARMS_MANIFEST, d, "C") == "Predict churn. Follow protocol.yaml."
+    assert ab.prompt(ARMS_MANIFEST, d, "A") == "Predict churn."
+
+
+def test_agent_command_adds_arm_tools(tmp_path):
+    cmd, _ = ab.agent_command("claude", ARMS_MANIFEST, "x", tmp_path, tmp_path, tools=["Bash(waldean *)"])
+    assert cmd[-1] == "Bash(waldean *)"
+    assert "Bash(python *)" in cmd
+
+
+def test_sweep_shared_tmp_moves_everything(tmp_path, monkeypatch):
+    shared = tmp_path / "claude"
+    (shared / "nb").mkdir(parents=True)
+    (shared / "nb" / "build.py").write_text("print(1)")
+    (shared / "x.txt").write_text("x")
+    monkeypatch.setattr(ab, "SHARED_TMP", shared)
+    moved = ab.sweep_shared_tmp(tmp_path / "run" / ".agent-tmp")
+    assert moved == ["nb", "x.txt"]
+    assert (tmp_path / "run" / ".agent-tmp" / "nb" / "build.py").exists()
+    assert list(shared.iterdir()) == []
+
+
+def test_sweep_shared_tmp_missing_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(ab, "SHARED_TMP", tmp_path / "absent")
+    assert ab.sweep_shared_tmp(tmp_path / "dest") == []
