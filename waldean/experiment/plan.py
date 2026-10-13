@@ -41,6 +41,8 @@ def design(prof: dict, csv_path: Path, out_dir: Path, goal: str, exclude: list[s
         if col not in prof["columns"]:
             raise PlanError(f"--exclude {col!r} is not a column")
     col = choose_time_column(prof, time_column)
+    if col is not None and next(t for t in prof["time_columns"] if t["column"] == col)["ambiguous"]:
+        raise PlanError(f"dates in {col!r} read differently day-first and month-first; rewrite them as YYYY-MM-DD")
     excluded = [{"column": c, "reason": "excluded by the user (--exclude)"} for c in exclude]
     if col is not None:
         excluded.append({"column": col, "reason": "time column, used for the split only"})

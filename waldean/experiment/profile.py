@@ -10,10 +10,16 @@ MIN_YEAR = 1900
 MAX_YEAR = 2100
 PARSE_SHARE = 0.95
 NUMBER_RE = r"-?\d+(?:\.\d+)?"
+YEAR_FIRST_RE = r"\d{4}\D"
 
 
 def sha256(path: str | Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def parse_dates(values: pd.Series, dayfirst: bool) -> pd.Series:
+    parsed = pd.to_datetime(values, errors="coerce", format="mixed", dayfirst=dayfirst)
+    return parsed.where(parsed.dt.year.between(MIN_YEAR, MAX_YEAR))
 
 
 def time_columns(df: pd.DataFrame, target: str) -> list[dict]:
@@ -24,12 +30,14 @@ def time_columns(df: pd.DataFrame, target: str) -> list[dict]:
         values = df[col].dropna().astype(str)
         if values.empty or values.str.fullmatch(NUMBER_RE).mean() >= 0.5:
             continue
-        parsed = pd.to_datetime(values, errors="coerce", format="mixed")
-        parsed = parsed.where(parsed.dt.year.between(MIN_YEAR, MAX_YEAR))
+        parsed = parse_dates(values, dayfirst=False)
         if parsed.notna().mean() < PARSE_SHARE or parsed.nunique() < MIN_PERIODS:
             continue
+        flipped = parse_dates(values, dayfirst=True)
+        compared = parsed.notna() & ~values.str.match(YEAR_FIRST_RE)
+        ambiguous = flipped.notna().mean() >= PARSE_SHARE and bool((parsed != flipped)[compared].any())
         found.append({"column": str(col), "min": str(parsed.min()), "max": str(parsed.max()),
-                      "periods": int(parsed.nunique())})
+                      "periods": int(parsed.nunique()), "ambiguous": ambiguous})
     return found
 
 

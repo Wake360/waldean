@@ -345,3 +345,25 @@ def test_ids_parsing_to_implausible_years_are_not_time_columns(tmp_path):
         "y": [i % 2 for i in range(200)],
     }).to_csv(path, index=False)
     assert [t["column"] for t in profile(path, "y")["time_columns"]] == ["inspected_at"]
+
+
+def dmy_csv(path):
+    pd.DataFrame({
+        "seen": pd.date_range("2024-01-01", periods=200, freq="D").strftime("%d/%m/%Y"),
+        "x": [i % 7 for i in range(200)],
+        "y": [i % 2 for i in range(200)],
+    }).to_csv(path, index=False)
+    return path
+
+
+def test_day_first_dates_are_ambiguous_and_refused(tmp_path):
+    csv = dmy_csv(tmp_path / "d.csv")
+    prof = profile(csv, "y")
+    assert [(t["column"], t["ambiguous"]) for t in prof["time_columns"]] == [("seen", True)]
+    with pytest.raises(PlanError, match="YYYY-MM-DD"):
+        design(prof, csv, tmp_path / "exp", "", [], None, 0)
+
+
+def test_iso_and_month_columns_are_not_ambiguous(tmp_path):
+    prof = profile(write_csv(tmp_path / "d.csv", extra_dates=True), "churn")
+    assert {t["column"]: t["ambiguous"] for t in prof["time_columns"]} == {"snapshot": False, "birth_date": False}
