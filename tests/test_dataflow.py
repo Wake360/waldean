@@ -176,6 +176,6 @@ def test_shell_magic_with_space_after_bang_is_stripped():
 
 
 def test_bang_line_inside_triple_quoted_string_keeps_cell_parseable():
-    flow = analyze(nb_from_sources('s = """\n! not code\n"""\nb = 2'))
+    flow = analyze(nb_from_sources('%matplotlib inline\ns = """\n! not code\n"""\nb = 2'))
     assert not flow.parse_errors
     assert any("b" in ev.targets for ev in flow.assigns)

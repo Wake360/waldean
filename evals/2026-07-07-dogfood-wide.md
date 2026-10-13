@@ -111,7 +111,7 @@ the published artifact stays aggregate and names no author.
 
 ## Correction (2026-10-13)
 
-A re-check against the local review data changes three descriptions. No
+A re-check against the local review data corrects the points below. No
 number changes.
 
 - The third flag that did not survive was not a duplicate scaler flag. It
@@ -122,11 +122,21 @@ number changes.
   `train_test_split`. The static layer reported both as
   `leakage-fit-before-split` candidates at confidence 0.75, below the 0.8
   floor, following the 2026-07-04 decision on unsupervised pre-CV fits.
-  They are misses at the floor, not blind spots. "All are leaks with no
-  name-level syntactic anchor" holds for the other six.
+  They are misses at the floor, not blind spots.
+- The TF-IDF/SVD miss (nb17) is a parse-coverage miss, not a missing
+  anchor. 17 of its 27 code cells are Python 2 and could not be parsed,
+  including every split and model cell. With only the `print` statements
+  rewritten, the static layer reports the TF-IDF and SVD fits as
+  `leakage-fit-before-split` candidates at 0.75. "All are leaks with no
+  name-level syntactic anchor" holds for the other five.
 - The eight misses therefore span seven idioms: per-group imputation 1,
   scaler feeding `cross_val_score` 2, column-mean `fillna` 1, TF-IDF/SVD 1,
-  `get_dummies` 1, temporal shuffle 2.
+  `get_dummies` 1, temporal shuffle inside cross-validation 1, temporal
+  shuffle in a training helper 1.
+- "0 parse failures" does not hold. No notebook failed outright, but 9 of
+  the 60 had cells that could not be parsed, and Waldean reported partial
+  results for them. Two of the 9 failed only on `! cmd` shell lines, which
+  parse since 2026-10-13. Three are Python 2 code.
 - The ledger row for nb14 marked "duplicate" is a second cell repeating
   the same pipeline. Both cells were flagged and both leaks are real; it is
   not the non-surviving flag.
