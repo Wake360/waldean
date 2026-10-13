@@ -265,6 +265,8 @@ waldean eval                            # confusion matrix -> evals/<date>-eval.
 pytest                               # unit tests + golden gates G0/G1
 ```
 
+Editor use through SARIF: [`docs/editor.md`](docs/editor.md).
+
 `examples/leaky.ipynb` ships in the repo and reproduces the report shown
 at the top of this file. `examples/leaky.py` is the same analysis as a
 percent-format script.
