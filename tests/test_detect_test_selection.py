@@ -178,3 +178,26 @@ def test_wrapper_local_label_is_not_a_free_name():
         "print(roc_auc_score(y_te, P[best]))",
     ]
     assert not confident(cells)
+
+
+REP_DEF = "def rep(name, yt, p):\n    return {'model': name, 'auc': roc_auc_score(yt, p)}"
+
+
+def test_wrapper_positional_label_from_validation_stays_candidate():
+    cells = [
+        REP_DEF,
+        PROBS,
+        "res = pd.DataFrame([rep(n, y_va, p) for n, p in P.items()]).set_index('model')\nbest = res['auc'].idxmax()",
+        "print(rep(best, y_te, P[best]))",
+    ]
+    assert not confident(cells)
+
+
+def test_wrapper_keyword_label_from_validation_stays_candidate():
+    cells = [
+        REP_DEF,
+        PROBS,
+        "res = pd.DataFrame([rep(n, yt=y_va, p=p) for n, p in P.items()]).set_index('model')\nbest = res['auc'].idxmax()",
+        "print(rep(best, yt=y_te, p=P[best]))",
+    ]
+    assert not confident(cells)
