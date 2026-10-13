@@ -126,6 +126,10 @@ def agent_command(agent: str, m: dict, text: str, codex_home: Path, python_bin: 
              "-c", 'shell_environment_policy.set={MPLBACKEND="Agg"}', "-s", "workspace-write", text], env)
 
 
+def usage_limited(log_text: str) -> bool:
+    return "usage limit" in log_text.lower()
+
+
 def read_own(path: Path) -> bytes:
     if path.parent.is_symlink():
         raise OSError(f"symlinked run dir: {path.parent}")
@@ -183,6 +187,9 @@ def run_one(args, m: dict, codex_home: Path, d: dict, agent: str, variant: str, 
                                   stdin=subprocess.DEVNULL, timeout=args.timeout).returncode
         except subprocess.TimeoutExpired:
             code = "timeout"
+    if not (run_dir / "experiment.ipynb").exists() and usage_limited((run_dir / "agent.log").read_text(errors="replace")):
+        print(run_dir.name, "usage limit, will rerun", flush=True)
+        return
     meta = {"dataset": d["name"], "agent": agent, "variant": variant, "n": n,
             "prompt": text, "cli_version": version(m["agents"][agent]["cli"]),
             "model": m["agents"][agent]["model"], "exit": code,
