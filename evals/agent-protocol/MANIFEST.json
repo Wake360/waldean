@@ -212,5 +212,30 @@
       }
     }
   ],
-  "power_note": "80 runs per arm give about 0.82 power for 20% vs 5% failure (normal approximation); smaller differences are likely missed."
+  "power_note": "80 runs per arm give about 0.82 power for 20% vs 5% failure (normal approximation); smaller differences are likely missed.",
+  "amendments": [
+    {
+      "id": 1,
+      "date": "2026-10-13T20:11+02:00",
+      "state_when_written": "Main runs started 2026-10-13 after 18:51. At 19:42, 28 of 192 runs were finished, all on meters (A 3, B 14, C 11). No run has been scored, no binding written, no criterion ruled. Known partial information: every finished run produced a notebook, and the 11 finished C notebooks returned ok from `waldean protocol check`. Nothing about temporal, group, leak or selection rulings, headline values or future AUC was seen.",
+      "reason": "Power check (power_note) covers 20% vs 5% failure. The pilot (agent-protocol-pilot) showed B at 2/20, so the main comparison may be 5% vs 0%, where 80 runs per arm give a Newcombe lower bound near 0 even when C never fails. A no_evidence result at this n would mean 'difference under about 7 points not resolved', not 'no difference'. This amendment fixes, before any scoring, what happens then and which secondary analyses are reported, so none of it is chosen after seeing the result.",
+      "unchanged": "primary, primary_endpoint, decision.c_better, decision.no_evidence, decision.c_worse, decision.fixed_n for the first batch, datasets, arms, prompt, criteria, binding, rating, order, independence. The first-batch result is reported under the original rule exactly as registered.",
+      "extension": {
+        "trigger": "First batch gives no_evidence AND the Newcombe 95% upper bound of (B failure rate - C failure rate) >= 0.10. If the upper bound is below 0.10, no extension: the first batch already rules out a 10-point improvement and the no_evidence consequence stands.",
+        "design": "Second batch of B 20 and C 20 per dataset (80 + 80), same datasets, prompts, arm files and rater procedure, jobs shuffled with random.Random(20261021). No A runs. Registered as a second look of a two-look group-sequential design, not as a new experiment.",
+        "analysis": "Pooled 160 vs 160, same primary endpoint, same three conditions as decision.c_better, but the Newcombe interval on the pooled difference is 97.06% (Pocock two-look boundary, z = 2.178). The first look stays at 95% as registered; the overall type I error is therefore at most about 0.05 + 0.029 and is stated in the report, not hidden.",
+        "outcome_labels": "pooled lower bound > 0 with the two secondary conditions met: c_better_extended; pooled upper bound < 0: c_worse_extended; otherwise no_evidence_final, with the same product consequence as decision.no_evidence.",
+        "fixed_n": "The extension size is fixed here. No third batch."
+      },
+      "secondary_analyses": {
+        "rule": "Reported in the eval file in every case, in this order, regardless of result. None of them changes the decision label. The report may not omit one because of its result.",
+        "exact_test": "Boschloo exact unconditional test, two-sided, on the 2x2 table of fail/pass for B vs C, p-value reported.",
+        "ordinal": "Number of applicable criteria not passed per run (0 to 3), B vs C, two-sided Mann-Whitney U, p-value and the two mean counts reported.",
+        "bayesian": "Beta(1,1) prior per arm, binomial likelihood, posterior probability that C failure rate < B failure rate, from 200000 draws with seed 20261020.",
+        "stratified": "Mantel-Haenszel common odds ratio of failure (B vs C) stratified by dataset, with 95% CI, plus the per-dataset 2x2 tables.",
+        "per_criterion": "Failure counts per criterion per arm, descriptive only."
+      },
+      "integrity": "Written and committed before scoring. The commit date of this amendment and the first binding row in scoring.tsv prove the order. Any analysis not listed here or in the original decision is exploratory and must be labelled so."
+    }
+  ]
 }
