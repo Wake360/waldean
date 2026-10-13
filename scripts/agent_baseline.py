@@ -421,7 +421,14 @@ def headline_value(text: str) -> float | None:
     return float(match.group(1)) if match else None
 
 
+def headline_is_auc(text: str) -> bool:
+    match = re.match(r"^\('([^']*)'", text.strip())
+    return bool(match) and re.sub(r"[^a-z]", "", match.group(1).lower()) in ("rocauc", "auc")
+
+
 def gap(row: dict) -> float | None:
+    if not headline_is_auc(row.get("headline", "")):
+        return None
     value = headline_value(row.get("headline", ""))
     try:
         future = float(row.get("future_auc", ""))

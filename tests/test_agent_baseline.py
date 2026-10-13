@@ -116,6 +116,8 @@ def test_headline_value_rejects_text():
 def test_gap_needs_both_numbers():
     assert round(ab.gap({"headline": "('roc_auc', 0.75)", "future_auc": "0.70"}), 3) == 0.05
     assert ab.gap({"headline": "('roc_auc', 0.75)", "future_auc": "None"}) is None
+    assert round(ab.gap({"headline": "('ROC AUC', 0.75)", "future_auc": "0.70"}), 3) == 0.05
+    assert ab.gap({"headline": "('average_precision', 0.75)", "future_auc": "0.70"}) is None
 
 
 def test_render_arms_counts_invalid_runs():

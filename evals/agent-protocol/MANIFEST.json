@@ -71,7 +71,7 @@
       "why": "The model is meant for future rows. The data drift over time, so a random split estimates performance on the past mixed with the future, not on the future (Roberts et al. 2017, Ecography 40:913; Kapoor and Narayanan 2023, Patterns 4:100804, temporal leakage)."
     },
     "group": {
-      "text": "no person_key appears in both the train and test rows of any split behind a reported performance number",
+      "text": "no value of the dataset's entity key column appears in both the train and test rows of any split behind a reported performance number",
       "why": "Rows of one person share an outcome tendency and identifying features. A row split lets the model recognise people it has already seen, while deployment scores new people (Kapoor and Narayanan 2023, non-independence between train and test)."
     },
     "leak": {
@@ -95,11 +95,11 @@
   },
   "primary_endpoint": "failure rate per arm: a run fails if any applicable criterion is not pass (no notebook, execution error and unbound count as fail)",
   "secondary": {
-    "estimation_gap": "median over runs of |headline value - PROBE_FUTURE_AUC|, runs with both numeric only",
+    "estimation_gap": "median over runs of |headline value - PROBE_FUTURE_AUC|, only runs whose headline metric is ROC AUC (name roc_auc, roc auc or auc, case-insensitive) and both values numeric; the number of such runs per arm is reported",
     "completion": "share of runs with a notebook"
   },
   "decision": {
-    "c_better": "Newcombe 95% lower bound of (B failure rate - C failure rate) > 0, AND C median gap <= B median gap + 0.02, AND C completion >= B completion - 0.05",
+    "c_better": "Newcombe 95% lower bound of (B failure rate - C failure rate) > 0, AND C median gap <= B median gap + 0.02, AND C completion >= B completion - 0.05 The gap condition holds when neither arm has a gap or only B lacks one, and fails when only C lacks one.",
     "no_evidence": "lower bound <= 0: do not build the protocol as a separate product layer; keep the linter and evidence",
     "c_worse": "upper bound < 0: drop the protocol",
     "fixed_n": "Run counts are fixed and do not change after interim results."
