@@ -6,7 +6,7 @@ Result: the Builder implements the temporal rule on these two synthetic datasets
 
 ## Temporal probe, Builder next to v3 Claude
 
-| dataset | Builder (waldean 0.5.0) | v3 Claude (sonnet), default runs |
+| dataset | Builder (waldean 0.5.0 + experiment-builder @15c61d3) | v3 Claude (sonnet), default runs |
 |---|---|---|
 | maintenance | pass (1/1) | 15/15 pass |
 | subscriptions | pass (1/1) | 7/15 pass |
@@ -26,7 +26,7 @@ The gate column is the v3 gate rule applied to two runs. It is printed by the sc
 | maintenance-builder-default-0 | waldean 0.5.0 | pass | None | - |
 | subscriptions-builder-default-0 | waldean 0.5.0 | pass | None | - |
 
-`headline` is None because the binding sets no `HEADLINE`. The v3 agent prompt does not apply: the Builder got no prompt, only the commands below.
+`headline` is None: the generated notebook defines no HEADLINE variable; the v3 prompt asked agents for one. The v3 agent prompt does not apply: the Builder got no prompt, only the commands below.
 
 ## Scores
 
@@ -48,7 +48,9 @@ The Builder does not detect ID columns or leaking columns. A human read `columns
 - maintenance: `--exclude asset_tag --exclude parts_replaced` (ID column, documented post-outcome leak)
 - subscriptions: `--exclude account_ref --exclude lifetime_months` (ID column, documented post-outcome leak)
 
-The first maintenance attempt, as the brief wrote it, failed with `several time columns ['asset_tag', 'inspected_at']`: the profile took `asset_tag` for a time column, because `AT-05534` parsed as the year 5534. The scored maintenance run was then created with `--time-column inspected_at`. Commit 6c8e992 fixed the profile: strings that parse to years outside 1900..2100 no longer count as dates. A rerun without `--time-column` (create, build, run into `/private/tmp/waldean-agent-baseline/runs-builder-rerun/maintenance-builder-default-0`) picked only `inspected_at`. Plan, built notebook and metrics are byte-identical, and the executed notebook matches apart from the cell execution timestamps. The scored run stays the original one. Subscriptions needed no `--time-column`.
+The first maintenance attempt, as the brief wrote it, failed with `several time columns ['asset_tag', 'inspected_at']`: the profile took `asset_tag` for a time column, because `AT-05534` parsed as the year 5534. The scored maintenance run was then created with `--time-column inspected_at`. Commit 6c8e992 fixed the profile: strings that parse to years outside 1900..2100 no longer count as dates. A rerun without `--time-column` (create, build, run into `/private/tmp/waldean-agent-baseline/runs-builder-rerun/maintenance-builder-default-0`) picked only `inspected_at`. Plan, built notebook and metrics are byte-identical (for the scored run, the built-notebook equality rests on the build.json notebook hash, because the scorer layout replaced its top-level copy), and the executed notebook matches apart from the cell execution timestamps. The scored run stays the original one. Subscriptions needed no `--time-column`.
+
+Later commits changed the renderer (one-class guards), so a fresh build differs from the scored notebook; the scored result belongs to 15c61d3.
 
 Commands, with `D=/Users/filipvachek/dev/waldean/scratch/agent-baseline-v2/data` (the main checkout's gitignored scratch; sha256 of both `data.csv` files checked against the v3 MANIFEST) and `R=/private/tmp/waldean-agent-baseline/runs-builder`:
 
