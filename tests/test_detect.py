@@ -967,3 +967,14 @@ def test_groupby_apply_fillna_gives_one_flag_naming_the_frame():
     flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
     assert len(flags) == 1
     assert flags[0].extra["leaked_names"] == ["df"]
+
+
+def test_refit_on_test_reaching_a_score_through_list_mutation_is_confident():
+    notebook = nb([
+        ("code", "def encode(df, ohe):\n    arr = ohe.fit_transform(df[['c']]).toarray()\n    return pd.DataFrame(arr)"),
+        ("code", "X, X_test, y, y_test = train_test_split(data, target)\nohe = OneHotEncoder().fit(X[['c']])\nmodel.fit(X, y)"),
+        ("code", "parts = []\nparts.append(encode(X_test, ohe))\nframes = [X_test[num]]\nframes.extend(parts)\nX_test = pd.concat(frames, axis=1)"),
+        ("code", "print(model.score(X_test, y_test))"),
+    ])
+    flags = _refit_flags(notebook)
+    assert flags and flags[0].confidence == 0.9

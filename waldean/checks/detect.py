@@ -316,13 +316,13 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
             if at < (call.cell, call.line) or c is call:
                 continue
             names = c.arg_names | ({c.receiver_base} if c.receiver_base else set())
-            _, binds = flow.chain(names, at)
+            _, binds = flow.chain(names, at, mutations=True)
             if not binds & reached:
                 continue
             if c.name in PREDICT_CALLS or c.name in SCORE_FUNCS or c.name in CV_SINKS or c.name == "score":
                 return True
             if c.name == "fit" and c.receiver_base and c.receiver_base.isidentifier():
-                reached.add(flow.binding(c.receiver_base, at))
+                reached.add(flow.binding(c.receiver_base, at, mutations=True))
         return False
 
     best: dict[object, Flag] = {}
@@ -376,7 +376,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                 reached: set[tuple[str, int | None]] = (
                     {(t, id(my_event)) for t in my_event.targets} if my_event is not None else set())
                 if call.receiver_base and call.receiver_base.isidentifier():
-                    reached.add(flow.binding(call.receiver_base, pos))
+                    reached.add(flow.binding(call.receiver_base, pos, mutations=True))
                 scored = reaches_score(call, reached)
                 emit(call, 0.9 if scored else 0.75, touched_test, (
                     f"`{call.func}(...)` is fitted on {_join_names(touched_test)}, "
