@@ -90,6 +90,18 @@ classes on its own:
   fits on the train split, label encoding and estimator fits are not
   flagged — each of those idioms was a measured false-positive class in
   the dogfood report.
+
+  Function inlining limits: a call to a notebook-level function is
+  inlined one level deep; a helper called from inside a helper is not
+  inlined.
+  Only positional parameters are renamed to the call's arguments;
+  keyword-only and positional-only parameters and keyword arguments are
+  not. Assignments inside the helper appear as notebook-level names at the
+  call site, so a helper local can shadow a notebook name of the same
+  spelling (a known imprecision). Return values are not bound, so
+  `train, test = split(df)` does not carry the helper's split. `.pipe`
+  is inlined when its first argument is a named function or a lambda.
+
 - `leakage-temporal-shuffle` — time-ordered data with lag/rolling-window
   features (`shift`, `rolling`, `diff`, `pct_change`, …) split by a
   shuffled protocol — default `train_test_split`, shuffled `KFold` —

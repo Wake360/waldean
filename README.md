@@ -88,6 +88,8 @@ Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
 | `leakage-test-selection` | A model, feature set or threshold picked by its score on the rows that are then reported as the held-out result |
 | `selection-survivorship-cohort` | Candidate only: a filter on a survival-correlated column before aggregation |
 
+For `leakage-fit-before-split`, `waldean check --probe` runs an `.ipynb` up to the split in a separate `waldean-verify` kernel, reads the fitted transformer's `n_samples_seen_`, and raises the flag's confidence when the fit saw every row and lowers it when it saw fewer, executing your code with your permissions.
+
 `waldean rules` prints the full list from `waldean/core/taxonomy/flaws.yaml`.
 
 ## Known limitations
@@ -112,7 +114,7 @@ Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
 - The 0.0% false-positive rate holds on the curated corpus, not on messy
   real code.
 - Flaws with no imprint in code, outputs or prose are invisible to Waldean.
-- Waldean never executes your notebook unless you run `waldean verify --execute`.
+- Waldean never executes your notebook unless you run `waldean check --probe` or `waldean verify --execute`.
 
 Full evaluation, corpus method and dogfood history:
 [`docs/EVALUATION.md`](https://github.com/Wake360/waldean/blob/v0.5.0/docs/EVALUATION.md).
