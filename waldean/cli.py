@@ -308,7 +308,7 @@ def print_decisions(out: Path) -> None:
     plan = read_plan(out / "plan.yaml")
     prof = profile(out / plan["dataset"]["path"], plan["target"], task=plan["task"])
     split = plan["split"]
-    where = f" on {split['column']}" if split.get("column") else ""
+    where = f" on {split['column']} (used for the split only, not a feature)" if split.get("column") else ""
     print(f"task: {plan['task']} ({task_reason(prof)})")
     print(f"split: {split['kind']}{where}")
     user = {e["column"] for e in plan["excluded_columns"] if e["reason"].startswith("excluded by the user")}

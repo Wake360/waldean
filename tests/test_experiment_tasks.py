@@ -485,3 +485,44 @@ def test_kept_columns_are_quoted_in_limitations(tmp_path):
     build(exp)
     text = (run(exp) / "limitations.md").read_text()
     assert "status" in text and "kept by the user" in text
+
+
+def test_time_column_with_several_group_candidates_needs_no_choice(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    df = pd.read_csv(path)
+    df["region"] = [f"R{i % 25}" for i in range(len(df))]
+    df["day"] = pd.date_range("2024-01-01", periods=len(df), freq="h").strftime("%Y-%m-%d %H:%M")
+    df.to_csv(path, index=False)
+    plan = design(profile(path, target), path, tmp_path / "exp", "", [], None, 0)
+    assert plan["split"]["kind"] == "temporal_holdout"
+    assert {"store", "region"} <= set(plan["features"]["categorical"])
+    assert any("store" in a and "region" in a and "several periods" in a for a in plan["assumptions"])
+
+
+def test_plain_integer_features_are_not_groups(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    df = pd.read_csv(path)
+    rng = np.random.default_rng(1)
+    df["num_purchases"] = rng.integers(0, 60, len(df))
+    df["amount_paid"] = rng.integers(0, 300, len(df))
+    df["CustomerId"] = [i % 100 for i in range(len(df))]
+    df.to_csv(path, index=False)
+    names = [g["column"] for g in profile(path, target)["group_columns"]]
+    assert names == ["store", "CustomerId"]
+
+
+def test_integer_id_with_blanks_is_still_a_group(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    df = pd.read_csv(path)
+    df["household_id"] = [i % 100 for i in range(len(df))]
+    df.loc[df.index[::50], "household_id"] = None
+    df.to_csv(path, index=False)
+    assert "household_id" in [g["column"] for g in profile(path, target)["group_columns"]]
+
+
+def test_numeric_class_code_is_a_target_leak_for_multiclass(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "multiclass")
+    df = pd.read_csv(path)
+    df["tier_num"] = df["tier"].map({"low": 0, "mid": 1, "high": 2})
+    df.to_csv(path, index=False)
+    assert suspects(profile(path, target))["tier_num"] == "target_leak"

@@ -75,7 +75,8 @@ def design(prof: dict, csv_path: Path, out_dir: Path, goal: str, exclude: list[s
     col = choose_time_column(prof, time_column)
     if col is not None and next(t for t in prof["time_columns"] if t["column"] == col)["ambiguous"]:
         raise PlanError(f"dates in {col!r} read differently day-first and month-first; rewrite them as YYYY-MM-DD")
-    group = choose_group_column(prof, group_column)
+    groups = group_column_names(prof)
+    group = choose_group_column(prof, group_column) if col is None else None
     excluded = [{"column": c, "reason": "excluded by the user (--exclude)"} for c in exclude]
     excluded += [{"column": c, "reason": r} for c, r in suspects.items() if c not in exclude and c not in keep]
     task = prof["task"]
@@ -84,9 +85,10 @@ def design(prof: dict, csv_path: Path, out_dir: Path, goal: str, exclude: list[s
         split = {"kind": "temporal_holdout", "column": col, "test_fraction": TEST_FRACTION, "n_splits": N_SPLITS}
         assumptions = [f"The model is meant for rows later than the data, so every split trains on earlier "
                        f"values of {col} than it tests on."]
-        if group is not None:
-            assumptions.append(f"Rows of the same {group} appear in several periods. The time split keeps later "
-                               f"rows of an entity in the test set, which is the intended use; {group} stays a feature.")
+        if groups:
+            named = ", ".join(groups)
+            assumptions.append(f"Rows of the same {named} appear in several periods. The time split keeps later "
+                               f"rows of an entity in the test set, which is the intended use; {named} stays a feature.")
     elif group is not None:
         excluded.append({"column": group, "reason": "group column, used for the split only"})
         split = {"kind": "group_kfold", "column": group, "test_fraction": TEST_FRACTION, "n_splits": N_SPLITS}
@@ -96,9 +98,9 @@ def design(prof: dict, csv_path: Path, out_dir: Path, goal: str, exclude: list[s
         kind = "kfold" if task == "regression" else "stratified_kfold"
         split = {"kind": kind, "column": None, "test_fraction": TEST_FRACTION, "n_splits": N_SPLITS}
         assumptions = ["No time or group column was found, so rows are treated as exchangeable."]
-        if group_column == "none" and group_column_names(prof):
+        if group_column == "none" and groups:
             split["override_reason"] = "group split declined by the user (--group-column none)"
-            assumptions = [f"Rows of the same {group_column_names(prof)[0]} are treated as independent because "
+            assumptions = [f"Rows of the same {groups[0]} are treated as independent because "
                            "the user declined the group split."]
     dropped = {e["column"] for e in excluded} | {prof["target"]}
     features = [c for c in prof["columns"] if c not in dropped]

@@ -19,7 +19,7 @@ HIGH_CARDINALITY_SHARE = 0.5
 LEAK_CORRELATION = 0.95
 MAX_PURITY_LEVELS = 50
 MIN_GROUPS = 20
-ID_NAME_RE = re.compile(r"(?i)(^|_)(id|key|code|no|num)($|_)|id$")
+ID_NAME_RE = re.compile(r"(?i:(^|_)(id|key|code)($|_))|[a-z]Id$|ID$")
 
 
 def column(df: pd.DataFrame, col: str) -> pd.Series:
@@ -90,6 +90,10 @@ def target_info(y: pd.Series, task: str) -> dict:
     return info
 
 
+def integral(values: pd.Series) -> bool:
+    return pd.api.types.is_float_dtype(values) and bool((values == values.round()).all())
+
+
 def leak_reason(df: pd.DataFrame, col: str, target: str, task: str) -> str | None:
     labelled = df.loc[column(df, target).notna() & column(df, col).notna()]
     if len(labelled) < 2:
@@ -102,7 +106,7 @@ def leak_reason(df: pd.DataFrame, col: str, target: str, task: str) -> str | Non
         if pd.notna(rho) and abs(rho) >= LEAK_CORRELATION:
             return f"spearman correlation {abs(rho):.2f} with the target"
         return None
-    if task != "regression" and not pd.api.types.is_numeric_dtype(x):
+    if task != "regression":
         levels = x.nunique()
         if 2 <= levels <= MAX_PURITY_LEVELS and labelled.groupby(col)[target].nunique().max() == 1:
             return "every value maps to one target class"
@@ -118,7 +122,7 @@ def suspect_columns(df: pd.DataFrame, target: str, task: str, skip: set[str]) ->
         n, rows = values.nunique(), len(values)
         if n <= 1:
             found.append({"column": str(col), "kind": "constant", "reason": "constant: one value in every row"})
-        elif n == rows and not pd.api.types.is_float_dtype(values):
+        elif n == rows and (not pd.api.types.is_float_dtype(values) or integral(values)):
             found.append({"column": str(col), "kind": "id",
                           "reason": "looks like an identifier: a different value in every row"})
         elif not pd.api.types.is_numeric_dtype(values) and n >= HIGH_CARDINALITY_SHARE * rows:
@@ -135,7 +139,7 @@ def group_columns(df: pd.DataFrame, target: str, skip: set[str]) -> list[dict]:
         if col == target or col in skip:
             continue
         values = column(df, col).dropna()
-        if pd.api.types.is_float_dtype(values) or pd.api.types.is_bool_dtype(values):
+        if pd.api.types.is_bool_dtype(values) or (pd.api.types.is_float_dtype(values) and not integral(values)):
             continue
         if pd.api.types.is_numeric_dtype(values) and not ID_NAME_RE.search(str(col)):
             continue
