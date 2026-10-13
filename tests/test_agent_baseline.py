@@ -29,6 +29,10 @@ def test_wilson_matches_manifest_example():
     assert round(low, 3) == 0.057 and round(high, 3) == 0.510
 
 
+def test_wilson_clamps_zero_failures():
+    assert ab.wilson(0, 15)[0] == 0.0
+
+
 def test_wilson_zero_runs():
     assert ab.wilson(0, 0) == (0.0, 1.0)
 

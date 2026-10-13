@@ -347,7 +347,9 @@ def wilson(k: int, n: int) -> tuple[float, float]:
     p = k / n
     centre = p + z * z / (2 * n)
     half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
-    return ((centre - half) / (1 + z * z / n), (centre + half) / (1 + z * z / n))
+    low = (centre - half) / (1 + z * z / n)
+    high = (centre + half) / (1 + z * z / n)
+    return (max(0.0, low), min(1.0, high))
 
 
 def detector_counts(rows: list[dict]) -> dict[str, int]:
