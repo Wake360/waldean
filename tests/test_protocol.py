@@ -1,13 +1,17 @@
+import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
+import nbformat
 import numpy as np
 import pandas as pd
 import pytest
 import yaml
 
 from waldean.experiment.plan import PlanError
-from waldean.experiment.protocol import create_protocol
+from waldean.experiment.protocol import check_protocol, create_protocol
 
 
 def write_data(path: Path, time=True, group=True, n=600, seed=0, missing_target=0, second_group=False):
@@ -115,3 +119,106 @@ def test_single_period_time_split_refused(tmp_path):
     df.to_csv(csv, index=False)
     with pytest.raises(PlanError, match="fewer than 2 usable periods"):
         create_protocol(csv, cols, "churn", tmp_path)
+
+
+
+def setup_check(tmp_path):
+    csv, cols = write_data(tmp_path)
+    create_protocol(csv, cols, "churn", tmp_path)
+    nbformat.write(nbformat.v4.new_notebook(cells=[nbformat.v4.new_code_cell("x = 1")]), tmp_path / "experiment.ipynb")
+    df = pd.read_csv(csv)
+    holdout = pd.read_csv(tmp_path / "holdout.csv")["row"].tolist()
+    train = [r for r in range(len(df)) if r not in set(holdout)]
+    months = sorted(df.loc[train, "snapshot"].unique())
+    folds = [[[r for r in train if df.at[r, "snapshot"] < m], [r for r in train if df.at[r, "snapshot"] == m]]
+             for m in months[-3:]]
+    ev = {"features": ["x"], "candidates": ["dummy", "logreg"], "cv_folds": folds,
+          "cv_scores": {"dummy": [0.5, 0.5, 0.5], "logreg": [0.7, 0.7, 0.7]}, "chosen": "logreg",
+          "holdout_rows": holdout, "holdout_scores": {"logreg": 0.69}}
+    return ev, df
+
+
+def run_check(tmp_path, ev):
+    (tmp_path / "evidence.json").write_text(json.dumps(ev))
+    return check_protocol(tmp_path / "protocol.yaml", tmp_path / "experiment.ipynb")
+
+
+def test_compliant_evidence_passes(tmp_path):
+    ev, _ = setup_check(tmp_path)
+    assert run_check(tmp_path, ev) == []
+
+
+def test_choice_not_best_on_cv(tmp_path):
+    ev, _ = setup_check(tmp_path)
+    ev["chosen"] = "dummy"
+    ev["holdout_scores"] = {"dummy": 0.5}
+    assert any("highest mean CV" in p for p in run_check(tmp_path, ev))
+
+
+def test_fold_training_on_later_rows(tmp_path):
+    ev, _ = setup_check(tmp_path)
+    train, test = ev["cv_folds"][0]
+    ev["cv_folds"][0] = [test, train]
+    assert any("not earlier" in p for p in run_check(tmp_path, ev))
+
+
+def test_fold_using_holdout_rows(tmp_path):
+    ev, _ = setup_check(tmp_path)
+    ev["cv_folds"][0][0] = ev["cv_folds"][0][0] + ev["holdout_rows"][:3]
+    assert any("holdout or unused rows" in p for p in run_check(tmp_path, ev))
+
+
+def test_holdout_rows_changed(tmp_path):
+    ev, _ = setup_check(tmp_path)
+    ev["holdout_rows"] = ev["holdout_rows"][1:]
+    assert any("differ from holdout.csv" in p for p in run_check(tmp_path, ev))
+
+
+def test_excluded_feature(tmp_path):
+    ev, _ = setup_check(tmp_path)
+    ev["features"] = ["x", "row_ref"]
+    assert any("excluded columns" in p for p in run_check(tmp_path, ev))
+
+
+def test_out_of_range_and_empty_fold(tmp_path):
+    ev, df = setup_check(tmp_path)
+    ev["cv_folds"] += [[[0, len(df) + 5], [1]], [[0], []]]
+    problems = run_check(tmp_path, ev)
+    assert any("outside data.csv" in p for p in problems)
+    assert any("empty train or test side" in p for p in problems)
+
+
+def test_missing_evidence(tmp_path):
+    setup_check(tmp_path)
+    assert check_protocol(tmp_path / "protocol.yaml", tmp_path / "experiment.ipynb") == [
+        "evidence.json missing: the notebook must write it"]
+
+
+def test_tampered_holdout_is_input_error(tmp_path):
+    ev, _ = setup_check(tmp_path)
+    (tmp_path / "evidence.json").write_text(json.dumps(ev))
+    (tmp_path / "holdout.csv").write_text("row\n0\n")
+    with pytest.raises(PlanError, match="holdout.csv changed"):
+        check_protocol(tmp_path / "protocol.yaml", tmp_path / "experiment.ipynb")
+
+
+def test_cli_exit_codes(tmp_path):
+    ev, _ = setup_check(tmp_path)
+    (tmp_path / "evidence.json").write_text(json.dumps(ev))
+    cmd = [sys.executable, "-m", "waldean.cli", "protocol", "check", str(tmp_path / "experiment.ipynb"),
+           "--protocol", str(tmp_path / "protocol.yaml")]
+    assert subprocess.run(cmd, capture_output=True).returncode == 0
+    ev["chosen"] = "dummy"
+    (tmp_path / "evidence.json").write_text(json.dumps(ev))
+    assert subprocess.run(cmd, capture_output=True).returncode == 2
+    (tmp_path / "holdout.csv").write_text("row\n0\n")
+    assert subprocess.run(cmd, capture_output=True).returncode == 3
+
+
+def test_cli_create(tmp_path):
+    csv, cols = write_data(tmp_path)
+    out = tmp_path / "p"
+    proc = subprocess.run([sys.executable, "-m", "waldean.cli", "protocol", "create", str(csv), "--columns", str(cols),
+                           "--target", "churn", "--out", str(out)], capture_output=True, text=True)
+    assert proc.returncode == 0
+    assert (out / "protocol.yaml").exists() and (out / "holdout.csv").exists()

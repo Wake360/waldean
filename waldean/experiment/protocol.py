@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
@@ -9,6 +10,10 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from ..analysis.dataflow import analyze
+from ..analysis.ingest import parse_notebook
+from ..checks.detect import run_static
+from ..core.flag import DEFAULT_CONFIDENCE_FLOOR
 from .plan import N_SPLITS, TEST_FRACTION, PlanError, choose_time_column
 from .profile import parse_dates, profile, sha256
 
@@ -117,3 +122,70 @@ def create_protocol(csv_path, columns_path, target: str, out_dir, question: str 
     }
     (out / "protocol.yaml").write_text(yaml.safe_dump(protocol, sort_keys=False, allow_unicode=True), encoding="utf-8")
     return out
+
+
+def fold_problems(i: int, train: list, test: list, n_rows: int, blocked: set, split: dict, key) -> list[str]:
+    rows = list(train) + list(test)
+    if not train or not test:
+        return [f"CV fold {i} has an empty train or test side"]
+    if not all(isinstance(r, int) and 0 <= r < n_rows for r in rows):
+        return [f"CV fold {i} has row labels outside data.csv"]
+    problems = []
+    if set(rows) & blocked:
+        problems.append(f"CV fold {i} uses holdout or unused rows")
+    if set(train) & set(test):
+        problems.append(f"CV fold {i} has rows in both train and test")
+    if split["kind"] == "temporal_holdout" and not key.iloc[train].max() < key.iloc[test].min():
+        problems.append(f"CV fold {i} trains on rows not earlier than its test rows")
+    if split["kind"] == "group_holdout" and set(key.iloc[train]) & set(key.iloc[test]):
+        problems.append(f"CV fold {i} shares {split['column']} values between train and test")
+    return problems
+
+
+def check_protocol(protocol_path, notebook_path) -> list[str]:
+    proto_path, nb_path = Path(protocol_path).resolve(), Path(notebook_path).resolve()
+    base = proto_path.parent
+    proto = yaml.safe_load(proto_path.read_text(encoding="utf-8"))
+    split = proto["split"]
+    csv = base / proto["dataset"]["path"]
+    if sha256(csv) != proto["dataset"]["sha256"]:
+        raise PlanError(f"{csv.name} changed since the protocol was written")
+    if sha256(base / split["holdout_file"]) != split["holdout_sha256"]:
+        raise PlanError(f"{split['holdout_file']} changed since the protocol was written")
+    parsed = parse_notebook(nb_path)
+    problems = [f"waldean check: {f.flaw_id} in cell {f.cell}" for f in run_static(parsed, analyze(parsed))
+                if f.confidence >= DEFAULT_CONFIDENCE_FLOOR]
+    ev_path = nb_path.parent / proto["evidence"]["file"]
+    if not ev_path.exists():
+        return problems + [f"{ev_path.name} missing: the notebook must write it"]
+    ev = json.loads(ev_path.read_text(encoding="utf-8"))
+    missing = [k for k in EVIDENCE_FIELDS if k not in ev]
+    if missing:
+        return problems + [f"{ev_path.name} lacks {missing}"]
+    df = pd.read_csv(csv)
+    holdout = set(pd.read_csv(base / split["holdout_file"])["row"].tolist())
+    unused = set(pd.read_csv(base / split["unused_file"])["row"].tolist()) if split["unused_file"] else set()
+    if set(ev["holdout_rows"]) != holdout:
+        problems.append("holdout_rows differ from holdout.csv")
+    banned = sorted(set(ev["features"]) & ({proto["target"]} | {e["column"] for e in proto["excluded_columns"]}))
+    if banned:
+        problems.append(f"features include excluded columns {banned}")
+    if len(ev["cv_folds"]) < 2:
+        problems.append("fewer than 2 CV folds")
+    key = None
+    if split["kind"] == "temporal_holdout":
+        key = parse_dates(df[split["column"]].astype(str), dayfirst=False)
+    elif split["kind"] == "group_holdout":
+        key = df[split["column"]].astype(str)
+    for i, (train, test) in enumerate(ev["cv_folds"]):
+        problems += fold_problems(i, train, test, len(df), holdout | unused, split, key)
+    scores = ev["cv_scores"]
+    if set(scores) != set(ev["candidates"]):
+        problems.append("cv_scores must have one entry per candidate")
+    elif ev["chosen"] not in scores:
+        problems.append(f"chosen {ev['chosen']!r} is not a candidate")
+    elif np.mean(scores[ev["chosen"]]) < max(np.mean(v) for v in scores.values()):
+        problems.append(f"chosen {ev['chosen']!r} is not the candidate with the highest mean CV {SELECTION_METRIC}")
+    if ev["chosen"] not in ev["holdout_scores"]:
+        problems.append("holdout_scores lacks the chosen candidate")
+    return problems
