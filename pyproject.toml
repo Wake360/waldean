@@ -41,6 +41,13 @@ execute = [
     "nbclient>=0.9",
     "ipykernel",
 ]
+builder = [
+    "nbclient>=0.9",
+    "ipykernel",
+    "numpy",
+    "pandas",
+    "scikit-learn",
+]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
