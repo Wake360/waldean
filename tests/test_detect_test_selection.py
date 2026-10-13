@@ -201,3 +201,13 @@ def test_wrapper_keyword_label_from_validation_stays_candidate():
         "print(rep(best, yt=y_te, p=P[best]))",
     ]
     assert not confident(cells)
+
+
+def test_wrapper_keyword_label_reuse_is_confident():
+    cells = [
+        REP_DEF,
+        PROBS,
+        "res = pd.DataFrame([rep(n, yt=y_te, p=p) for n, p in P.items()]).set_index('model')\nbest = res['auc'].idxmax()",
+        "print(rep(best, yt=y_te, p=P[best]))",
+    ]
+    assert confident(cells)
