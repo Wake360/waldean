@@ -5,13 +5,19 @@ User notebooks are executed only by `waldean verify --execute`, in a separate wa
 
 from __future__ import annotations
 
+import contextlib
 import copy
+import os
+import re
 import sys
 
 import nbformat
 from ipykernel.kernelspec import install as install_kernelspec
 from jupyter_client.kernelspec import KernelSpecManager, NoSuchKernel
 from nbclient import NotebookClient
+
+KERNEL_NAME = "waldean-verify"
+SECRET_ENV_RE = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL", re.IGNORECASE)
 
 
 def _ensure_kernelspec(kernel_name: str = "python3") -> None:
@@ -50,3 +56,12 @@ def stdout_lines(nb_node, prefix: str) -> list[str]:
                     if line.startswith(prefix):
                         lines.append(line)
     return lines
+
+
+@contextlib.contextmanager
+def scrubbed_env():
+    removed = {k: os.environ.pop(k) for k in list(os.environ) if SECRET_ENV_RE.search(k)}
+    try:
+        yield sorted(removed)
+    finally:
+        os.environ.update(removed)

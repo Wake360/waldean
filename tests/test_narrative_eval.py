@@ -9,18 +9,12 @@ from pathlib import Path
 import nbformat
 import pytest
 
-from waldean.cli import _heldout_refusal
-from waldean.detect import run_static
-from waldean.eval import evaluate_narrative
-from waldean.ingest import parse_notebook
-from waldean.llm import (
-    PINNED_DETECTOR_MODEL,
-    PINNED_VERIFIER_MODEL,
-    AgentBackend,
-    CodexBackend,
-    ReplayBackend,
-)
-from waldean.mutate import SurvivorshipMutation
+from waldean.api import heldout_refusal as _heldout_refusal
+from waldean.checks.detect import run_static
+from waldean.bench.eval import evaluate_narrative
+from waldean.analysis.ingest import parse_notebook
+from waldean.llm.backends import PINNED_DETECTOR_MODEL, PINNED_VERIFIER_MODEL, AgentBackend, CodexBackend, ReplayBackend
+from waldean.bench.mutate import SurvivorshipMutation
 
 CORPUS = Path(__file__).parent.parent / "corpus"
 
@@ -222,7 +216,7 @@ def test_gate_evidence_false_for_stub_run(results):
 
 
 def test_evaluate_narrative_continues_past_backend_error(mini):
-    from waldean.llm import BackendError
+    from waldean.llm.backends import BackendError
 
     rtm_marker = mini["det_routes"][1][0]  # the RTM mutant's conclusion text
 

@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .ingest import ParsedNotebook
-from .llm import Backend, BackendError
+from ..analysis.ingest import ParsedNotebook
+from .backends import Backend, BackendError
 from .narrative import OUTPUT_CAP
-from .taxonomy import load_taxonomy
+from ..core.taxonomy import load_taxonomy
 
 SYSTEM_PROMPT = """\
 You are verifying a single flagged statistical flaw. You receive the

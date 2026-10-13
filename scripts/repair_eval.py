@@ -9,7 +9,7 @@ from pathlib import Path
 
 import nbformat
 
-from waldean.repair import propose, verify
+from waldean.repair.loop import propose, verify
 
 CORPUS_METRIC = re.compile(r"(?:mae=|cv neg_mae: )(-?\d+\.\d+)")
 CASES = ("clean-base", "unchanged", "out-of-scope", "eval-removed")

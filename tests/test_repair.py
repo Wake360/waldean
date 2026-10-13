@@ -8,10 +8,11 @@ import nbformat
 import pytest
 
 from waldean.cli import main
-from waldean.detect import _make_flag
+from waldean.checks.detect import _make_flag
 from waldean.report import to_markdown
-from waldean.repair import counterfactual, metric_values, propose, render_brief, scrubbed_env, supported, verify
-from waldean.taxonomy import load_taxonomy
+from waldean.repair.loop import counterfactual, metric_values, propose, render_brief, supported, verify
+from waldean.runtime.execute import scrubbed_env
+from waldean.core.taxonomy import load_taxonomy
 
 IMPORTS = """import numpy as np
 import pandas as pd
@@ -222,7 +223,7 @@ def _fake_execute(calls, outputs):
 
 def test_counterfactual_measures_both_runs(leaky, tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr("waldean.execute.execute", _fake_execute(calls, ["R2=0.992\n", "R2=0.465\n"]))
+    monkeypatch.setattr("waldean.runtime.execute.execute", _fake_execute(calls, ["R2=0.992\n", "R2=0.465\n"]))
     repair_dir = _repair(leaky, tmp_path)
     fixed = _fixed(tmp_path, [IMPORTS, DATA, FEATURES, TEMPORAL])
     evidence = verify(repair_dir, fixed, metric=R2, timeout=30)
@@ -236,14 +237,14 @@ def test_counterfactual_measures_both_runs(leaky, tmp_path, monkeypatch):
 
 def test_counterfactual_is_not_run_after_rejection(leaky, tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr("waldean.execute.execute", _fake_execute(calls, ["R2=0.9\n", "R2=0.9\n"]))
+    monkeypatch.setattr("waldean.runtime.execute.execute", _fake_execute(calls, ["R2=0.9\n", "R2=0.9\n"]))
     evidence = verify(_repair(leaky, tmp_path), leaky, metric=R2)
     assert evidence["status"] == "rejected"
     assert calls == []
 
 
 def test_mismatched_metric_lines_are_inconclusive(leaky, tmp_path, monkeypatch):
-    monkeypatch.setattr("waldean.execute.execute", _fake_execute([], ["R2=0.9\nR2=0.8\n", "R2=0.5\n"]))
+    monkeypatch.setattr("waldean.runtime.execute.execute", _fake_execute([], ["R2=0.9\nR2=0.8\n", "R2=0.5\n"]))
     fixed = _fixed(tmp_path, [IMPORTS, DATA, FEATURES, TEMPORAL])
     evidence = verify(_repair(leaky, tmp_path), fixed, metric=R2)
     assert evidence["status"] == "inconclusive"
@@ -253,7 +254,7 @@ def test_mismatched_metric_lines_are_inconclusive(leaky, tmp_path, monkeypatch):
 def test_execution_error_is_inconclusive(leaky, tmp_path, monkeypatch):
     def boom(*args, **kwargs):
         raise RuntimeError("cell 3 failed\nTraceback ...")
-    monkeypatch.setattr("waldean.execute.execute", boom)
+    monkeypatch.setattr("waldean.runtime.execute.execute", boom)
     fixed = _fixed(tmp_path, [IMPORTS, DATA, FEATURES, TEMPORAL])
     evidence = verify(_repair(leaky, tmp_path), fixed, metric=R2)
     assert evidence["status"] == "inconclusive"

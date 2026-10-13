@@ -1,4 +1,4 @@
-"""waldean.execute: notebook cell append/parse helpers, plus one live-kernel
+"""waldean.runtime.execute: notebook cell append/parse helpers, plus one live-kernel
 integration test guarded by the same kernelspec-ensure pattern test_mutations.py
 uses (verify() calls execute() directly, no explicit skip needed unless the
 kernel truly can't be provisioned)."""
@@ -6,7 +6,7 @@ kernel truly can't be provisioned)."""
 import nbformat
 import pytest
 
-from waldean.execute import execute, stdout_lines, with_appended_code_cell
+from waldean.runtime.execute import execute, stdout_lines, with_appended_code_cell
 
 
 def _one_cell_notebook(source: str):

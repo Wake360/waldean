@@ -7,10 +7,10 @@ from pathlib import Path
 import nbformat
 import pytest
 
-from waldean.corpus import MUTATION_SEEDS
-from waldean.detect import run_static
-from waldean.eval import REAL_FP_CAVEAT, evaluate, render_report
-from waldean.ingest import parse_notebook
+from waldean.bench.corpus import MUTATION_SEEDS
+from waldean.checks.detect import run_static
+from waldean.bench.eval import REAL_FP_CAVEAT, evaluate, render_report
+from waldean.analysis.ingest import parse_notebook
 
 CORPUS = Path(__file__).parent.parent / "corpus"
 

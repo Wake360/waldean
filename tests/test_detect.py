@@ -1,5 +1,5 @@
-from waldean.detect import run_static
-from waldean.ingest import Cell, ParsedNotebook
+from waldean.checks.detect import run_static
+from waldean.analysis.ingest import Cell, ParsedNotebook
 
 
 def nb(cells: list[tuple[str, str]], outputs: dict[int, str] | None = None) -> ParsedNotebook:
@@ -212,7 +212,7 @@ def test_survivorship_candidate_below_floor():
 
 
 def test_survivorship_skips_oversized_cell():
-    from waldean.dataflow import MAX_CELL_SOURCE_BYTES
+    from waldean.analysis.dataflow import MAX_CELL_SOURCE_BYTES
 
     # an oversized cell is skipped by the dataflow caps; the survivorship
     # detector must skip it too. scanning its raw source is O(n^2) on a long

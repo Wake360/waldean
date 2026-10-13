@@ -18,10 +18,10 @@ import re
 import libcst as cst
 import nbformat
 
-from . import execute as ex
-from .dataflow import analyze
-from .detect import CORRECTION_RE, LOOP_TEST_WEIGHT, MULTIPLE_TESTING_THRESHOLD, TEST_FUNCS
-from .ingest import from_nbnode
+from ..runtime import execute as ex
+from ..analysis.dataflow import analyze
+from ..checks.detect import CORRECTION_RE, LOOP_TEST_WEIGHT, MULTIPLE_TESTING_THRESHOLD, TEST_FUNCS
+from ..analysis.ingest import from_nbnode
 
 
 def meta(nb_node) -> dict:

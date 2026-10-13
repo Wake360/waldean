@@ -13,9 +13,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from .ingest import ParsedNotebook
-from .llm import BackendError
-from .taxonomy import load_taxonomy
+from ..analysis.ingest import ParsedNotebook
+from .backends import BackendError
+from ..core.taxonomy import load_taxonomy
 
 CLAIM_KINDS = (
     "population",

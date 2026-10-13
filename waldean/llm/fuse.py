@@ -15,9 +15,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .detect import DEFAULT_CONFIDENCE_FLOOR, Flag, run_static
+from ..core.flag import DEFAULT_CONFIDENCE_FLOOR, Flag
+from ..checks.detect import run_static
 from .narrative import NarrativeResult, detect_narrative
-from .taxonomy import load_fusion_rules, load_taxonomy
+from ..core.taxonomy import load_fusion_rules, load_taxonomy
 from .verifier import verify_finding
 
 

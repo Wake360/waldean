@@ -55,7 +55,7 @@ Issues = "https://github.com/Wake360/waldean/issues"
 include = ["waldean*"]
 
 [tool.setuptools.package-data]
-waldean = ["taxonomy/*.yaml"]
+waldean = ["core/taxonomy/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

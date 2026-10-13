@@ -87,7 +87,7 @@ Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
 | `baserate-accuracy-imbalanced` | Accuracy as the only metric while stored outputs show class imbalance |
 | `selection-survivorship-cohort` | Candidate only: a filter on a survival-correlated column before aggregation |
 
-`waldean rules` prints the full list from `waldean/taxonomy/flaws.yaml`.
+`waldean rules` prints the full list from `waldean/core/taxonomy/flaws.yaml`.
 
 ## Known limitations
 

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import nbformat
 
-from waldean.execute import execute, stdout_lines
+from waldean.runtime.execute import execute, stdout_lines
 
 INTRO = """# Temporal CV leakage: impressive metric, wrong protocol
 

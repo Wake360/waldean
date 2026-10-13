@@ -1,7 +1,7 @@
 import libcst as cst
 
-from waldean.dataflow import analyze, expr_names
-from waldean.ingest import Cell, ParsedNotebook
+from waldean.analysis.dataflow import analyze, expr_names
+from waldean.analysis.ingest import Cell, ParsedNotebook
 
 
 def nb_from_sources(*sources: str) -> ParsedNotebook:
@@ -151,7 +151,7 @@ def test_assign_event_shares_call_identity():
 
 
 def test_oversized_cell_skipped():
-    from waldean.dataflow import MAX_CELL_SOURCE_BYTES
+    from waldean.analysis.dataflow import MAX_CELL_SOURCE_BYTES
 
     big = "x = fit(y)\n" + "a = 1  # " + "A" * (MAX_CELL_SOURCE_BYTES + 1)
     flow = analyze(nb_from_sources(big, "z = fit(w)"))
@@ -161,7 +161,7 @@ def test_oversized_cell_skipped():
 
 
 def test_oversized_cell_records_skipped():
-    from waldean.dataflow import MAX_CELL_SOURCE_BYTES
+    from waldean.analysis.dataflow import MAX_CELL_SOURCE_BYTES
 
     big = "a = 1  # " + "A" * (MAX_CELL_SOURCE_BYTES + 1)
     flow = analyze(nb_from_sources(big))

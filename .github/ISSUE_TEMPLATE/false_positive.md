@@ -8,7 +8,7 @@ labels: false-positive
 **Flaw ID**
 
 Which rule fired. Run `waldean rules` to list all flaw IDs (e.g. `leakage-fit-before-split`).
-See `waldean/taxonomy/flaws.yaml` for flaw definitions.
+See `waldean/core/taxonomy/flaws.yaml` for flaw definitions.
 
 **Waldean version and mode**
 

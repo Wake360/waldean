@@ -107,7 +107,7 @@ legitimate analysis.
 **What Waldean does not see:** flaws with no imprint in code, outputs or
 prose. Survivorship bias that lives in data that never entered the notebook
 is invisible to any tool that reads notebooks. Waldean claims only the
-detectable classes, and the taxonomy (`waldean/taxonomy/flaws.yaml`) is the
+detectable classes, and the taxonomy (`waldean/core/taxonomy/flaws.yaml`) is the
 complete, versioned list of what it checks.
 
 `.py` scripts have no stored cell outputs, so `baserate-accuracy-imbalanced`

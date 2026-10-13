@@ -1,10 +1,10 @@
 import pytest
 
-from waldean.detect import Flag
-from waldean.fuse import fuse, run_full
-from waldean.ingest import Cell, ParsedNotebook
-from waldean.narrative import Claim, NarrativeFinding, NarrativeResult
-from waldean.taxonomy import load_fusion_rules
+from waldean.core.flag import Flag
+from waldean.llm.fuse import fuse, run_full
+from waldean.analysis.ingest import Cell, ParsedNotebook
+from waldean.llm.narrative import Claim, NarrativeFinding, NarrativeResult
+from waldean.core.taxonomy import load_fusion_rules
 
 RULES = load_fusion_rules()
 

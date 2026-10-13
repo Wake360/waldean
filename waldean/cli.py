@@ -6,111 +6,15 @@ import argparse
 import importlib.metadata
 import json
 import os
-import shutil
 import sys
 from pathlib import Path
 
 from nbformat.reader import NotJSONError
 
-from .dataflow import analyze
-from .detect import DEFAULT_CONFIDENCE_FLOOR, run_static
-from .fuse import run_full_traced
-from .ingest import parse_notebook
+from .api import (BackendError, EmptyDir, check, expand_notebooks, heldout_refusal, llm_backends,
+                  missing_llm_keys, missing_subscription_clis)
+from .core.flag import DEFAULT_CONFIDENCE_FLOOR
 from .report import _colorize, exit_code, parse_warning, report_obj, to_markdown, to_sarif
-
-# environment variable each api backend needs before it can make a request
-_KEY_BY_PROVIDER = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}
-
-
-def _missing_subscription_clis() -> bool:
-    """True if --llm-subscription can't shell out: claude and/or codex isn't on PATH."""
-    return not (shutil.which("claude") and shutil.which("codex"))
-
-
-def _llm_backends(replay_dir, subscription=False):
-    from .llm import AgentBackend, AnthropicBackend, CodexBackend, OpenAIBackend, ReplayBackend
-
-    if subscription:
-        return AgentBackend(), CodexBackend()
-
-    det, ver = AnthropicBackend(), OpenAIBackend()
-    if replay_dir:
-        det = ReplayBackend(Path(replay_dir) / "detector", det)
-        ver = ReplayBackend(Path(replay_dir) / "verifier", ver)
-    return det, ver
-
-
-def _heldout_refusal(path, det, ver) -> str | None:
-    """Held-out corpus notebooks are gate-only (m2 item 11): block `check
-    --llm` on them so the eval guard can't be sidestepped notebook-by-notebook
-    with a replay/agent backend. Real-world corpus notebooks (corpus/real/*)
-    are held-out material too — eval folds them into the heldout clean set and
-    their manifest carries no per-entry split field, so they are refused by
-    living under a `real/` manifest."""
-    if det.kind == "api" and ver.kind == "api":
-        return None
-    p = Path(path).resolve()
-    for anc in (p.parent, *p.parent.parents):
-        manifest_path = anc / "MANIFEST.json"
-        if not manifest_path.exists():
-            continue
-        manifest = json.loads(manifest_path.read_text())
-        entries = manifest.get("clean", []) + manifest.get("mutants", [])
-        for e in entries:
-            f = e.get("file")
-            # manifest paths are relative to the manifest dir (corpus/clean/..)
-            # or to the corpus root (real/MANIFEST.json prefixes with "real/")
-            if f is None or p not in ((anc / f).resolve(), (anc.parent / f).resolve()):
-                continue
-            if e.get("split") == "heldout" or anc.name == "real":
-                return f"{path}: held-out corpus notebook is gate-only, refusing --llm check"
-        break
-    return None
-
-
-def _missing_llm_keys(*backends) -> list[str]:
-    """Env vars an api backend needs but that are unset (replay/agent need none)."""
-    missing = []
-    for b in backends:
-        if b.kind == "api":
-            env = _KEY_BY_PROVIDER.get(b.provider)
-            if env and not os.environ.get(env):
-                missing.append(env)
-    return sorted(set(missing))
-
-
-class _EmptyDir(Exception):
-    """A directory argument contained no notebooks."""
-
-
-def _expand_notebooks(paths: list[str]) -> list[str]:
-    """Replace directory arguments with their *.ipynb files, recursive and
-    sorted, skipping .ipynb_checkpoints copies. File arguments pass through."""
-    expanded = []
-    for path in paths:
-        p = Path(path)
-        if not p.is_dir():
-            expanded.append(path)
-            continue
-        found = sorted(
-            str(q) for q in p.rglob("*.ipynb") if ".ipynb_checkpoints" not in q.parts
-        )
-        if not found:
-            raise _EmptyDir(path)
-        expanded.extend(found)
-    return expanded
-
-
-def _absolutize(nb, flags):
-    """Rewrite each flag's line-within-cell to a file-absolute line for .py
-    scripts, using the cell's recorded start_line. No-op for notebooks."""
-    if nb.path is None or nb.path.suffix != ".py":
-        return flags
-    for f in flags:
-        if 0 <= f.cell < len(nb.cells):
-            f.line = nb.cells[f.cell].start_line + f.line - 1
-    return flags
-
 
 def _input_error(exc: Exception) -> str:
     if isinstance(exc, FileNotFoundError):
@@ -130,19 +34,19 @@ def cmd_check(args) -> int:
         return 3
     det = ver = None
     if args.llm:
-        if args.llm_subscription and _missing_subscription_clis():
+        if args.llm_subscription and missing_subscription_clis():
             print("waldean: --llm-subscription needs the claude and codex CLIs on PATH",
                   file=sys.stderr)
             return 3
-        det, ver = _llm_backends(args.replay_dir, subscription=args.llm_subscription)
-        missing = _missing_llm_keys(det, ver)
+        det, ver = llm_backends(args.replay_dir, subscription=args.llm_subscription)
+        missing = missing_llm_keys(det, ver)
         if missing:
             print(f"waldean: --llm needs {' and '.join(missing)} set in the environment",
                   file=sys.stderr)
             return 3
     try:
-        notebooks = _expand_notebooks(args.notebooks)
-    except _EmptyDir as exc:
+        notebooks = expand_notebooks(args.notebooks)
+    except EmptyDir as exc:
         print(f"waldean: {exc}: no .ipynb files found", file=sys.stderr)
         return 3
     # interactive-only chrome; the piped md/json/sarif bytes stay untouched
@@ -163,28 +67,17 @@ def cmd_check(args) -> int:
             print(f"\rchecking {i}/{len(notebooks)} {path}", end="", file=sys.stderr,
                   flush=True)
         if args.llm:
-            refusal = _heldout_refusal(path, det, ver)
+            refusal = heldout_refusal(path, det, ver)
             if refusal:
                 close_progress()
                 print(f"waldean: {refusal}", file=sys.stderr)
                 return 3
         try:
-            nb = parse_notebook(path)
-            flow = analyze(nb)
-            if args.llm:
-                flags, narrative, _ = run_full_traced(nb, det, ver)
-                # a detector/verifier outage fails closed inside detect_narrative
-                # (empty result tagged in `dropped`); surface it so a broken
-                # backend can never read like a clean notebook.
-                backend_error = next(
-                    (d for d in narrative.dropped if d.startswith("backend error:")), None
-                )
-                if backend_error is not None:
-                    close_progress()
-                    print(f"waldean: narrative layer failed: {backend_error}", file=sys.stderr)
-                    return 3
-            else:
-                flags = run_static(nb, flow)
+            nb, flow, flags = check(path, det, ver)
+        except BackendError as exc:
+            close_progress()
+            print(f"waldean: narrative layer failed: {exc}", file=sys.stderr)
+            return 3
         except Exception as exc:
             close_progress()
             print(f"waldean: {path}: {_input_error(exc)}", file=sys.stderr)
@@ -192,7 +85,6 @@ def cmd_check(args) -> int:
                 n_failed += 1
                 continue
             return 3
-        flags = _absolutize(nb, flags)  # file-absolute lines for .py, no-op otherwise
         warning = parse_warning(len(flow.parse_errors) + len(flow.skipped_cells),
                                 len(nb.code_cells))
         if args.format == "json":
@@ -234,7 +126,7 @@ def cmd_eval(args) -> int:
             print("waldean: --split does not apply to --predictions; both splits are scored",
                   file=sys.stderr)
             return 3
-        from .eval import evaluate_predictions, load_predictions, render_report
+        from .bench.eval import evaluate_predictions, load_predictions, render_report
 
         try:
             predictions = load_predictions(args.predictions)
@@ -254,7 +146,7 @@ def cmd_eval(args) -> int:
         return 0
 
     if args.llm:
-        from .eval import run_llm_eval
+        from .bench.eval import run_llm_eval
 
         split = args.split or "dev"
         if args.llm_subscription and split == "heldout":
@@ -262,13 +154,13 @@ def cmd_eval(args) -> int:
                   "ANTHROPIC_API_KEY + OPENAI_API_KEY for the held-out gate",
                   file=sys.stderr)
             return 3
-        if args.llm_subscription and _missing_subscription_clis():
+        if args.llm_subscription and missing_subscription_clis():
             print("waldean: --llm-subscription needs the claude and codex CLIs on PATH",
                   file=sys.stderr)
             return 3
 
-        det, ver = _llm_backends(args.replay_dir, subscription=args.llm_subscription)
-        missing = _missing_llm_keys(det, ver)
+        det, ver = llm_backends(args.replay_dir, subscription=args.llm_subscription)
+        missing = missing_llm_keys(det, ver)
         if missing:
             print(f"waldean: --llm needs {' and '.join(missing)} set in the environment",
                   file=sys.stderr)
@@ -285,7 +177,7 @@ def cmd_eval(args) -> int:
         print(f"  gate evidence: {results['gate_evidence']}")
         return 0
 
-    from .eval import run_eval
+    from .bench.eval import run_eval
 
     results = run_eval(args.corpus, args.out)
     print(f"eval written to {args.out}/{results['date']}-eval.md")
@@ -298,14 +190,14 @@ def cmd_eval(args) -> int:
 
 
 def cmd_corpus_build(args) -> int:
-    from .corpus import build_corpus
+    from .bench.corpus import build_corpus
 
     build_corpus(args.root, seeds=tuple(args.seeds))
     return 0
 
 
 def cmd_rules(args) -> int:
-    from .taxonomy import load_taxonomy
+    from .core.taxonomy import load_taxonomy
 
     defs = sorted(load_taxonomy().values(), key=lambda d: d.id)
     if args.format == "json":
@@ -330,7 +222,7 @@ EXECUTE_WARNING = ("waldean: --execute runs both notebooks on this machine with 
 
 
 def cmd_propose(args) -> int:
-    from .repair import propose
+    from .repair.loop import propose
 
     try:
         written, unsupported = propose(args.file, out_root=Path(args.out), floor=args.floor)
@@ -349,7 +241,7 @@ def cmd_propose(args) -> int:
 def cmd_verify(args) -> int:
     import re
 
-    from .repair import render_evidence, verify
+    from .repair.loop import render_evidence, verify
 
     if args.execute != bool(args.metric):
         print("waldean: --execute and --metric go together", file=sys.stderr)

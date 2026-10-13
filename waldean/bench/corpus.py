@@ -23,7 +23,7 @@ from pathlib import Path
 
 import nbformat
 
-from . import execute as ex
+from ..runtime import execute as ex
 from .mutate import MUTATIONS
 
 

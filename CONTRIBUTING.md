@@ -36,9 +36,9 @@ The notebook must also pass the clean-corpus criteria above and a manual review 
 
 A new flaw class needs all three parts:
 
-1. **Taxonomy record** — an entry in `waldean/taxonomy/flaws.yaml`: `id`, `class`, `layer` (`static` or `static+narrative`), `severity`, `definition`, `book_anchor` (the statistics/ML reference that names the error), `failure_scenario`, `fix`. Detector code and generated prompts/reports read from this file; flaw semantics are never hardcoded elsewhere.
-2. **Detector** — a function in `waldean/detect.py` (static layer) and/or `waldean/narrative.py` (LLM layer) that emits a `Flag` for the flaw, registered in `DETECTORS`.
-3. **Mutation recipe** — a `Mutation` subclass in `waldean/mutate.py` implementing `applicable`, `apply`, and `verify`. `verify` must mechanically prove the injected flaw is present (e.g. executing the mutated notebook and checking a fitted transformer's `n_samples_seen_`), not just assert the code pattern was inserted.
+1. **Taxonomy record** — an entry in `waldean/core/taxonomy/flaws.yaml`: `id`, `class`, `layer` (`static` or `static+narrative`), `severity`, `definition`, `book_anchor` (the statistics/ML reference that names the error), `failure_scenario`, `fix`. Detector code and generated prompts/reports read from this file; flaw semantics are never hardcoded elsewhere.
+2. **Detector** — a function in `waldean/checks/detect.py` (static layer) and/or `waldean/llm/narrative.py` (LLM layer) that emits a `Flag` for the flaw, registered in `DETECTORS`.
+3. **Mutation recipe** — a `Mutation` subclass in `waldean/bench/mutate.py` implementing `applicable`, `apply`, and `verify`. `verify` must mechanically prove the injected flaw is present (e.g. executing the mutated notebook and checking a fitted transformer's `n_samples_seen_`), not just assert the code pattern was inserted.
 
 All four are required together: a detector without a mutation can't be measured, and a mutation without a book anchor isn't a cited flaw.
 

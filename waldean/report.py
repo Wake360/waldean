@@ -7,8 +7,8 @@ import json
 import os
 from dataclasses import asdict
 
-from .detect import DEFAULT_CONFIDENCE_FLOOR, Flag
-from .taxonomy import load_taxonomy
+from .core.flag import DEFAULT_CONFIDENCE_FLOOR, Flag
+from .core.taxonomy import load_taxonomy
 
 SEVERITY_ORDER = {"info": 0, "medium": 1, "high": 2}
 SARIF_LEVEL = {"high": "error", "medium": "warning"}
@@ -45,7 +45,7 @@ def exit_code(flags: list[Flag], floor: float = DEFAULT_CONFIDENCE_FLOOR,
 def checked_classes(flags: list[Flag]) -> list[str]:
     """Static classes checked and found clean (negative assurance).
     Any flag, at any confidence, disqualifies its class from clean."""
-    from .detect import STATIC_DECIDABLE
+    from .checks.detect import STATIC_DECIDABLE
 
     flagged = {f.flaw_id for f in flags}
     return sorted(STATIC_DECIDABLE - flagged)

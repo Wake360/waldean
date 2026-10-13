@@ -12,10 +12,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .corpus import _build_date
-from .detect import DEFAULT_CONFIDENCE_FLOOR, STATIC_DECIDABLE, run_static
-from .ingest import parse_notebook
-from .llm import PINNED_DETECTOR_MODEL, PINNED_VERIFIER_MODEL, BackendError
-from .taxonomy import load_taxonomy
+from ..core.flag import DEFAULT_CONFIDENCE_FLOOR
+from ..checks.detect import STATIC_DECIDABLE, run_static
+from ..analysis.ingest import parse_notebook
+from ..llm.backends import PINNED_DETECTOR_MODEL, PINNED_VERIFIER_MODEL, BackendError
+from ..core.taxonomy import load_taxonomy
 
 
 def load_corpus_manifest(root: Path) -> tuple[dict, int]:
@@ -247,8 +248,8 @@ def _prf1(c: dict) -> dict:
 
 def evaluate_narrative(corpus_root: str | Path, det_backend, ver_backend,
                        split: str = "dev", floor: float = DEFAULT_CONFIDENCE_FLOOR) -> dict:
-    from .fuse import _VerifyTarget, run_full_traced
-    from .verifier import verify_finding
+    from ..llm.fuse import _VerifyTarget, run_full_traced
+    from ..llm.verifier import verify_finding
 
     # structural guard (risk R3): held-out data may only ever meet fresh API
     # backends — contamination is prevented, not labeled. `kind` is static

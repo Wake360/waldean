@@ -6,7 +6,6 @@ import difflib
 import hashlib
 import importlib.metadata
 import json
-import os
 import platform
 import re
 import shutil
@@ -15,16 +14,16 @@ from pathlib import Path
 
 import nbformat
 
-from .dataflow import NotebookDataflow, _strip_magics, analyze
-from .detect import _TEMPORAL_SPLITTERS, CV_SINKS, DEFAULT_CONFIDENCE_FLOOR, Flag, run_static
-from .ingest import ParsedNotebook, parse_notebook
-from .taxonomy import load_taxonomy
+from ..analysis.dataflow import NotebookDataflow, _strip_magics, analyze
+from ..checks.detect import _TEMPORAL_SPLITTERS, CV_SINKS, run_static
+from ..core.flag import DEFAULT_CONFIDENCE_FLOOR, Flag
+from ..analysis.ingest import ParsedNotebook, parse_notebook
+from ..core.taxonomy import load_taxonomy
+from ..runtime.execute import KERNEL_NAME, scrubbed_env
 
 SCHEMA = 1
 DEFAULT_OUT = Path(".waldean") / "repairs"
 PROVENANCE_PACKAGES = ("numpy", "pandas", "scikit-learn")
-KERNEL_NAME = "waldean-verify"
-SECRET_ENV_RE = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL", re.IGNORECASE)
 GUARDED_NAMES = _TEMPORAL_SPLITTERS | CV_SINKS | {"train_test_split"}
 RULES = (
     "Edit only the cells in the edit scope.",
@@ -302,15 +301,6 @@ def verify(repair_dir: str | Path, fixed_path: str | Path | None = None,
     return evidence
 
 
-@contextlib.contextmanager
-def scrubbed_env():
-    removed = {k: os.environ.pop(k) for k in list(os.environ) if SECRET_ENV_RE.search(k)}
-    try:
-        yield sorted(removed)
-    finally:
-        os.environ.update(removed)
-
-
 def metric_values(nb_node, metric: re.Pattern) -> list[float]:
     values = []
     for cell in nb_node.cells:
@@ -331,7 +321,7 @@ def _first_line(exc: Exception) -> str:
 
 
 def counterfactual(original: Path, fixed: Path, metric: re.Pattern, timeout: int) -> dict:
-    from .execute import execute
+    from ..runtime.execute import execute
 
     cwd = str(fixed.resolve().parent)
     run = {"metric": metric.pattern, "cwd": cwd, "timeout_per_cell": timeout,

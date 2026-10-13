@@ -9,13 +9,11 @@ comes from the taxonomy.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 
-from .dataflow import NotebookDataflow, analyze
-from .ingest import ParsedNotebook
-from .taxonomy import load_taxonomy
-
-DEFAULT_CONFIDENCE_FLOOR = 0.8
+from ..analysis.dataflow import NotebookDataflow, analyze
+from ..analysis.ingest import ParsedNotebook
+from ..core.flag import Flag
+from ..core.taxonomy import load_taxonomy
 
 TEST_FUNCS = {
     "ttest_ind", "ttest_rel", "ttest_1samp", "mannwhitneyu", "wilcoxon",
@@ -37,19 +35,6 @@ SURVIVOR_COLUMNS = {"status", "active", "is_active", "churned", "retained", "com
 LOOP_TEST_WEIGHT = 10
 MULTIPLE_TESTING_THRESHOLD = 5
 IMBALANCE_THRESHOLD = 0.8
-
-
-@dataclass
-class Flag:
-    flaw_id: str
-    severity: str
-    confidence: float
-    cell: int
-    line: int
-    evidence: str
-    failure_scenario: str
-    fix: str
-    extra: dict = field(default_factory=dict)
 
 
 def _make_flag(flaw_id: str, confidence: float, cell: int, line: int, evidence: str, **extra) -> Flag:
