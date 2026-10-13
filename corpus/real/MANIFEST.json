@@ -6,7 +6,7 @@
       "repo": "ageron/handson-ml3",
       "license": "Apache-2.0",
       "source_path": "03_classification.ipynb",
-      "review": "2026-07-04 dogfood (evals/2026-07-04-dogfood.md): hand-reviewed clean",
+      "review": "2026-07-04 dogfood (evals/2026-07-04-dogfood.md): hand-reviewed clean at the 0.8 floor; the 2026-07-08 review (evals/2026-07-08-llm-dogfood-subscription.md) judged the pre-CV pipeline fits in cells 186 and 258 real leaks, which the static layer reports as 0.75 candidates",
       "note": "image outputs stripped for size; text outputs preserved"
     },
     {
