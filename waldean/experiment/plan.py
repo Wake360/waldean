@@ -40,6 +40,8 @@ def design(prof: dict, csv_path: Path, out_dir: Path, goal: str, exclude: list[s
     for col in exclude:
         if col not in prof["columns"]:
             raise PlanError(f"--exclude {col!r} is not a column")
+        if col == prof["target"]:
+            raise PlanError(f"--exclude {col!r} is the target")
     col = choose_time_column(prof, time_column)
     if col is not None and next(t for t in prof["time_columns"] if t["column"] == col)["ambiguous"]:
         raise PlanError(f"dates in {col!r} read differently day-first and month-first; rewrite them as YYYY-MM-DD")
@@ -100,14 +102,18 @@ def contradictions(plan: dict, prof: dict) -> list[str]:
     split = plan["split"]
     if split.get("kind") not in SPLIT_KINDS:
         raise PlanError(f"split.kind must be one of {list(SPLIT_KINDS)}, got {split.get('kind')!r}")
-    if split.get("override_reason"):
-        return []
+    fields = []
     names = time_column_names(prof)
-    if split["kind"] == "temporal_holdout" and split.get("column") not in names:
-        return ["split.column"]
-    if split["kind"] != "temporal_holdout" and names:
-        return ["split.kind"]
-    return []
+    if not split.get("override_reason"):
+        if split["kind"] == "temporal_holdout" and split.get("column") not in names:
+            fields.append("split.column")
+        elif split["kind"] != "temporal_holdout" and names:
+            fields.append("split.kind")
+    banned = {plan["target"], split.get("column")} | {e["column"] for e in plan["excluded_columns"]}
+    features = plan["features"]["numeric"] + plan["features"]["categorical"]
+    if any(c not in prof["columns"] or c in banned for c in features):
+        fields.append("features")
+    return fields
 
 
 def design_md(plan: dict, prof: dict) -> str:

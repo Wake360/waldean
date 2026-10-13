@@ -130,7 +130,7 @@ def test_contradictions(tmp_path):
     plan["split"]["override_reason"] = "rows are i.i.d. snapshots"
     assert contradictions(plan, prof) == []
     plan["split"] = {"kind": "temporal_holdout", "column": "plan", "test_fraction": 0.2, "n_splits": 5}
-    assert contradictions(plan, prof) == ["split.column"]
+    assert contradictions(plan, prof) == ["split.column", "features"]
 
 
 def test_unknown_split_kind_is_refused(tmp_path):
@@ -388,3 +388,25 @@ def test_single_class_train_fold_is_skipped(tmp_path):
     line = stdout_lines(run_rendered(tmp_path, render(plan)), "WALDEAN_METRICS ")[-1]
     metrics = json.loads(line.removeprefix("WALDEAN_METRICS "))
     assert metrics["skipped_folds"] >= 1 and len(metrics["cv"]["candidate"]) == 18 - metrics["skipped_folds"]
+
+
+@pytest.mark.parametrize("name", ["churn", "nope", "snapshot", "account"])
+def test_bad_feature_names_contradict_the_plan(tmp_path, name):
+    plan, prof = planned(tmp_path, exclude=["account"])
+    assert contradictions(plan, prof) == []
+    plan["features"]["categorical"].append(name)
+    assert contradictions(plan, prof) == ["features"]
+    plan["split"]["override_reason"] = "test"
+    assert contradictions(plan, prof) == ["features"]
+
+
+def test_split_fields_come_before_features(tmp_path):
+    plan, prof = planned(tmp_path)
+    plan["split"]["kind"] = "stratified_kfold"
+    plan["features"]["numeric"] += ["churn", "nope"]
+    assert contradictions(plan, prof) == ["split.kind", "features"]
+
+
+def test_excluding_the_target_is_refused(tmp_path):
+    with pytest.raises(PlanError, match="is the target"):
+        planned(tmp_path, exclude=["churn"])
