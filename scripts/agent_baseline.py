@@ -604,6 +604,43 @@ def cmd_redact(args) -> int:
     return 0
 
 
+def kappa(first: dict[str, str], second: dict[str, str]) -> tuple[int, int, float | None]:
+    runs = sorted(set(first) & set(second))
+    if not runs:
+        return (0, 0, None)
+    agree = sum(first[r] == second[r] for r in runs)
+    pf = sum(first[r] == "fail" for r in runs) / len(runs)
+    ps = sum(second[r] == "fail" for r in runs) / len(runs)
+    pe = pf * ps + (1 - pf) * (1 - ps)
+    return (agree, len(runs), None if pe == 1 else (agree / len(runs) - pe) / (1 - pe))
+
+
+def cmd_kappa(args) -> int:
+    key = json.loads((args.runs.parent / f"{args.runs.name}-redaction-key.json").read_text(encoding="utf-8"))
+    crits = list(manifest()["criteria"])
+    second = {c: {} for c in crits}
+    with (BENCH / "second-rater.tsv").open(encoding="utf-8") as f:
+        for r in csv.DictReader(f, delimiter="\t"):
+            second[r["criterion"]][key[r["run"]]] = r["ruling"]
+    first = {c: {} for c in crits}
+    with (BENCH / "results-first-rater.tsv").open(encoding="utf-8") as f:
+        for r in csv.DictReader(f, delimiter="\t"):
+            for c in crits:
+                if r["run"] in key.values() and r.get(c) in ("pass", "fail"):
+                    first[c][r["run"]] = r[c]
+    pooled_first, pooled_second = {}, {}
+    for c in crits:
+        agree, n, k = kappa(first[c], second[c])
+        if n:
+            print(f"{c}: agreement {agree}/{n} kappa {'-' if k is None else format(k, '.2f')}")
+            print(f"{c}: disagree", sorted(r for r in set(first[c]) & set(second[c]) if first[c][r] != second[c][r]))
+        pooled_first.update({f"{c}:{r}": v for r, v in first[c].items()})
+        pooled_second.update({f"{c}:{r}": v for r, v in second[c].items()})
+    agree, n, k = kappa(pooled_first, pooled_second)
+    print(f"pooled: agreement {agree}/{n} kappa {'-' if k is None else format(k, '.2f')}")
+    return 0
+
+
 def detector_counts(rows: list[dict]) -> dict[str, int]:
     out = {"flag_fail": 0, "flag_pass": 0, "noflag_fail": 0, "noflag_pass": 0}
     for r in rows:
@@ -672,7 +709,7 @@ def main() -> int:
     global BENCH, MANIFEST, SCORING
     p = argparse.ArgumentParser(prog="agent_baseline")
     sub = p.add_subparsers(dest="cmd", required=True)
-    for name in ("prep", "run", "score", "similar", "redact"):
+    for name in ("prep", "run", "score", "similar", "redact", "kappa"):
         s = sub.add_parser(name)
         s.add_argument("--bench", default="agent-baseline")
         s.add_argument("--data", type=Path)
@@ -693,7 +730,7 @@ def main() -> int:
     args.data = args.data or ROOT / "scratch" / args.bench / "data"
     args.runs = args.runs or AGENT_ROOT / f"runs{suffix}"
     return {"prep": cmd_prep, "run": cmd_run, "score": cmd_score,
-            "similar": cmd_similar, "redact": cmd_redact}[args.cmd](args)
+            "similar": cmd_similar, "redact": cmd_redact, "kappa": cmd_kappa}[args.cmd](args)
 
 
 if __name__ == "__main__":

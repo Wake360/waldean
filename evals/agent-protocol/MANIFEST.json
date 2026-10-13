@@ -108,7 +108,8 @@
     "bindings": "One session-agent reviewer per dataset reads each notebook in full, unblinded to arm (C notebooks reference holdout.csv), and writes scoring.tsv.",
     "second_rater": "A fresh agent rules selection pass/fail on redacted B and C notebooks (scripts/agent_baseline.py redact --arms B C, seed 20261020; notebook and cell metadata cleared) seeing only criteria.selection and binding.PROBE_SELECTED_ON.",
     "adjudication": "Disagreements go to a third fresh agent with the redacted notebook and both rulings. The adjudicated ruling sets PROBE_SELECTED_ON in scoring.tsv before scoring.",
-    "agreement": "Cohen's kappa between first and second rater is reported."
+    "agreement": "Cohen's kappa between first and second rater is reported.",
+    "note": "Superseded for the second rater, agreement and adjudication by amendments[1].rating."
   },
   "order": "jobs shuffled with random.Random(20261020) within each --only batch",
   "independence": "--jobs 1. /private/tmp/claude is swept into the run dir before and after each arm run. Agents also write scratch files to /private/tmp/claude-<uid>, which holds Claude Code session state and is never swept wholesale: each run records the entries it added there (meta.json user_tmp_new), and before each --only batch and before any rerun the entries listed in user_tmp_new of finished runs (except cache-break-state-*) are moved to /private/tmp/waldean-agent-baseline/stale-scratch/. scripts/agent_baseline.py similar must report no pair >= 0.6 before scoring, else the later run is excluded and rerun.",
@@ -236,6 +237,19 @@
         "per_criterion": "Failure counts per criterion per arm, descriptive only."
       },
       "integrity": "Written and committed before scoring. The commit date of this amendment and the first binding row in scoring.tsv prove the order. Any analysis not listed here or in the original decision is exploratory and must be labelled so."
+    },
+    {
+      "id": 2,
+      "date": "2026-10-13T20:25+02:00",
+      "state_when_written": "55 of 192 runs finished (meters complete, warranty in progress). No run scored, no binding written, no criterion ruled. Nothing beyond amendment 1's partial information was seen.",
+      "reason": "The registered blinding covers only selection. Temporal and group rulings come from the first reviewer's PROBE_EVALS binding, written unblinded to arm. Both arms of the primary comparison differ most on exactly these criteria, so an unblinded binding is where rater bias would enter. This amendment extends the second-rater and adjudication procedure to every applicable criterion.",
+      "rating": {
+        "second_rater": "A fresh agent rules pass or fail for every applicable criterion (temporal, group, selection) on each redacted B and C notebook (scripts/agent_baseline.py redact --arms B C, seed 20261020), seeing only the criterion texts from criteria, the binding definitions of PROBE_EVALS and PROBE_SELECTED_ON, and columns.csv. It writes evals/agent-protocol/second-rater.tsv with columns run, criterion, ruling, one row per applicable criterion. Leak stays mechanical (feature name match) and is not re-rated.",
+        "agreement": "Cohen's kappa and raw agreement between first and second rater, per criterion and pooled, via scripts/agent_baseline.py kappa, reported in the eval file.",
+        "adjudication": "Every disagreement, on any criterion, goes to a third fresh agent with the redacted notebook, the criterion text and both rulings unlabelled. Where the third agrees with the second, the first reviewer corrects the binding in scoring.tsv (PROBE_EVALS for temporal and group, PROBE_SELECTED_ON for selection) so that the mechanical probe gives the adjudicated ruling. The notebook sha256 does not change. Final scoring runs after all corrections.",
+        "unchanged": "First reviewer procedure, probes, criteria, redaction, seed, decision rules."
+      },
+      "integrity": "Written and committed before scoring; order proven by commit date against the first row of scoring.tsv."
     }
   ]
 }

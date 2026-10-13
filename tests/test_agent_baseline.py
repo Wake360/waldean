@@ -195,3 +195,38 @@ def test_mantel_haenszel_two_strata():
     odds, low, high = ab.mantel_haenszel([(4, 16, 1, 19), (3, 17, 1, 19)])
     assert 4.0 < odds < 4.5
     assert low < odds < high
+
+
+def test_kappa_matches_hand_computation():
+    first = {"a": "fail", "b": "pass", "c": "pass", "d": "fail"}
+    second = {"a": "fail", "b": "pass", "c": "fail", "d": "fail", "e": "pass"}
+    agree, n, k = ab.kappa(first, second)
+    assert (agree, n) == (3, 4)
+    assert abs(k - 0.5) < 1e-9
+
+
+def test_kappa_all_pass_is_undefined():
+    assert ab.kappa({"a": "pass"}, {"a": "pass"}) == (1, 1, None)
+
+
+def test_cmd_kappa_reads_per_criterion(tmp_path, monkeypatch, capsys):
+    import json
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    (tmp_path / "runs-redaction-key.json").write_text(json.dumps({"nb-000": "s-claude-B-0", "nb-001": "s-claude-C-0"}))
+    bench = tmp_path / "bench"
+    bench.mkdir()
+    (bench / "MANIFEST.json").write_text(json.dumps({"criteria": {"temporal": {}, "selection": {}}}))
+    (bench / "second-rater.tsv").write_text("run\tcriterion\truling\nnb-000\ttemporal\tfail\nnb-000\tselection\tpass\n"
+                                            "nb-001\ttemporal\tpass\nnb-001\tselection\tpass\n")
+    (bench / "results-first-rater.tsv").write_text("run\tvariant\ttemporal\tselection\ns-claude-B-0\tB\tpass\tpass\n"
+                                                   "s-claude-C-0\tC\tpass\tpass\ns-claude-A-0\tA\tfail\tfail\n")
+    monkeypatch.setattr(ab, "BENCH", bench)
+    monkeypatch.setattr(ab, "MANIFEST", bench / "MANIFEST.json")
+    args = type("A", (), {"runs": runs})()
+    assert ab.cmd_kappa(args) == 0
+    out = capsys.readouterr().out
+    assert "temporal: agreement 1/2" in out
+    assert "temporal: disagree ['s-claude-B-0']" in out
+    assert "selection: agreement 2/2 kappa -" in out
+    assert "pooled: agreement 3/4" in out
