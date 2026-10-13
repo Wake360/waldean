@@ -158,7 +158,8 @@ def cmd_run(args) -> int:
               file=sys.stderr)
         return 3
     jobs = [(d, agent, variant, n) for d in m["datasets"] if not args.only or d["name"] in args.only
-            for agent in m["agents"] for variant, n in variants(m) if variant == "default" or d.get("hint")]
+            for agent in m["agents"] if not args.agents or agent in args.agents
+            for variant, n in variants(m) if variant == "default" or d.get("hint")]
     codex_home = Path(tempfile.mkdtemp(prefix="waldean-codex-home-"))
     (codex_home / "auth.json").symlink_to(Path.home() / ".codex" / "auth.json")
     try:
@@ -424,6 +425,7 @@ def main() -> int:
         s.add_argument("--runs", type=Path)
         s.add_argument("--python", type=Path, default=AGENT_ROOT / "venv" / "bin")
         s.add_argument("--only", nargs="*")
+        s.add_argument("--agents", nargs="*")
         s.add_argument("--timeout", type=int, default=1800)
         s.add_argument("--jobs", type=int, default=4)
     args = p.parse_args()
