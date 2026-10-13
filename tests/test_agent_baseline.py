@@ -22,3 +22,24 @@ def test_usage_limited_claude_message():
 
 def test_usage_limited_ignores_normal_log():
     assert not ab.usage_limited("wrote experiment.ipynb\nroc_auc 0.71 within the limit of the data\n")
+
+
+def test_wilson_matches_manifest_example():
+    low, high = ab.wilson(2, 10)
+    assert round(low, 3) == 0.057 and round(high, 3) == 0.510
+
+
+def test_wilson_zero_runs():
+    assert ab.wilson(0, 0) == (0.0, 1.0)
+
+
+def test_detector_counts_skips_unscored_rows():
+    rows = [
+        {"selection": "fail", "check": "leakage-test-selection"},
+        {"selection": "pass", "check": "leakage-test-selection,leakage-fit-before-split"},
+        {"selection": "fail", "check": ""},
+        {"selection": "pass", "check": ""},
+        {"selection": "unbound", "check": "leakage-test-selection"},
+        {"check": ""},
+    ]
+    assert ab.detector_counts(rows) == {"flag_fail": 1, "flag_pass": 1, "noflag_fail": 1, "noflag_pass": 1}

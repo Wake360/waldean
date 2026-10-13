@@ -3,6 +3,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import shutil
@@ -338,6 +339,26 @@ def render(m: dict, rows: list[dict]) -> str:
     return "\n".join(out)
 
 
+def wilson(k: int, n: int) -> tuple[float, float]:
+    if n == 0:
+        return (0.0, 1.0)
+    z = 1.96
+    p = k / n
+    centre = p + z * z / (2 * n)
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+    return ((centre - half) / (1 + z * z / n), (centre + half) / (1 + z * z / n))
+
+
+def detector_counts(rows: list[dict]) -> dict[str, int]:
+    out = {"flag_fail": 0, "flag_pass": 0, "noflag_fail": 0, "noflag_pass": 0}
+    for r in rows:
+        if r.get("selection") not in ("pass", "fail"):
+            continue
+        flagged = "leakage-test-selection" in r["check"].split(",")
+        out[f"{'flag' if flagged else 'noflag'}_{r['selection']}"] += 1
+    return out
+
+
 def gate_v2(fails: int, total: int, open_runs: int) -> str:
     if open_runs or total == 0:
         return "incomplete"
@@ -347,10 +368,10 @@ def gate_v2(fails: int, total: int, open_runs: int) -> str:
 def render_v2(m: dict, rows: list[dict]) -> str:
     crits = list(m["criteria"])
     agents = list(m["agents"])
-    out = [f"# Agent baseline v2, {date.today().isoformat()}", "",
-           "Indicative only. Pre-registered criteria and gate in `agent-baseline-v2/MANIFEST.json`.", "",
-           "| criterion | datasets | " + " | ".join(f"{a} fail" for a in agents) + " | failure rate | gate |",
-           "|---|---|" + "---|" * len(agents) + "---|---|"]
+    out = [f"# {BENCH.name}, {date.today().isoformat()}", "",
+           f"Indicative only. Pre-registered criteria and gate in `{BENCH.name}/MANIFEST.json`.", "",
+           "| criterion | datasets | " + " | ".join(f"{a} fail" for a in agents) + " | failure rate | 95% CI | gate |",
+           "|---|---|" + "---|" * len(agents) + "---|---|---|"]
     for c in crits:
         mine = [r for r in rows if r.get(c)]
         fails = [r for r in mine if r[c] != "pass"]
@@ -358,7 +379,12 @@ def render_v2(m: dict, rows: list[dict]) -> str:
         names = ", ".join(dict.fromkeys(r["dataset"] for r in mine))
         per_agent = [f"{sum(r['agent'] == a for r in fails)}/{sum(r['agent'] == a for r in mine)}" for a in agents]
         rate = f"{len(fails) / len(mine):.0%}" if mine else "-"
-        out.append(f"| {c} | {names} | " + " | ".join(per_agent) + f" | {rate} | {gate_v2(len(fails), len(mine), open_runs)} |")
+        low, high = wilson(len(fails), len(mine))
+        gate = gate_v2(len(fails), len(mine), open_runs)
+        if gate != "incomplete" and low < 0.2 <= high:
+            gate += " (interval includes 20%)"
+        out.append(f"| {c} | {names} | " + " | ".join(per_agent)
+                   + f" | {rate} | {low:.0%}-{high:.0%} | {gate} |")
     out += ["", "## Per dataset", "", "| dataset | criterion | " + " | ".join(f"{a} pass" for a in agents) + " |",
             "|---|---|" + "---|" * len(agents)]
     for d in m["datasets"]:
@@ -367,6 +393,18 @@ def render_v2(m: dict, rows: list[dict]) -> str:
             out.append(f"| {d['name']} | {c} | " + " | ".join(
                 f"{sum(r.get(c) == 'pass' for r in mine if r['agent'] == a)}/{sum(r['agent'] == a for r in mine)}"
                 for a in agents) + " |")
+    if "selection" in crits:
+        k = detector_counts(rows)
+        flagged = k["flag_fail"] + k["flag_pass"]
+        fails = k["flag_fail"] + k["noflag_fail"]
+        p_low, p_high = wilson(k["flag_fail"], flagged)
+        r_low, r_high = wilson(k["flag_fail"], fails)
+        out += ["", "## leakage-test-selection vs manual selection ruling", "",
+                "| | ruling fail | ruling pass |", "|---|---|---|",
+                f"| flagged | {k['flag_fail']} | {k['flag_pass']} |",
+                f"| not flagged | {k['noflag_fail']} | {k['noflag_pass']} |", "",
+                f"Precision {k['flag_fail']}/{flagged} (95% CI {p_low:.0%}-{p_high:.0%}), "
+                f"recall {k['flag_fail']}/{fails} (95% CI {r_low:.0%}-{r_high:.0%})."]
     out += ["", "## Runs", "", "| run | cli | " + " | ".join(crits) + " | headline | waldean check (confident) |",
             "|---|---|" + "---|" * len(crits) + "---|---|"]
     out += [f"| {r['run']} | {r['cli_version']} | " + " | ".join(r.get(c) or "n/a" for c in crits)
