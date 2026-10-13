@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 from pathlib import Path
+from typing import cast
 
 import pandas as pd
 
@@ -19,6 +20,10 @@ LEAK_CORRELATION = 0.95
 MAX_PURITY_LEVELS = 50
 MIN_GROUPS = 20
 ID_NAME_RE = re.compile(r"(?i)(^|_)(id|key|code|no|num)($|_)|id$")
+
+
+def column(df: pd.DataFrame, col: str) -> pd.Series:
+    return cast(pd.Series, df[col])
 
 
 def sha256(path: str | Path) -> str:
@@ -70,36 +75,35 @@ def target_info(y: pd.Series, task: str) -> dict:
     if task == "regression":
         if not pd.api.types.is_numeric_dtype(y):
             raise ValueError("regression needs a numeric target")
-        stats = y.describe()
-        return {"target_stats": {k: round(float(stats[k]), 4) for k in ("mean", "std", "min", "max")}}
-    counts = y.value_counts()
-    values = sorted(counts.index.tolist())
+        return {"target_stats": {k: round(float(getattr(y, k)()), 4) for k in ("mean", "std", "min", "max")}}
+    counts = {k: int(v) for k, v in y.value_counts().items()}
+    values = sorted(counts, key=lambda k: (str(type(k)), k))
     if task == "binary" and len(values) != 2:
         raise ValueError(f"target needs exactly 2 values for a binary task, found {len(values)}")
     if len(values) > MAX_CLASSES:
         raise ValueError(f"target has {len(values)} classes; at most {MAX_CLASSES} classes are supported")
     info = {"target_values": values,
-            "class_counts": {str(v): int(counts[v]) for v in values},
-            "minority_share": round(float(counts.min() / counts.sum()), 4)}
+            "class_counts": {str(v): counts[v] for v in values},
+            "minority_share": round(min(counts.values()) / sum(counts.values()), 4)}
     if task == "binary":
         info |= {"positive_label": values[1], "positive_rate": round(float((y == values[1]).mean()), 4)}
     return info
 
 
 def leak_reason(df: pd.DataFrame, col: str, target: str, task: str) -> str | None:
-    labelled = df[df[target].notna() & df[col].notna()]
+    labelled = df.loc[column(df, target).notna() & column(df, col).notna()]
     if len(labelled) < 2:
         return None
-    if pd.api.types.is_numeric_dtype(df[col]) and task != "multiclass":
-        y = labelled[target]
+    x, y = column(labelled, col), column(labelled, target)
+    if pd.api.types.is_numeric_dtype(x) and task != "multiclass":
         if task == "binary":
             y = (y == sorted(y.unique().tolist())[1]).astype(int)
-        rho = labelled[col].corr(y, method="spearman")
+        rho = float(x.corr(y, method="spearman"))
         if pd.notna(rho) and abs(rho) >= LEAK_CORRELATION:
             return f"spearman correlation {abs(rho):.2f} with the target"
         return None
-    if task != "regression" and not pd.api.types.is_numeric_dtype(df[col]):
-        levels = labelled[col].nunique()
+    if task != "regression" and not pd.api.types.is_numeric_dtype(x):
+        levels = x.nunique()
         if 2 <= levels <= MAX_PURITY_LEVELS and labelled.groupby(col)[target].nunique().max() == 1:
             return "every value maps to one target class"
     return None
@@ -110,7 +114,7 @@ def suspect_columns(df: pd.DataFrame, target: str, task: str, skip: set[str]) ->
     for col in df.columns:
         if col == target or col in skip:
             continue
-        values = df[col].dropna()
+        values = column(df, col).dropna()
         n, rows = values.nunique(), len(values)
         if n <= 1:
             found.append({"column": str(col), "kind": "constant", "reason": "constant: one value in every row"})
@@ -130,7 +134,7 @@ def group_columns(df: pd.DataFrame, target: str, skip: set[str]) -> list[dict]:
     for col in df.columns:
         if col == target or col in skip:
             continue
-        values = df[col].dropna()
+        values = column(df, col).dropna()
         if pd.api.types.is_float_dtype(values) or pd.api.types.is_bool_dtype(values):
             continue
         if pd.api.types.is_numeric_dtype(values) and not ID_NAME_RE.search(str(col)):
@@ -147,11 +151,12 @@ def profile(csv_path: str | Path, target: str, task: str | None = None) -> dict:
     df = pd.read_csv(path)
     if target not in df.columns:
         raise ValueError(f"target column {target!r} not in {path.name}")
-    task = task or infer_task(df[target])
+    task = task or infer_task(column(df, target))
     if task not in TASKS:
         raise ValueError(f"task must be one of {list(TASKS)}, got {task!r}")
-    labelled = df[df[target].notna()]
-    info = target_info(labelled[target], task)
+    labelled = df.loc[column(df, target).notna()]
+    y = column(labelled, target)
+    info = target_info(y, task)
     times = time_columns(df, target)
     suspects = suspect_columns(df, target, task, {t["column"] for t in times})
     return {
@@ -160,7 +165,7 @@ def profile(csv_path: str | Path, target: str, task: str | None = None) -> dict:
         "numeric": [str(c) for c in df.columns if c != target and pd.api.types.is_numeric_dtype(df[c])],
         "target": target,
         "task": task,
-        "target_distinct": int(labelled[target].nunique()),
+        "target_distinct": int(y.nunique()),
         **info,
         "time_columns": times,
         "suspects": suspects,

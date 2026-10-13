@@ -134,7 +134,7 @@ def test_contradictions(tmp_path):
 
 def test_unknown_split_kind_is_refused(tmp_path):
     plan, prof = planned(tmp_path)
-    plan["split"]["kind"] = "group_kfold"
+    plan["split"]["kind"] = "leave_one_out"
     with pytest.raises(PlanError, match="split.kind"):
         contradictions(plan, prof)
 

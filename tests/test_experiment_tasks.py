@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from waldean.experiment.plan import TASKS, PlanError, contradictions, design, design_md
 from waldean.experiment.profile import infer_task, profile
 
 
@@ -192,3 +193,122 @@ def test_id_time_and_binary_columns_are_not_groups(tmp_path):
     df.to_csv(path, index=False)
     names = [g["column"] for g in profile(path, target)["group_columns"]]
     assert names == ["store"]
+
+
+def designed(tmp_path, task, **kw):
+    path, target = make_csv(tmp_path / "d.csv", task)
+    prof = profile(path, target)
+    args = {"goal": "", "exclude": [], "time_column": None, "seed": 0} | kw
+    return design(prof, path, tmp_path / "exp", **args), prof
+
+
+@pytest.mark.parametrize("task", ["binary", "multiclass", "regression"])
+def test_plan_takes_models_and_metrics_from_the_task(tmp_path, task):
+    plan, _ = designed(tmp_path, task)
+    assert plan["task"] == task
+    assert plan["models"] == TASKS[task]["models"] and plan["metrics"] == TASKS[task]["metrics"]
+    assert "accuracy" not in plan["metrics"]
+    assert ("positive_label" in plan) == (task == "binary")
+
+
+def test_suspects_are_excluded_with_their_reason(tmp_path):
+    plan, prof = designed(tmp_path, "binary")
+    excluded = {e["column"]: e["reason"] for e in plan["excluded_columns"]}
+    assert set(excluded) >= {"const", "customer_id", "status", "store"}
+    assert excluded["status"] == "every value maps to one target class"
+    assert excluded["store"] == "group column, used for the split only"
+    features = plan["features"]["numeric"] + plan["features"]["categorical"]
+    assert set(features) == {"x1", "x2", "plan"}
+
+
+def test_one_group_candidate_gives_group_kfold(tmp_path):
+    plan, _ = designed(tmp_path, "binary")
+    assert plan["split"] == {"kind": "group_kfold", "column": "store", "test_fraction": 0.2, "n_splits": 5}
+    assert any("store" in a and "one side" in a for a in plan["assumptions"])
+
+
+def test_group_none_opts_out(tmp_path):
+    plan, _ = designed(tmp_path, "binary", group_column="none")
+    assert plan["split"]["kind"] == "stratified_kfold"
+    assert "store" in plan["features"]["categorical"]
+
+
+def test_regression_without_time_or_group_gives_kfold(tmp_path):
+    plan, prof = designed(tmp_path, "regression", group_column="none")
+    assert plan["split"]["kind"] == "kfold" and plan["split"]["column"] is None
+    assert plan["split"]["override_reason"] == "group split declined by the user (--group-column none)"
+    assert contradictions(plan, prof) == []
+    path = tmp_path / "plain.csv"
+    pd.DataFrame({"x": np.linspace(0, 1, 200), "y": np.linspace(0, 2, 200)}).to_csv(path, index=False)
+    plan = design(profile(path, "y"), path, tmp_path / "exp", "", [], None, 0)
+    assert plan["split"] == {"kind": "kfold", "column": None, "test_fraction": 0.2, "n_splits": 5}
+
+
+def test_several_group_candidates_need_a_choice(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    df = pd.read_csv(path)
+    df["region"] = [f"R{i % 25}" for i in range(len(df))]
+    df.to_csv(path, index=False)
+    prof = profile(path, target)
+    with pytest.raises(PlanError, match="--group-column"):
+        design(prof, path, tmp_path / "exp", "", [], None, 0)
+    plan = design(prof, path, tmp_path / "exp", "", [], None, 0, group_column="region")
+    assert plan["split"]["column"] == "region" and "store" in plan["features"]["categorical"]
+
+
+def test_unknown_group_column_is_refused(tmp_path):
+    with pytest.raises(PlanError, match="not a group column"):
+        designed(tmp_path, "binary", group_column="plan")
+
+
+def test_time_column_beats_group_column(tmp_path):
+    path, target = make_csv(tmp_path / "d.csv", "binary")
+    df = pd.read_csv(path)
+    df["month"] = pd.period_range("2022-01", periods=24, freq="M").astype(str)[np.arange(len(df)) % 24]
+    df.to_csv(path, index=False)
+    plan = design(profile(path, target), path, tmp_path / "exp", "", [], None, 0)
+    assert plan["split"]["kind"] == "temporal_holdout" and plan["split"]["column"] == "month"
+    assert "store" in plan["features"]["categorical"]
+    assert any("store" in a and "several periods" in a for a in plan["assumptions"])
+
+
+def test_keep_puts_a_suspect_back_with_a_note(tmp_path):
+    plan, prof = designed(tmp_path, "binary", keep=["status"])
+    assert "status" in plan["features"]["categorical"] and plan["kept_columns"] == ["status"]
+    assert "status" not in {e["column"] for e in plan["excluded_columns"]}
+    text = design_md(plan, prof)
+    assert "status" in text and "kept by the user (--keep)" in text
+
+
+def test_keep_of_a_non_suspect_is_refused(tmp_path):
+    with pytest.raises(PlanError, match="was not excluded"):
+        designed(tmp_path, "binary", keep=["x1"])
+
+
+def test_design_md_explains_task_imbalance_and_split(tmp_path):
+    plan, prof = designed(tmp_path, "multiclass")
+    text = design_md(plan, prof)
+    assert "Task: multiclass (3 classes)" in text
+    assert "group_kfold on store" in text and "40 distinct values" in text
+    assert "accuracy is not among the metrics" in text or "not imbalanced" in text
+    plan, prof = designed(tmp_path, "regression", group_column="none")
+    text = design_md(plan, prof)
+    assert "Task: regression" in text and "5-fold CV" in text and "Positive class" not in text
+
+
+def test_group_contradictions(tmp_path):
+    plan, prof = designed(tmp_path, "binary")
+    assert contradictions(plan, prof) == []
+    plan["split"]["kind"] = "stratified_kfold"
+    plan["split"]["column"] = None
+    assert contradictions(plan, prof) == ["split.kind"]
+    plan["split"]["override_reason"] = "stores are interchangeable here"
+    assert contradictions(plan, prof) == []
+    plan["split"] = {"kind": "group_kfold", "column": "plan", "test_fraction": 0.2, "n_splits": 5}
+    assert "split.column" in contradictions(plan, prof)
+
+
+def test_task_mismatch_is_a_contradiction(tmp_path):
+    plan, prof = designed(tmp_path, "binary")
+    plan["task"] = "regression"
+    assert "task" in contradictions(plan, prof)
