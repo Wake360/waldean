@@ -30,7 +30,7 @@ The gate column is the v3 gate rule applied to two runs. It is printed by the sc
 
 ## Scores
 
-Candidate is `HistGradientBoostingClassifier(early_stopping=False)`, baseline is `DummyClassifier(strategy='prior')`. Holdout is the last 20% of time periods. CV is `TimeSeriesSplit(5)` over the training periods only.
+Candidate is `HistGradientBoostingClassifier(early_stopping=False)`, baseline is `DummyClassifier(strategy='prior')`. Holdout is the last 20% of distinct time values: for maintenance the last 1196 of 5978 distinct `inspected_at` timestamps, 1201/6000 rows; for subscriptions the last 5 of 23 months, 4068/14759 rows. CV is `TimeSeriesSplit(5)` over the training periods only.
 
 | dataset | model | holdout ROC AUC | holdout average precision | holdout balanced accuracy | CV ROC AUC mean (min-max) | CV average precision mean |
 |---|---|---|---|---|---|---|
@@ -48,9 +48,9 @@ The Builder does not detect ID columns or leaking columns. A human read `columns
 - maintenance: `--exclude asset_tag --exclude parts_replaced` (ID column, documented post-outcome leak)
 - subscriptions: `--exclude account_ref --exclude lifetime_months` (ID column, documented post-outcome leak)
 
-Maintenance also needed `--time-column inspected_at`. Without it `waldean create` stops with `several time columns ['asset_tag', 'inspected_at']`: the profile parses asset IDs such as `AT-05534` as dates. Subscriptions needed no `--time-column`.
+The first maintenance attempt, as the brief wrote it, failed with `several time columns ['asset_tag', 'inspected_at']`: the profile took `asset_tag` for a time column, because `AT-05534` parsed as the year 5534. The scored maintenance run was then created with `--time-column inspected_at`. Commit 6c8e992 fixed the profile: strings that parse to years outside 1900..2100 no longer count as dates. A rerun without `--time-column` (create, build, run into `/private/tmp/waldean-agent-baseline/runs-builder-rerun/maintenance-builder-default-0`) picked only `inspected_at`. Plan, built notebook and metrics are byte-identical, and the executed notebook matches apart from the cell execution timestamps. The scored run stays the original one. Subscriptions needed no `--time-column`.
 
-Commands, with `D=scratch/agent-baseline-v2/data` (sha256 of both `data.csv` files checked against the v3 MANIFEST) and `R=/private/tmp/waldean-agent-baseline/runs-builder`:
+Commands, with `D=/Users/filipvachek/dev/waldean/scratch/agent-baseline-v2/data` (the main checkout's gitignored scratch; sha256 of both `data.csv` files checked against the v3 MANIFEST) and `R=/private/tmp/waldean-agent-baseline/runs-builder`:
 
 ```bash
 uv run waldean create $D/maintenance/data.csv --target failed_90d --exclude asset_tag --exclude parts_replaced --time-column inspected_at --out $R/maintenance-builder-default-0
@@ -73,7 +73,16 @@ PROBE_SELECTED_ON = []
 
 ## Determinism
 
-`waldean build` run twice on each experiment: `cmp` of `experiment.ipynb` finds no difference, both datasets. `waldean run` run twice: `cmp` of `evidence/metrics.json` finds no difference, both datasets.
+After the first build and run of each experiment, `experiment.ipynb` and `evidence/metrics.json` were copied aside. Then, per dataset:
+
+```bash
+uv run waldean build $R/<dataset>-builder-default-0
+cmp <saved>/<dataset>-build1.ipynb $R/<dataset>-builder-default-0/experiment.ipynb
+uv run waldean run $R/<dataset>-builder-default-0
+cmp <saved>/<dataset>-metrics1.json $R/<dataset>-builder-default-0/evidence/metrics.json
+```
+
+Output: `maintenance build identical`, `maintenance metrics identical`, `subscriptions build identical`, `subscriptions metrics identical`. `cmp` printed nothing and exited 0 in all four cases.
 
 ## Limits
 

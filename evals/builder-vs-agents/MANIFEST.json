@@ -1,7 +1,7 @@
 {
   "schema": 2,
   "registered": "2026-10-13",
-  "status": "registered before any v3 agent run",
+  "status": "derived after the v3 results; not pre-registered",
   "supersedes_nothing": "v2 results in ../agent-baseline-v2/ stand as recorded; v3 is a separate measurement on the same datasets.",
   "data": {
     "generator": "scripts/agent_baseline_v2_data.py",
