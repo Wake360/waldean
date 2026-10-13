@@ -106,11 +106,13 @@ For `leakage-fit-before-split`, `waldean check --probe` runs an `.ipynb` up to t
   re-adjudicated, and two files Waldean could not analyse count as not
   flagged
   ([`evals/2026-10-13-yang-pre.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-yang-pre.md)).
-- Misses cluster in leaks with no split call to anchor on (train/test
-  taken by slicing, refit on test), Keras `Tokenizer`, and statistics
-  computed inside function bodies, which the dataflow does not analyse. A
-  scaler fit on full data that feeds `cross_val_score` is reported only as
-  a candidate below the 0.8 floor, by design. Python 2 cells are not
+- Later changes catch some misses of that eval (see CHANGELOG, Unreleased,
+  and `evals/2026-10-13-yang-pre-rerun.md`). Misses that remain: a split
+  returned from a helper or reached more than one helper level deep, test
+  data known only by name, a manual `KFold.split` loop, and files over
+  the input size cap. A scaler fit on full data that feeds
+  `cross_val_score` is reported only as a candidate below the 0.8 floor,
+  by design. Python 2 cells are not
   parsed, so leaks in them are missed.
 - The 0.0% false-positive rate holds on the curated corpus, not on messy
   real code.
