@@ -374,7 +374,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                         f"`{call.func}(...)` consumes {_join_names(leaked)}, "
                         f"feeding {how} (cell {sink.cell}) — "
                         f"the fit happened before the split"
-                    ), sink_cell=sink.cell, receiver=call.receiver, arg=probe_arg(call))
+                    ), sink_cell=sink.cell, sink=sink.name, receiver=call.receiver, arg=probe_arg(call))
                 else:
                     if not on_chain:
                         continue
@@ -387,7 +387,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                         f"transformed output feeds `{sink.name}` (cell {sink.cell}); "
                         f"every CV fold's test rows were in the transformer fit"
                         + (" (fitted with labels)" if supervised else "")
-                    ), sink_cell=sink.cell, receiver=call.receiver, arg=probe_arg(call))
+                    ), sink_cell=sink.cell, sink=sink.name, receiver=call.receiver, arg=probe_arg(call))
 
         # -- imputation with statistics of the same frame, before the split --
         elif call.name in {"fillna", "replace"} and call.receiver is not None:
@@ -447,13 +447,13 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                         f"`{stat.func}(...)` is computed over the full `{base}` and written back "
                         f"into `{base}` before {how} (cell {sink.cell}); "
                         f"the statistic includes the test rows"
-                    ), key=f"impute:{base}")
+                    ), key=f"impute:{base}", sink_cell=sink.cell, sink=sink.name)
                 else:
                     emit(stat, 0.75, {base}, (
                         f"`{stat.func}(...)` is computed over the full `{base}` and written back "
                         f"into `{base}` whose rows feed `{sink.name}` (cell {sink.cell}); "
                         f"every CV fold's test rows were in the statistic"
-                    ), key=f"impute:{base}", sink_cell=sink.cell)
+                    ), key=f"impute:{base}", sink_cell=sink.cell, sink=sink.name)
                 break
 
     return list(best.values())

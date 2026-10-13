@@ -16,6 +16,15 @@
   fix: >
     Fit the transformer on the training split only; apply transform to the
     test split.
+  repair:
+    instruction: >
+      Move the transformer fit after the split. Fit on the training split
+      only and apply transform to the test split. Keep the data, features,
+      model and scoring unchanged.
+    invariant: >
+      No transformer is fitted on rows that any evaluation split later
+      tests on: fit happens on the training part of each split, transform
+      on its test part.
 
 - id: leakage-future-feature
   class: leakage

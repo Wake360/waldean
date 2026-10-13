@@ -228,7 +228,7 @@ def cmd_propose(args) -> int:
     from .repair.loop import propose
 
     try:
-        written, unsupported = propose(args.file, out_root=Path(args.out), floor=args.floor)
+        written, unsupported = propose(args.file, out_root=Path(args.out), floor=args.floor, diff=args.diff)
     except Exception as exc:
         print(f"waldean: {args.file}: {_input_error(exc)}", file=sys.stderr)
         return 3
@@ -358,6 +358,8 @@ def main(argv=None) -> int:
                            help="directory for repair contracts (default: %(default)s)")
     p_propose.add_argument("--floor", type=float, default=DEFAULT_CONFIDENCE_FLOOR,
                            help="confidence floor (default: %(default)s)")
+    p_propose.add_argument("--diff", action="store_true",
+                           help="also write patch.diff when the fix is mechanical")
     p_propose.set_defaults(func=cmd_propose)
 
     p_verify = sub.add_parser(

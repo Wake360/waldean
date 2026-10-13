@@ -49,7 +49,7 @@ def where(nb: ParsedNotebook, flag: Flag) -> str:
 
 
 def edit_scope(flow: NotebookDataflow, flag: Flag) -> list[int]:
-    cells = {flag.cell}
+    cells = {flag.cell, int(flag.extra.get("sink_cell", flag.cell))}
     for call in flow.calls:
         if (call.cell, call.line) != (flag.cell, flag.line) or call.name != flag.extra.get("sink"):
             continue
@@ -70,7 +70,7 @@ def build_protocol(nb: ParsedNotebook, flow: NotebookDataflow, flags: list[Flag]
         "file": path.as_posix(),
         "original_sha256": sha256(path),
         "targets": [
-            {"where": where(nb, f), "cell": f.cell, "line": f.line, "sink": f.extra["sink"],
+            {"where": where(nb, f), "cell": f.cell, "line": f.line, "sink": f.extra.get("sink", ""),
              "confidence": f.confidence, "evidence": f.evidence}
             for f in flags
         ],
@@ -82,7 +82,38 @@ def build_protocol(nb: ParsedNotebook, flow: NotebookDataflow, flags: list[Flag]
     }
 
 
-def render_brief(protocol: dict, repair_dir: Path) -> str:
+CANON_FIT_RE = re.compile(r"^(\w+)\s*=\s*(\w+)\.fit_transform\(\s*\1\s*\)\s*$")
+SPLIT4_RE = re.compile(r"^(\w+)\s*,\s*(\w+)\s*,\s*\w+\s*,\s*\w+\s*=\s*train_test_split\(\s*(\w+)\s*,")
+
+
+def patch_for(nb: ParsedNotebook, flag: Flag) -> str | None:
+    if flag.flaw_id != "leakage-fit-before-split" or flag.extra.get("sink") != "train_test_split":
+        return None
+    fit_cell, sink_cell = nb.cells[flag.cell], nb.cells[int(flag.extra["sink_cell"])]
+    fit_lines, sink_lines = fit_cell.source.splitlines(), sink_cell.source.splitlines()
+    fit = CANON_FIT_RE.match(fit_lines[flag.line - 1]) if flag.line <= len(fit_lines) else None
+    splits = [(i, m) for i, m in ((i, SPLIT4_RE.match(ln)) for i, ln in enumerate(sink_lines)) if m]
+    if fit is None or not splits or splits[0][1].group(3) != fit.group(1):
+        return None
+    split_at, split = splits[0]
+    if sink_cell.index == fit_cell.index and split_at < flag.line - 1:
+        return None
+    recv, train, test = fit.group(2), split.group(1), split.group(2)
+    new_lines = [f"{train} = {recv}.fit_transform({train})", f"{test} = {recv}.transform({test})"]
+    new_sink = sink_lines[: split_at + 1] + new_lines + sink_lines[split_at + 1:]
+    if sink_cell.index == fit_cell.index:
+        del new_sink[flag.line - 1]
+        edits = [(fit_cell.index, fit_lines, new_sink)]
+    else:
+        new_fit = fit_lines[: flag.line - 1] + fit_lines[flag.line:]
+        edits = [(fit_cell.index, fit_lines, new_fit), (sink_cell.index, sink_lines, new_sink)]
+    out = []
+    for idx, old, new in edits:
+        out += difflib.unified_diff(old, new, f"cell {idx}", f"cell {idx}", lineterm="")
+    return "\n".join(out) + "\n"
+
+
+def render_brief(protocol: dict, repair_dir: Path, patch: bool = False) -> str:
     if protocol["file"].endswith(".py"):
         cells = "cells are split at `# %%` markers and counted from 0; a file without markers is one cell"
     else:
@@ -105,6 +136,7 @@ def render_brief(protocol: dict, repair_dir: Path) -> str:
         "",
         f"Fix guidance: {protocol['fix']}",
         "",
+        *(["A mechanical patch is in `patch.diff`; apply it or write your own.", ""] if patch else []),
         "## Rules",
         "",
         *(f"- {r}" for r in protocol["rules"]),
@@ -120,7 +152,7 @@ def render_brief(protocol: dict, repair_dir: Path) -> str:
 
 
 def propose(path: str | Path, out_root: Path = DEFAULT_OUT,
-            floor: float = DEFAULT_CONFIDENCE_FLOOR) -> tuple[list[Path], list[str]]:
+            floor: float = DEFAULT_CONFIDENCE_FLOOR, diff: bool = False) -> tuple[list[Path], list[str]]:
     path = Path(path)
     nb = parse_notebook(path)
     flow = analyze(nb)
@@ -140,11 +172,14 @@ def propose(path: str | Path, out_root: Path = DEFAULT_OUT,
         if repair_dir.is_symlink():
             raise ValueError(f"{repair_dir} is a symlink; refusing to write through it")
         repair_dir.mkdir(parents=True, exist_ok=True)
-        for name in (f"original{path.suffix}", "protocol.json", "brief.md"):
+        for name in (f"original{path.suffix}", "protocol.json", "brief.md", "patch.diff"):
             (repair_dir / name).unlink(missing_ok=True)
         shutil.copyfile(path, repair_dir / f"original{path.suffix}")
         (repair_dir / "protocol.json").write_text(json.dumps(protocol, indent=2) + "\n", encoding="utf-8")
-        (repair_dir / "brief.md").write_text(render_brief(protocol, repair_dir), encoding="utf-8")
+        patch = patch_for(nb, flags[0]) if diff else None
+        if patch is not None:
+            (repair_dir / "patch.diff").write_text(patch, encoding="utf-8")
+        (repair_dir / "brief.md").write_text(render_brief(protocol, repair_dir, patch is not None), encoding="utf-8")
         written.append(repair_dir)
     return written, unsupported
 
@@ -209,12 +244,12 @@ def static_checks(protocol: dict, original: ParsedNotebook, fixed: ParsedNoteboo
         and o.source != f.source and not _import_only(o.source, f.source)
     ]
     flow = analyze(fixed)
-    for sink in sorted({t["sink"] for t in protocol["targets"]}):
+    for sink in sorted({t["sink"] for t in protocol["targets"]} - {""}):
         if not any(c.name == sink and c.cell in scope for c in flow.calls):
             reasons.append(f"the evaluation call `{sink}` is no longer in the edit scope")
-    if any(t["sink"] == "train_test_split" for t in protocol["targets"]) and not _literal_no_shuffle(
-        [c.source for c in fixed.code_cells if c.index in scope]
-    ):
+    if protocol["flaw_id"] == "leakage-temporal-shuffle" and any(
+        t["sink"] == "train_test_split" for t in protocol["targets"]
+    ) and not _literal_no_shuffle([c.source for c in fixed.code_cells if c.index in scope]):
         reasons.append("`train_test_split` in the edit scope does not pass the literal shuffle=False")
     reasons += _renamed_imports(fixed)
     fixed_flags = run_static(fixed, flow)
@@ -244,7 +279,7 @@ def load_repair(repair_dir: Path) -> tuple[dict, Path]:
     floor = min([DEFAULT_CONFIDENCE_FLOOR, *(t["confidence"] for t in protocol["targets"])])
     flags = [f for f in run_static(nb, flow) if f.flaw_id == protocol["flaw_id"] and f.confidence >= floor]
     scope = sorted(set().union(*(edit_scope(flow, f) for f in flags)))
-    targets = sorted((f.cell, f.line, f.extra["sink"]) for f in flags)
+    targets = sorted((f.cell, f.line, f.extra.get("sink", "")) for f in flags)
     if scope != protocol["edit_scope"] or targets != sorted(
         (t["cell"], t["line"], t["sink"]) for t in protocol["targets"]
     ):
