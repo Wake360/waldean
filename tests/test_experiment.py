@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from waldean.experiment.plan import PlanError, contradictions, design, design_md, read_plan, write_plan
 from waldean.experiment.profile import profile
 
 
@@ -65,3 +66,74 @@ def test_non_binary_target_is_refused(tmp_path):
 def test_missing_target_is_refused(tmp_path):
     with pytest.raises(ValueError, match="not in"):
         profile(write_csv(tmp_path / "d.csv"), "nope")
+
+
+def planned(tmp_path, **kw):
+    csv = write_csv(tmp_path / "d.csv", extra_dates=kw.pop("extra_dates", False))
+    prof = profile(csv, "churn")
+    args = {"goal": "churn?", "exclude": [], "time_column": None, "seed": 0} | kw
+    return design(prof, csv, tmp_path / "exp", **args), prof
+
+
+def test_time_column_gives_temporal_holdout(tmp_path):
+    plan, _ = planned(tmp_path)
+    assert plan["split"] == {"kind": "temporal_holdout", "column": "snapshot", "test_fraction": 0.2, "n_splits": 5}
+    assert "snapshot" not in plan["features"]["numeric"] + plan["features"]["categorical"]
+    assert plan["dataset"]["path"] == "../d.csv"
+
+
+def test_two_time_columns_need_a_choice(tmp_path):
+    with pytest.raises(PlanError, match="birth_date.*snapshot|snapshot.*birth_date"):
+        planned(tmp_path, extra_dates=True)
+    plan, _ = planned(tmp_path, extra_dates=True, time_column="snapshot")
+    assert plan["split"]["column"] == "snapshot"
+
+
+def test_unknown_time_column_is_refused(tmp_path):
+    with pytest.raises(PlanError, match="not a time column"):
+        planned(tmp_path, time_column="plan")
+
+
+def test_exclude_unknown_column_is_refused(tmp_path):
+    with pytest.raises(PlanError, match="not a column"):
+        planned(tmp_path, exclude=["nope"])
+
+
+def test_excluded_columns_leave_the_features(tmp_path):
+    plan, _ = planned(tmp_path, exclude=["account"])
+    assert "account" not in plan["features"]["categorical"]
+    assert {"column": "account", "reason": "excluded by the user (--exclude)"} in plan["excluded_columns"]
+
+
+def test_no_time_column_gives_stratified(tmp_path):
+    path = tmp_path / "d.csv"
+    pd.DataFrame({"x": range(100), "y": [0, 1] * 50}).to_csv(path, index=False)
+    plan = design(profile(path, "y"), path, tmp_path / "exp", "", [], None, 0)
+    assert plan["split"]["kind"] == "stratified_kfold"
+
+
+def test_contradictions(tmp_path):
+    plan, prof = planned(tmp_path)
+    assert contradictions(plan, prof) == []
+    plan["split"]["kind"] = "stratified_kfold"
+    assert contradictions(plan, prof) == ["split.kind"]
+    plan["split"]["override_reason"] = "rows are i.i.d. snapshots"
+    assert contradictions(plan, prof) == []
+    plan["split"] = {"kind": "temporal_holdout", "column": "plan", "test_fraction": 0.2, "n_splits": 5}
+    assert contradictions(plan, prof) == ["split.column"]
+
+
+def test_unknown_split_kind_is_refused(tmp_path):
+    plan, prof = planned(tmp_path)
+    plan["split"]["kind"] = "group_kfold"
+    with pytest.raises(PlanError, match="split.kind"):
+        contradictions(plan, prof)
+
+
+def test_plan_round_trips_and_design_md_names_the_fact(tmp_path):
+    plan, prof = planned(tmp_path)
+    write_plan(plan, tmp_path / "plan.yaml")
+    assert read_plan(tmp_path / "plan.yaml") == plan
+    text = design_md(plan, prof)
+    assert "temporal_holdout on snapshot" in text
+    assert "24 distinct periods" in text
