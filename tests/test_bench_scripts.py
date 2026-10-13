@@ -1,4 +1,6 @@
 import importlib.util
+import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -87,3 +89,29 @@ def test_score_counts_errors_as_unflagged():
     s = yang.score(rows, {"a": "error", "b": "clean"})
     assert s["confusion"] == {"tp": 0, "fp": 0, "fn": 1, "tn": 1}
     assert s["errors"] == ["a"]
+
+
+def test_render_header_counts_rows_without_pre_label():
+    rows = [{"nb": "a", "pre": "Y"}, {"nb": "b", "pre": ""}, {"nb": "c", "pre": "N"}]
+    out = yang.render(yang.score(rows, {"a": "flagged", "b": "clean", "c": "clean"}), rows)
+    assert "3 notebooks, 2 with a `pre` label; the 1 without one count as negatives" in out
+
+
+def test_render_header_omits_unlabeled_clause_when_all_labeled():
+    rows = [{"nb": "a", "pre": "Y"}, {"nb": "c", "pre": "N"}]
+    out = yang.render(yang.score(rows, {"a": "flagged", "c": "clean"}), rows)
+    assert "2 notebooks, 2 with a `pre` label;" in out
+    assert "without one" not in out
+
+
+def test_run_waldean_exit_3_is_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(yang.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a, 3, "", "too big"))
+    assert yang.run_waldean(tmp_path / "x.ipynb") == "error"
+
+
+def test_run_waldean_crash_raises(monkeypatch, tmp_path):
+    monkeypatch.setattr(yang.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a, 1, "", "Traceback"))
+    with pytest.raises(json.JSONDecodeError):
+        yang.run_waldean(tmp_path / "x.ipynb")

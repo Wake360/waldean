@@ -34,7 +34,7 @@ def score(rows: list[dict], outcomes: dict[str, str]) -> dict:
 def run_waldean(path: Path) -> str:
     out = subprocess.run(["waldean", "check", str(path), "--format", "json"],
                          capture_output=True, text=True)
-    if out.returncode == 3 or not out.stdout.strip():
+    if out.returncode == 3:
         return "error"
     report = json.loads(out.stdout)
     return "flagged" if any(f["flaw_id"] == FLAW for f in report["flags"]) else "clean"
@@ -44,11 +44,15 @@ def render(s: dict, rows: list[dict]) -> str:
     c = s["confusion"]
     precision = c["tp"] / (c["tp"] + c["fp"]) if c["tp"] + c["fp"] else float("nan")
     recall = c["tp"] / (c["tp"] + c["fn"]) if c["tp"] + c["fn"] else float("nan")
+    unlabeled = sum(1 for r in rows if not r["pre"].strip())
+    scope = f"{len(rows)} notebooks, {len(rows) - unlabeled} with a `pre` label"
+    if unlabeled:
+        scope += f"; the {unlabeled} without one count as negatives"
     truth = {r["nb"]: r["pre"] for r in rows}
     lines = [
         f"# Waldean on Yang et al. ASE'22 (`pre` label) — {date.today().isoformat()}",
         "",
-        f"{len(rows)} labeled notebooks; static layer, confident flags only (>= 0.8), class `{FLAW}`.",
+        f"{scope}; static layer, confident flags only (>= 0.8), class `{FLAW}`.",
         "",
         "| TP | FP | FN | TN | precision | recall |",
         "|---|---|---|---|---|---|",
