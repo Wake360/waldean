@@ -607,6 +607,7 @@ FIRST_TRUE_RE = re.compile(r"\([^()]*(?:>=|<=|==|!=|>|<)[^()]*\)\s*\.(?:argmax|i
 ROW_SELECT_RE = re.compile(r"\.iloc\[0\]\s*$|\.loc\[[^\n]*\.(?:idxmax|idxmin|argmax|argmin)\(")
 IFEXP_RE = re.compile(r"\bif\b[^\n]*\belse\b")
 IFCMP_RE = re.compile(r"\bif\b[^\n]*?(?:>=|<=|>|<)[^\n]*?\belse\b")
+ATTR_PASSTHROUGH_RE = re.compile(r"^\w+\s*=\s*\w+\.(?:values|T)\s*(?:;|$)")
 LABEL_PASSTHROUGH = {"to_numpy", "values", "copy", "astype", "reset_index", "ravel", "squeeze"}
 DEF_RE = re.compile(r"^def (\w+)\(", re.MULTILINE)
 
@@ -662,7 +663,10 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
                 continue
             seen.add((n, pos))
             ev = flow.last_assign(n, pos)
-            if ev is not None and ev.call is not None and ev.call.name in LABEL_PASSTHROUGH:
+            if ev is not None and (
+                (ev.call is not None and ev.call.name in LABEL_PASSTHROUGH)
+                or (ev.call is None and ATTR_PASSTHROUGH_RE.match(src.get(ev.cell, [""] * ev.line)[ev.line - 1][ev.col:]))
+            ):
                 frontier.extend((s, (ev.cell, ev.line)) for s in ev.sources)
             else:
                 out.add((n, id(ev) if ev is not None else None))

@@ -117,3 +117,22 @@ def test_two_statements_on_selection_line_give_one_flag():
              "print(average_precision_score(y_te, p))"]
     flags = confident(cells)
     assert len(flags) == 1 and flags[0].extra["selected"] == ["best"]
+
+
+PROBS = "P = {n: m.fit(X_tr, y_tr).predict_proba(X_te)[:, 1] for n, m in models.items()}"
+
+
+def test_values_alias_of_the_same_label_is_reuse():
+    cells = [PROBS, "res = {n: roc_auc_score(y_te, p) for n, p in P.items()}\nbest = max(res, key=res.get)",
+             "yt = y_te.values; pb = P[best]\nprint(roc_auc_score(yt, pb))"]
+    assert confident(cells)
+
+
+def test_values_alias_of_a_different_label_stays_candidate():
+    cells = [
+        "fitted = {n: m.fit(X_tr, y_tr) for n, m in models.items()}",
+        "res = {n: roc_auc_score(y_va, f.predict_proba(X_va)[:, 1]) for n, f in fitted.items()}\n"
+        "best = max(res, key=res.get)",
+        "yt = y_te.values\nprint(roc_auc_score(yt, fitted[best].predict_proba(X_te)[:, 1]))",
+    ]
+    assert not confident(cells)
