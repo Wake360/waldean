@@ -1,3 +1,5 @@
+import time
+
 from waldean.checks.detect import run_static
 from waldean.analysis.ingest import Cell, ParsedNotebook
 
@@ -978,3 +980,16 @@ def test_refit_on_test_reaching_a_score_through_list_mutation_is_confident():
     ])
     flags = _refit_flags(notebook)
     assert flags and flags[0].confidence == 0.9
+
+
+def test_refit_scoring_check_stays_fast_on_many_later_calls():
+    n = 400
+    cells = [
+        "X_train, X_test, y_train, y_test = train_test_split(X, y)",
+        "".join(f"e{i} = TSNE().fit_transform(X_test)\n" for i in range(n)),
+        "".join(f"z{i} = foo(X_train, z{i-1} if {i} else 0)\n" for i in range(n)),
+    ]
+    notebook = nb([("code", c) for c in cells])
+    start = time.perf_counter()
+    run_static(notebook)
+    assert time.perf_counter() - start < 3.0

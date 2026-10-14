@@ -309,15 +309,21 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
 
     calls_in_order = sorted(flow.calls, key=lambda c: (c.cell, c.line))
 
+    call_binds: dict[int, set] = {}
+
+    def binds_of(c) -> set:
+        if id(c) not in call_binds:
+            names = c.arg_names | ({c.receiver_base} if c.receiver_base else set())
+            call_binds[id(c)] = flow.chain(names, (c.cell, c.line), mutations=True)[1]
+        return call_binds[id(c)]
+
     def reaches_score(call, reached: set) -> bool:
         reached = set(reached)
         for c in calls_in_order:
             at = (c.cell, c.line)
             if at < (call.cell, call.line) or c is call:
                 continue
-            names = c.arg_names | ({c.receiver_base} if c.receiver_base else set())
-            _, binds = flow.chain(names, at, mutations=True)
-            if not binds & reached:
+            if not binds_of(c) & reached:
                 continue
             if c.name in PREDICT_CALLS or c.name in SCORE_FUNCS or c.name in CV_SINKS or c.name == "score":
                 return True
