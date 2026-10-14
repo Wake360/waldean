@@ -1,0 +1,166 @@
+{
+  "schema": 2,
+  "registered": "2026-10-13",
+  "status": "registered before any pilot run",
+  "purpose": "Does a good checklist alone close the v3 gaps? Arm B only, on the v3 datasets.",
+  "data": {
+    "reuse": "v3 files, checked by sha256, plus checklist.md"
+  },
+  "agents": {
+    "claude": {
+      "cli": "claude",
+      "model": "sonnet"
+    }
+  },
+  "runs_per_cell": {
+    "B": 5
+  },
+  "run_files": [
+    "data.csv",
+    "columns.csv"
+  ],
+  "prompt": "Here is data.csv and its data dictionary columns.csv. I want to know whether we can predict {question}. Build a notebook and save it as experiment.ipynb.",
+  "arms": {
+    "B": {
+      "suffix": " Follow the methodology checklist in checklist.md. You can run `waldean check experiment.ipynb` to lint the notebook for statistical flaws.",
+      "files": [
+        "checklist.md"
+      ],
+      "tools": [
+        "Bash(waldean *)"
+      ]
+    }
+  },
+  "comparisons": [],
+  "criteria": {
+    "temporal": {
+      "text": "every split behind a reported performance number trains only on rows earlier than all of its test rows",
+      "why": "The model is meant for future rows. The data drift over time, so a random split estimates performance on the past mixed with the future, not on the future (Roberts et al. 2017, Ecography 40:913; Kapoor and Narayanan 2023, Patterns 4:100804, temporal leakage)."
+    },
+    "group": {
+      "text": "no person_key appears in both the train and test rows of any split behind a reported performance number",
+      "why": "Rows of one person share an outcome tendency and identifying features. A row split lets the model recognise people it has already seen, while deployment scores new people (Kapoor and Narayanan 2023, non-independence between train and test)."
+    },
+    "leak": {
+      "text": "the post-outcome column is not among the fitted features of any model behind a reported performance number",
+      "why": "The column is recorded after the outcome. It is unavailable when a prediction would be made (Kaufman, Rosset and Perlich 2012, ACM TKDD 6:15; Kapoor and Narayanan 2023, illegitimate features). The data dictionary states when it is recorded, and on its own it predicts the target almost perfectly, so both the meaning and the data reveal it."
+    },
+    "selection": {
+      "text": "the rows behind the headline metric were not used to choose the model, its hyperparameters, its features or its decision threshold",
+      "why": "Choosing on the rows that are then reported biases the headline upward (Cawley and Talbot 2010, JMLR 11:2079). With few candidates the bias is often small; this criterion measures evaluation hygiene, not the size of the bias."
+    }
+  },
+  "binding": {
+    "procedure": "The scorer reads each notebook before executing it (as in v1) and writes a Python snippet into scoring.tsv, tied to the notebook's sha256, that sets the names below. Row labels are the 0-based row positions of data.csv.",
+    "PROBE_EVALS": "list of (train_labels, test_labels, feature_names), one entry per split behind any reported performance number: every CV fold, every validation split, every test split. Features derived from a column are listed under that column's name.",
+    "PROBE_HEADLINE": "row labels behind the metric the notebook's conclusion rests on.",
+    "PROBE_SELECTED_ON": "row labels whose outcomes were used to choose the reported model, hyperparameters, features or threshold; empty if nothing was chosen.",
+    "HEADLINE": "(metric_name, value) of the headline, descriptive only.",
+    "reported": "A performance number computed on held-out rows and shown in an output or in the notebook text. Excluded: numbers the notebook itself labels as invalid for deployment, e.g. a deliberate with/without-leak comparison.",
+    "failures": "A run without a notebook, a notebook that fails to execute, or a notebook with no reported performance number fails every criterion of its dataset."
+  },
+  "decision": {
+    "stop": "selection fails at most 1 of 20 and temporal fails 0 of 10: the checklist closes the v3 gaps; report to the user before building the protocol",
+    "continue": "otherwise: Task 4 onward"
+  },
+  "datasets": [
+    {
+      "name": "maintenance",
+      "target": "failed_90d",
+      "question": "whether an asset fails within 90 days after an inspection (the failed_90d column)",
+      "criteria": {
+        "temporal": "import pandas as _pd\n_t = _pd.to_datetime(_pd.read_csv('data.csv', usecols=['inspected_at'])['inspected_at'])\nprint('PROBE', bool(PROBE_EVALS) and all(_t.loc[list(tr)].max() < _t.loc[list(te)].min() for tr, te, _ in PROBE_EVALS))",
+        "leak": "print('PROBE', bool(PROBE_EVALS) and all(not any(str(f) == 'parts_replaced' or str(f).endswith('__parts_replaced') for f in fs) for _, _, fs in PROBE_EVALS))",
+        "selection": "print('PROBE', bool(PROBE_HEADLINE) and not set(PROBE_SELECTED_ON) & set(PROBE_HEADLINE))"
+      },
+      "trap": {
+        "temporal": "Inspections span two years, rows are shuffled, failure risk follows a time-local trend, and the effects of vibration and load drift. The time column is named inspected_at, not date.",
+        "leak": "parts_replaced is counted on the work order that closed the inspection record, i.e. after the failure. The name says nothing about time."
+      },
+      "rows": 6000,
+      "csv_sha256": "72be560223ec97f7484c311973239c330337c5d1878d958ecec689cab57195ef",
+      "columns_sha256": "903847f6b2ec9f76eec953591cfd1d9edb91ae4d4f001ffd7503d89c26621a55",
+      "trap_check": {
+        "positive_rate": 0.119,
+        "auc_random_5fold": 0.843,
+        "auc_temporal_holdout_last_25pct": 0.71,
+        "auc_temporal_holdout_with_parts_replaced": 0.997,
+        "single_column_auc_parts_replaced": 0.997
+      },
+      "files_sha256": {
+        "checklist.md": "e2ce1d358d6f0db1327620275819645d541c5c9c8f6ccfc2e71bf042a5401697"
+      }
+    },
+    {
+      "name": "clinic",
+      "target": "readmit_30d",
+      "question": "whether a person is readmitted within 30 days (the readmit_30d column)",
+      "criteria": {
+        "group": "import pandas as _pd\n_p = _pd.read_csv('data.csv', usecols=['person_key'])['person_key']\nprint('PROBE', bool(PROBE_EVALS) and all(not set(_p.loc[list(tr)]) & set(_p.loc[list(te)]) for tr, te, _ in PROBE_EVALS))",
+        "selection": "print('PROBE', bool(PROBE_HEADLINE) and not set(PROBE_SELECTED_ON) & set(PROBE_HEADLINE))"
+      },
+      "trap": {
+        "group": "1,500 people with about 8 stays each. A strong person-level effect plus stable features (birth_year, sex, postcode_area, bmi) make people recognisable. The ID is named person_key, not patient_nbr."
+      },
+      "rows": 11868,
+      "csv_sha256": "147bdba9374c69dffdcc8e428a9624b5369fc594eb208cb0c6eea85cce333e84",
+      "columns_sha256": "1d92558b718e6a0699f21b20bbe0d103fe9c22cbc459ce337384e7bf924a6c2b",
+      "trap_check": {
+        "positive_rate": 0.198,
+        "rows_per_person_mean": 7.91,
+        "auc_row_5fold": 0.73,
+        "auc_group_5fold": 0.615,
+        "auc_row_5fold_random_forest": 0.67,
+        "auc_group_5fold_random_forest": 0.613
+      },
+      "files_sha256": {
+        "checklist.md": "e2ce1d358d6f0db1327620275819645d541c5c9c8f6ccfc2e71bf042a5401697"
+      }
+    },
+    {
+      "name": "subscriptions",
+      "target": "churn_next_month",
+      "question": "whether an account cancels in the next month (the churn_next_month column)",
+      "criteria": {
+        "temporal": "import pandas as _pd\n_t = _pd.to_datetime(_pd.read_csv('data.csv', usecols=['snapshot_month'])['snapshot_month'])\nprint('PROBE', bool(PROBE_EVALS) and all(_t.loc[list(tr)].max() < _t.loc[list(te)].min() for tr, te, _ in PROBE_EVALS))",
+        "leak": "print('PROBE', bool(PROBE_EVALS) and all(not any(str(f) == 'lifetime_months' or str(f).endswith('__lifetime_months') for f in fs) for _, _, fs in PROBE_EVALS))",
+        "selection": "print('PROBE', bool(PROBE_HEADLINE) and not set(PROBE_SELECTED_ON) & set(PROBE_HEADLINE))"
+      },
+      "trap": {
+        "temporal": "Monthly snapshots over 23 months, shuffled, with a time-local churn trend, a price rise in month 13 and drifting effects of usage and tickets.",
+        "leak": "lifetime_months comes from a CRM export taken after the last snapshot. Together with tenure_months it reveals the month of cancellation. Accounts recur across months by design; a group split is not required here."
+      },
+      "rows": 14759,
+      "csv_sha256": "4a1f6f8642587b9df5d5c7ae20106bd790c5f3609806846233d723147b22d6f9",
+      "columns_sha256": "5096e55920d997f545f2cd41c8f98e79a627f2d360f9575d46ae904b76b1fa42",
+      "trap_check": {
+        "positive_rate": 0.154,
+        "auc_random_5fold": 0.81,
+        "auc_temporal_holdout_last_6_months": 0.728,
+        "auc_temporal_holdout_with_lifetime_months": 0.998
+      },
+      "files_sha256": {
+        "checklist.md": "e2ce1d358d6f0db1327620275819645d541c5c9c8f6ccfc2e71bf042a5401697"
+      }
+    },
+    {
+      "name": "control",
+      "target": "defaulted",
+      "question": "whether a loan defaults within 12 months (the defaulted column)",
+      "criteria": {
+        "selection": "print('PROBE', bool(PROBE_HEADLINE) and not set(PROBE_SELECTED_ON) & set(PROBE_HEADLINE))"
+      },
+      "trap": {},
+      "rows": 8000,
+      "csv_sha256": "ba8bb3aa1b66721fcd6baec62ffba8e4b0521eefd94f15c8ee4b1cbc956552eb",
+      "columns_sha256": "66d6ce03bbbdc0b479afd145fbcb01d36d548ebb1a170db8b960c0ad47de76c4",
+      "trap_check": {
+        "positive_rate": 0.105,
+        "auc_random_5fold": 0.741
+      },
+      "files_sha256": {
+        "checklist.md": "e2ce1d358d6f0db1327620275819645d541c5c9c8f6ccfc2e71bf042a5401697"
+      }
+    }
+  ]
+}

@@ -1,12 +1,16 @@
 import argparse
 import csv
+import difflib
 import hashlib
 import io
+import itertools
 import json
 import math
 import os
+import random
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -17,9 +21,11 @@ from datetime import date
 from pathlib import Path
 
 import nbformat
+import numpy as np
 import pandas as pd
 
 from nbclient import NotebookClient
+from scipy.stats import boschloo_exact, mannwhitneyu
 
 from waldean.runtime.execute import scrubbed_env, stdout_lines, with_appended_code_cell
 
@@ -29,6 +35,8 @@ MANIFEST = BENCH / "MANIFEST.json"
 SCORING = BENCH / "scoring.tsv"
 AGENT_ROOT = Path("/private/tmp/waldean-agent-baseline")
 AGENT_KERNEL = "waldean-agent-baseline"
+SHARED_TMP = Path("/private/tmp/claude")
+USER_TMP = Path(f"/private/tmp/claude-{os.getuid()}")
 CLAUDE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit",
                 "Bash(python *)", "Bash(python3 *)", "Bash(jupyter *)", "Bash(ls *)", "Bash(head *)"]
 HOME = str(Path.home())
@@ -94,6 +102,11 @@ def check_generated(args, m: dict) -> int:
             if digest != d[key]:
                 print(f"{d['name']}/{name}: sha256 {digest} != manifest {d[key]}", file=sys.stderr)
                 return 3
+        for name, expected in d.get("files_sha256", {}).items():
+            digest = sha256(args.data / d["name"] / name)
+            if digest != expected:
+                print(f"{d['name']}/{name}: sha256 {digest} != manifest {expected}", file=sys.stderr)
+                return 3
         print(d["name"], "ok")
     return 0
 
@@ -104,6 +117,8 @@ def variants(m: dict) -> list[tuple[str, int]]:
 
 def prompt(m: dict, d: dict, variant: str) -> str:
     text = m["prompt"].format(question=d["question"])
+    if variant in m.get("arms", {}):
+        return text + m["arms"][variant]["suffix"]
     return text + m["hinted_suffix"].format(hint=d["hint"]) if variant == "hinted" else text
 
 
@@ -113,13 +128,14 @@ def agent_env(python_bin: Path, cli: str) -> dict:
     return {**keep, "TMPDIR": "/private/tmp", "MPLBACKEND": "Agg", "PATH": os.pathsep.join([str(python_bin), cli_dir, "/usr/bin", "/bin"])}
 
 
-def agent_command(agent: str, m: dict, text: str, codex_home: Path, python_bin: Path) -> tuple[list[str], dict]:
+def agent_command(agent: str, m: dict, text: str, codex_home: Path, python_bin: Path,
+                  tools=()) -> tuple[list[str], dict]:
     cfg = m["agents"][agent]
     env = agent_env(python_bin, cfg["cli"])
     if agent == "claude":
         return (["claude", "-p", text, "--model", cfg["model"], "--setting-sources", "project",
                  "--strict-mcp-config", "--settings", CLAUDE_SETTINGS, "--permission-mode", "acceptEdits",
-                 "--allowedTools", *CLAUDE_TOOLS], env)
+                 "--allowedTools", *CLAUDE_TOOLS, *tools], env)
     env["CODEX_HOME"] = str(codex_home)
     return (["codex", "exec", "--skip-git-repo-check", "-m", cfg["model"],
              "-c", f"model_reasoning_effort={cfg['reasoning_effort']}",
@@ -147,6 +163,23 @@ def write_own(path: Path, text: str) -> None:
         f.write(text)
 
 
+def sweep_shared_tmp(dest: Path) -> list[str]:
+    if not SHARED_TMP.is_dir():
+        return []
+    names = sorted(p.name for p in SHARED_TMP.iterdir())
+    if names:
+        dest.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        shutil.move(str(SHARED_TMP / name), dest / name)
+    return names
+
+
+def tmp_entries() -> set[str]:
+    if not USER_TMP.is_dir():
+        return set()
+    return {p.name for p in USER_TMP.iterdir()}
+
+
 def version(cli: str) -> str:
     return subprocess.run([cli, "--version"], capture_output=True, text=True).stdout.strip()
 
@@ -157,9 +190,15 @@ def cmd_run(args) -> int:
         print("--runs and --python must be outside the home directory, which the agent sandbox cannot read",
               file=sys.stderr)
         return 3
+    if "arms" in m and args.jobs != 1:
+        print("benches with arms run with --jobs 1, so files left in /private/tmp/claude belong to one run",
+              file=sys.stderr)
+        return 3
     jobs = [(d, agent, variant, n) for d in m["datasets"] if not args.only or d["name"] in args.only
             for agent in m["agents"] if not args.agents or agent in args.agents
-            for variant, n in variants(m) if variant == "default" or d.get("hint")]
+            for variant, n in variants(m) if variant == "default" or d.get("hint") or variant in m.get("arms", {})]
+    if "arms" in m:
+        random.Random(20261020).shuffle(jobs)
     codex_home = Path(tempfile.mkdtemp(prefix="waldean-codex-home-"))
     (codex_home / "auth.json").symlink_to(Path.home() / ".codex" / "auth.json")
     try:
@@ -180,8 +219,14 @@ def run_one(args, m: dict, codex_home: Path, d: dict, agent: str, variant: str, 
             shutil.copyfile(args.data / d["name"] / name, run_dir / name)
     else:
         shutil.copyfile(args.data / f"{d['name']}.csv", run_dir / "data.csv")
+    arm = m.get("arms", {}).get(variant, {})
+    for name in arm.get("files", []):
+        shutil.copyfile(args.data / d["name"] / name, run_dir / name)
     text = prompt(m, d, variant)
-    cmd, env = agent_command(agent, m, text, codex_home, args.python)
+    cmd, env = agent_command(agent, m, text, codex_home, args.python, arm.get("tools", []))
+    if arm:
+        sweep_shared_tmp(AGENT_ROOT / "stale-scratch" / run_dir.name)
+    before = tmp_entries()
     start = time.time()
     with (run_dir / "agent.log").open("w") as log:
         try:
@@ -196,7 +241,9 @@ def run_one(args, m: dict, codex_home: Path, d: dict, agent: str, variant: str, 
             "prompt": text, "cli_version": version(m["agents"][agent]["cli"]),
             "model": m["agents"][agent]["model"], "exit": code,
             "seconds": round(time.time() - start),
-            "notebook": (run_dir / "experiment.ipynb").exists()}
+            "notebook": (run_dir / "experiment.ipynb").exists(),
+            "shared_tmp": sweep_shared_tmp(run_dir / ".agent-tmp") if arm else [],
+            "user_tmp_new": sorted(tmp_entries() - before) if arm else []}
     write_own(run_dir / "meta.json", json.dumps(meta, indent=2) + "\n")
     print(run_dir.name, "exit", code, "notebook", meta["notebook"], flush=True)
 
@@ -243,7 +290,8 @@ def probes(d: dict, nb, run_dir: Path, digest: str, reviewed: tuple[str, str] | 
     if reviewed is None or reviewed[0] != digest:
         return {c: "unbound" if reviewed is None else "unreviewed" for c in crits}
     code = "\n".join([reviewed[1], *(src.replace("print('PROBE',", f"print('PROBE:{c}',") for c, src in crits.items()),
-                      "print('HEADLINE:', globals().get('HEADLINE'))"])
+                      "print('HEADLINE:', globals().get('HEADLINE'))",
+                      "print('FUTURE:', globals().get('PROBE_FUTURE_AUC'))"])
     nb = with_appended_code_cell(nb, code)
     try:
         with scrubbed_env():
@@ -257,6 +305,8 @@ def probes(d: dict, nb, run_dir: Path, digest: str, reviewed: tuple[str, str] | 
         out[c] = "pass" if lines and lines[-1].split()[-1] == "True" else "fail"
     headline = stdout_lines(nb, "HEADLINE:")
     out["headline"] = headline[-1].removeprefix("HEADLINE:").strip() if headline else ""
+    future = stdout_lines(nb, "FUTURE:")
+    out["future_auc"] = future[-1].removeprefix("FUTURE:").strip() if future else ""
     return out
 
 
@@ -292,11 +342,15 @@ def cmd_score(args) -> int:
             nbformat.write(nb, stripped / f"{run}.ipynb")
             row["sha256"] = digest
             row["check"] = ",".join(waldean_check(stripped / f"{run}.ipynb"))
+            future_src = args.data / d["name"] / "future.csv"
+            if future_src.exists():
+                shutil.copyfile(future_src, meta_path.parent / "future.csv")
             if "criteria" in d:
                 row.update(probes(d, nb, meta_path.parent, digest, bound.get(run), args.timeout))
             else:
                 row["probe"] = "n/a" if not d["criterion"] else probe(
                     d, nb, meta_path.parent, digest, bound.get(run), args.timeout)
+            (meta_path.parent / "future.csv").unlink(missing_ok=True)
         rows.append(row)
         print(run, {k: v for k, v in row.items() if k not in ("dataset", "agent", "variant", "cli_version", "model")},
               flush=True)
@@ -305,7 +359,8 @@ def cmd_score(args) -> int:
         w.writeheader()
         w.writerows(rows)
     report = ROOT / "evals" / f"{date.today().isoformat()}-{BENCH.name}.md"
-    report.write_text(render_v2(m, rows) if m["schema"] >= 2 else render(m, rows), encoding="utf-8")
+    text = render_arms(m, rows) if "arms" in m else render_v2(m, rows) if m["schema"] >= 2 else render(m, rows)
+    report.write_text(text, encoding="utf-8")
     print("wrote", report)
     return 0
 
@@ -350,6 +405,243 @@ def wilson(k: int, n: int) -> tuple[float, float]:
     low = (centre - half) / (1 + z * z / n)
     high = (centre + half) / (1 + z * z / n)
     return (max(0.0, low), min(1.0, high))
+
+
+def newcombe(k1: int, n1: int, k2: int, n2: int) -> tuple[float, float]:
+    p1, p2 = k1 / n1, k2 / n2
+    l1, u1 = wilson(k1, n1)
+    l2, u2 = wilson(k2, n2)
+    d = p1 - p2
+    return (d - math.sqrt((p1 - l1) ** 2 + (u2 - p2) ** 2), d + math.sqrt((u1 - p1) ** 2 + (p2 - l2) ** 2))
+
+
+HEADLINE_RE = re.compile(r"^\('[^']*', (?:np\.float64\()?([-+]?\d+(?:\.\d+)?)\)?\)$")
+
+
+def headline_value(text: str) -> float | None:
+    match = HEADLINE_RE.match(text.strip())
+    return float(match.group(1)) if match else None
+
+
+def headline_is_auc(text: str) -> bool:
+    match = re.match(r"^\('([^']*)'", text.strip())
+    if not match:
+        return False
+    name = re.sub(r"[^a-z]", "", match.group(1).lower())
+    return name.endswith("auc") and not name.endswith("prauc")
+
+
+def gap(row: dict) -> float | None:
+    if not headline_is_auc(row.get("headline", "")):
+        return None
+    value = headline_value(row.get("headline", ""))
+    try:
+        future = float(row.get("future_auc", ""))
+    except ValueError:
+        return None
+    return None if value is None or math.isnan(future) else value - future
+
+
+def valid(row: dict, d: dict) -> bool:
+    return all(row.get(c) == "pass" for c in d["criteria"])
+
+
+def render_arms(m: dict, rows: list[dict]) -> str:
+    by_name = {d["name"]: d for d in m["datasets"]}
+    crits = list(m["criteria"])
+    out = [f"# {BENCH.name}, {date.today().isoformat()}", "",
+           f"Indicative only. Pre-registered arms, criteria and decision rule in `{BENCH.name}/MANIFEST.json`.", "",
+           "| arm | runs | notebook | valid (95% CI) | " + " | ".join(f"{c} fail" for c in crits)
+           + " | median abs gap (n) |",
+           "|---|---|---|---|" + "---|" * len(crits) + "---|"]
+    fails, medians, done = {}, {}, {}
+    for a in m["arms"]:
+        mine = [r for r in rows if r["variant"] == a]
+        bad = sum(not valid(r, by_name[r["dataset"]]) for r in mine)
+        fails[a] = (bad, len(mine))
+        low, high = wilson(len(mine) - bad, len(mine))
+        gaps = [abs(g) for r in mine if (g := gap(r)) is not None]
+        medians[a] = statistics.median(gaps) if gaps else None
+        done[a] = sum(bool(r["sha256"]) for r in mine)
+        per = [f"{sum(r.get(c, 'pass') != 'pass' for r in mine)}/{sum(c in r for r in mine)}" for c in crits]
+        med = f"{statistics.median(gaps):.3f} ({len(gaps)})" if gaps else "- (0)"
+        out.append(f"| {a} | {len(mine)} | {done[a]} | {len(mine) - bad}/{len(mine)} "
+                   f"({low:.0%}-{high:.0%}) | " + " | ".join(per) + f" | {med} |")
+    out += ["", "## Differences in failure rate", "", "| comparison | difference | 95% CI (Newcombe) |",
+            "|---|---|---|"]
+    for a, b in m["comparisons"]:
+        (k1, n1), (k2, n2) = fails[a], fails[b]
+        if n1 and n2:
+            low, high = newcombe(k1, n1, k2, n2)
+            out.append(f"| {a} minus {b} | {k1 / n1 - k2 / n2:+.0%} | {low:+.0%} to {high:+.0%} |")
+    if m.get("primary"):
+        a, b = m["primary"]
+        (k1, n1), (k2, n2) = fails[a], fails[b]
+        if n1 and n2:
+            low, high = newcombe(k1, n1, k2, n2)
+            ma, mb = medians[a], medians[b]
+            if ma is None and mb is None:
+                gap_ok = True
+            elif mb is None:
+                gap_ok = False
+            elif ma is None:
+                gap_ok = True
+            else:
+                gap_ok = mb <= ma + 0.02
+            ca, cb = done[a] / n1, done[b] / n2
+            comp_ok = cb >= ca - 0.05
+            if low > 0 and gap_ok and comp_ok:
+                verdict = f"{b} better"
+            elif high < 0:
+                verdict = f"{b} worse"
+            else:
+                verdict = f"no evidence that {b} is better"
+            out += ["", f"Primary: {a} minus {b} failure rate lower bound {low:+.1%}, "
+                    f"median gap {a} {'-' if ma is None else format(ma, '.3f')} vs {b} {'-' if mb is None else format(mb, '.3f')}, "
+                    f"completion {a} {ca:.0%} vs {b} {cb:.0%}: {verdict}."]
+            out += secondary(m, rows, a, b)
+    out += ["", "## Runs", "", "| run | arm | cli | " + " | ".join(crits) + " | headline | future AUC | waldean check |",
+            "|---|---|---|" + "---|" * len(crits) + "---|---|---|"]
+    out += [f"| {r['run']} | {r['variant']} | {r['cli_version']} | " + " | ".join(r.get(c) or "n/a" for c in crits)
+            + f" | {r.get('headline') or '-'} | {r.get('future_auc') or '-'} | {r['check'] or '-'} |" for r in rows]
+    out += ["", "## Prompt", "", f"`{m['prompt']}`", ""]
+    out += [f"Arm {a} appends `{arm['suffix']}`." for a, arm in m["arms"].items() if arm.get("suffix")]
+    return "\n".join(out) + "\n"
+
+
+def failed_count(row: dict, d: dict) -> int:
+    return sum(row.get(c) != "pass" for c in d["criteria"])
+
+
+def mantel_haenszel(tables: list[tuple[int, int, int, int]]) -> tuple[float, float, float] | None:
+    r = sum(a * d / (a + b + c + d) for a, b, c, d in tables if a + b + c + d)
+    s = sum(b * c / (a + b + c + d) for a, b, c, d in tables if a + b + c + d)
+    if r == 0 or s == 0:
+        return None
+    var = 0.0
+    for a, b, c, d in tables:
+        n = a + b + c + d
+        if not n:
+            continue
+        pi, qi, ri, si = (a + d) / n, (b + c) / n, a * d / n, b * c / n
+        var += pi * ri / (2 * r * r) + (pi * si + qi * ri) / (2 * r * s) + qi * si / (2 * s * s)
+    centre = math.log(r / s)
+    return (r / s, math.exp(centre - 1.96 * math.sqrt(var)), math.exp(centre + 1.96 * math.sqrt(var)))
+
+
+def secondary(m: dict, rows: list[dict], a: str, b: str) -> list[str]:
+    by_name = {d["name"]: d for d in m["datasets"]}
+    ra = [r for r in rows if r["variant"] == a]
+    rb = [r for r in rows if r["variant"] == b]
+    ka = sum(not valid(r, by_name[r["dataset"]]) for r in ra)
+    kb = sum(not valid(r, by_name[r["dataset"]]) for r in rb)
+    out = ["", "## Secondary analyses (amendment 1, registered before scoring)", ""]
+    pv = boschloo_exact([[ka, len(ra) - ka], [kb, len(rb) - kb]], alternative="two-sided").pvalue
+    out.append(f"1. Boschloo exact, two-sided, {a} {ka}/{len(ra)} vs {b} {kb}/{len(rb)}: p = {pv:.4f}.")
+    ca = [failed_count(r, by_name[r["dataset"]]) for r in ra]
+    cb = [failed_count(r, by_name[r["dataset"]]) for r in rb]
+    pu = mannwhitneyu(ca, cb, alternative="two-sided").pvalue
+    out.append(f"2. Criteria not passed per run, Mann-Whitney two-sided: mean {a} {statistics.mean(ca):.3f} "
+               f"vs {b} {statistics.mean(cb):.3f}, p = {pu:.4f}.")
+    rng = np.random.default_rng(20261020)
+    pa = rng.beta(1 + ka, 1 + len(ra) - ka, 200000)
+    pb = rng.beta(1 + kb, 1 + len(rb) - kb, 200000)
+    out.append(f"3. Beta(1,1) posterior P(failure rate {b} < {a}) = {float(np.mean(pb < pa)):.4f}.")
+    tables = []
+    strata = []
+    for d in m["datasets"]:
+        da = [r for r in ra if r["dataset"] == d["name"]]
+        db = [r for r in rb if r["dataset"] == d["name"]]
+        fa = sum(not valid(r, d) for r in da)
+        fb = sum(not valid(r, d) for r in db)
+        tables.append((fa, len(da) - fa, fb, len(db) - fb))
+        strata.append(f"{d['name']} {a} {fa}/{len(da)} {b} {fb}/{len(db)}")
+    mh = mantel_haenszel(tables)
+    mh_text = "undefined (an arm has no failures or no passes in every dataset)" if mh is None else \
+        f"{mh[0]:.2f} (95% CI {mh[1]:.2f} to {mh[2]:.2f})"
+    out.append(f"4. Mantel-Haenszel odds ratio of failure {a} vs {b}, stratified by dataset: {mh_text}; "
+               + "; ".join(strata) + ".")
+    out.append("5. Failure counts per criterion per arm: see the arm table above.")
+    return out
+
+
+def code_lines(path: Path) -> list[str]:
+    nb = nbformat.read(path, as_version=4)
+    return [ln.strip() for c in nb.cells if c.cell_type == "code" for ln in c.source.splitlines() if ln.strip()]
+
+
+def cmd_similar(args) -> int:
+    lines = {p.parent.name: code_lines(p) for p in sorted(args.runs.glob("*/experiment.ipynb"))}
+    pairs = sorted(((difflib.SequenceMatcher(None, lines[a], lines[b], autojunk=False).ratio(), a, b)
+                    for a, b in itertools.combinations(lines, 2)), reverse=True)
+    for ratio, a, b in pairs[:10]:
+        print(f"{ratio:.2f} {a} {b}")
+    return 1 if pairs and pairs[0][0] >= args.threshold else 0
+
+
+ARM_WORDS = re.compile(r"protocol\.yaml|holdout\.csv|unused\.csv|evidence\.json|checklist\.md|"
+                       r"waldean|protocol|checklist|walk_forward|TimeSeriesSplit", re.IGNORECASE)
+
+
+def cmd_redact(args) -> int:
+    paths = sorted(args.runs.glob("*/experiment.ipynb"))
+    if args.arms:
+        paths = [p for p in paths if p.parent.name.rsplit("-", 2)[1] in args.arms]
+    order = random.Random(args.seed).sample(paths, len(paths))
+    out = args.runs.parent / f"{args.runs.name}-redacted"
+    out.mkdir(exist_ok=True)
+    for old in out.glob("nb-*.ipynb"):
+        old.unlink()
+    key = {}
+    for i, path in enumerate(order):
+        nb = nbformat.read(path, as_version=4)
+        nb.metadata = {}
+        for c in nb.cells:
+            c.source = ARM_WORDS.sub("[redacted]", c.source)
+            c.metadata = {}
+            if c.cell_type == "code":
+                c.outputs, c.execution_count = [], None
+        nbformat.write(nb, out / f"nb-{i:03d}.ipynb")
+        key[f"nb-{i:03d}"] = path.parent.name
+    (args.runs.parent / f"{args.runs.name}-redaction-key.json").write_text(json.dumps(key, indent=2) + "\n")
+    return 0
+
+
+def kappa(first: dict[str, str], second: dict[str, str]) -> tuple[int, int, float | None]:
+    runs = sorted(set(first) & set(second))
+    if not runs:
+        return (0, 0, None)
+    agree = sum(first[r] == second[r] for r in runs)
+    pf = sum(first[r] == "fail" for r in runs) / len(runs)
+    ps = sum(second[r] == "fail" for r in runs) / len(runs)
+    pe = pf * ps + (1 - pf) * (1 - ps)
+    return (agree, len(runs), None if pe == 1 else (agree / len(runs) - pe) / (1 - pe))
+
+
+def cmd_kappa(args) -> int:
+    key = json.loads((args.runs.parent / f"{args.runs.name}-redaction-key.json").read_text(encoding="utf-8"))
+    crits = list(manifest()["criteria"])
+    second = {c: {} for c in crits}
+    with (BENCH / "second-rater.tsv").open(encoding="utf-8") as f:
+        for r in csv.DictReader(f, delimiter="\t"):
+            second[r["criterion"]][key[r["run"]]] = r["ruling"]
+    first = {c: {} for c in crits}
+    with (BENCH / "results-first-rater.tsv").open(encoding="utf-8") as f:
+        for r in csv.DictReader(f, delimiter="\t"):
+            for c in crits:
+                if r["run"] in key.values() and r.get(c) in ("pass", "fail"):
+                    first[c][r["run"]] = r[c]
+    pooled_first, pooled_second = {}, {}
+    for c in crits:
+        agree, n, k = kappa(first[c], second[c])
+        if n:
+            print(f"{c}: agreement {agree}/{n} kappa {'-' if k is None else format(k, '.2f')}")
+            print(f"{c}: disagree", sorted(r for r in set(first[c]) & set(second[c]) if first[c][r] != second[c][r]))
+        pooled_first.update({f"{c}:{r}": v for r, v in first[c].items()})
+        pooled_second.update({f"{c}:{r}": v for r, v in second[c].items()})
+    agree, n, k = kappa(pooled_first, pooled_second)
+    print(f"pooled: agreement {agree}/{n} kappa {'-' if k is None else format(k, '.2f')}")
+    return 0
 
 
 def detector_counts(rows: list[dict]) -> dict[str, int]:
@@ -420,7 +712,7 @@ def main() -> int:
     global BENCH, MANIFEST, SCORING
     p = argparse.ArgumentParser(prog="agent_baseline")
     sub = p.add_subparsers(dest="cmd", required=True)
-    for name in ("prep", "run", "score"):
+    for name in ("prep", "run", "score", "similar", "redact", "kappa"):
         s = sub.add_parser(name)
         s.add_argument("--bench", default="agent-baseline")
         s.add_argument("--data", type=Path)
@@ -430,6 +722,9 @@ def main() -> int:
         s.add_argument("--agents", nargs="*")
         s.add_argument("--timeout", type=int, default=1800)
         s.add_argument("--jobs", type=int, default=4)
+        s.add_argument("--threshold", type=float, default=0.6)
+        s.add_argument("--seed", type=int, default=20261020)
+        s.add_argument("--arms", nargs="*")
     args = p.parse_args()
     BENCH = ROOT / "evals" / args.bench
     MANIFEST = BENCH / "MANIFEST.json"
@@ -437,7 +732,8 @@ def main() -> int:
     suffix = args.bench.removeprefix("agent-baseline")
     args.data = args.data or ROOT / "scratch" / args.bench / "data"
     args.runs = args.runs or AGENT_ROOT / f"runs{suffix}"
-    return {"prep": cmd_prep, "run": cmd_run, "score": cmd_score}[args.cmd](args)
+    return {"prep": cmd_prep, "run": cmd_run, "score": cmd_score,
+            "similar": cmd_similar, "redact": cmd_redact, "kappa": cmd_kappa}[args.cmd](args)
 
 
 if __name__ == "__main__":

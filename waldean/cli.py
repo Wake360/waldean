@@ -373,6 +373,28 @@ def cmd_run(args) -> int:
     return 0
 
 
+def cmd_protocol(args) -> int:
+    try:
+        from .experiment.protocol import check_protocol, create_protocol
+        if args.protocol_cmd == "create":
+            out = create_protocol(args.csv, args.columns, args.target, args.out, question=args.question,
+                                  time_column=args.time_column, seed=args.seed)
+            print(f"created: {(out / 'protocol.yaml').as_posix()}")
+            print(f"created: {(out / 'holdout.csv').as_posix()}")
+            return 0
+        problems = check_protocol(args.protocol, args.notebook)
+    except ImportError:
+        print(BUILDER_HINT, file=sys.stderr)
+        return 3
+    except Exception as exc:
+        print(f"waldean: {_input_error(exc)}", file=sys.stderr)
+        return 3
+    for problem in problems:
+        print(f"protocol: {problem}")
+    print(f"protocol check: {len(problems)} problem(s)" if problems else "protocol check: ok")
+    return 2 if problems else 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="waldean", description="Statistical-integrity linter for notebooks.")
     try:
@@ -511,6 +533,21 @@ def main(argv=None) -> int:
     p_run.add_argument("exp_dir")
     p_run.add_argument("--timeout", type=int, default=600)
     p_run.set_defaults(func=cmd_run)
+
+    p_proto = sub.add_parser("protocol", help="write or check a locked experiment protocol (experimental)")
+    proto_sub = p_proto.add_subparsers(dest="protocol_cmd", required=True)
+    p_pc = proto_sub.add_parser("create", help="profile a CSV and write protocol.yaml + holdout.csv")
+    p_pc.add_argument("csv")
+    p_pc.add_argument("--columns", required=True)
+    p_pc.add_argument("--target", required=True)
+    p_pc.add_argument("--out", required=True)
+    p_pc.add_argument("--question", default="")
+    p_pc.add_argument("--time-column")
+    p_pc.add_argument("--seed", type=int, default=0)
+    p_pk = proto_sub.add_parser("check", help="check a notebook and its evidence.json against protocol.yaml")
+    p_pk.add_argument("notebook")
+    p_pk.add_argument("--protocol", required=True)
+    p_proto.set_defaults(func=cmd_protocol)
 
     try:
         args = parser.parse_args(argv)

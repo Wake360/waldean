@@ -1,0 +1,256 @@
+{
+  "schema": 2,
+  "registered": "2026-10-13",
+  "status": "registered before any main run; datasets frozen in an earlier commit than waldean/experiment/protocol.py",
+  "data": {
+    "generator": "scripts/agent_protocol_data.py",
+    "seed": 20261020,
+    "trap_check": "Each criterion applies only where its trap moves AUC by the thresholds in trap_failures(); see data-report.json.",
+    "future": "future.csv per dataset is a fresh draw from the same process (later period, new entities, or new rows). It is never copied into a run dir before scoring."
+  },
+  "agents": {
+    "claude": {
+      "cli": "claude",
+      "model": "sonnet"
+    }
+  },
+  "agents_note": "Claude Code with model sonnet only. Codex is out of scope after the v3 usage-limit failures; a later rerun on another agent is a separate registration.",
+  "runs_per_cell": {
+    "A": 8,
+    "B": 20,
+    "C": 20
+  },
+  "run_files": [
+    "data.csv",
+    "columns.csv"
+  ],
+  "prompt": "Here is data.csv and its data dictionary columns.csv. I want to know whether we can predict {question}. Build a notebook and save it as experiment.ipynb.",
+  "arms": {
+    "A": {
+      "suffix": "",
+      "files": [],
+      "tools": []
+    },
+    "B": {
+      "suffix": " Follow the methodology checklist in checklist.md. You can run `waldean check experiment.ipynb` to lint the notebook for statistical flaws.",
+      "files": [
+        "checklist.md"
+      ],
+      "tools": [
+        "Bash(waldean *)"
+      ]
+    },
+    "C": {
+      "suffix": " Follow the experiment protocol in protocol.yaml. It fixes the holdout rows (holdout.csv), the cross-validation scheme and how the model is chosen. After running the notebook, run `waldean protocol check experiment.ipynb --protocol protocol.yaml` and fix what it reports.",
+      "files": [
+        "protocol.yaml",
+        "holdout.csv"
+      ],
+      "tools": [
+        "Bash(waldean *)"
+      ]
+    }
+  },
+  "comparisons": [
+    [
+      "A",
+      "B"
+    ],
+    [
+      "B",
+      "C"
+    ]
+  ],
+  "primary": [
+    "B",
+    "C"
+  ],
+  "criteria": {
+    "temporal": {
+      "text": "every split behind a reported performance number trains only on rows earlier than all of its test rows",
+      "why": "The model is meant for future rows. The data drift over time, so a random split estimates performance on the past mixed with the future, not on the future (Roberts et al. 2017, Ecography 40:913; Kapoor and Narayanan 2023, Patterns 4:100804, temporal leakage)."
+    },
+    "group": {
+      "text": "no value of the dataset's entity key column appears in both the train and test rows of any split behind a reported performance number",
+      "why": "Rows of one person share an outcome tendency and identifying features. A row split lets the model recognise people it has already seen, while deployment scores new people (Kapoor and Narayanan 2023, non-independence between train and test)."
+    },
+    "leak": {
+      "text": "the post-outcome column is not among the fitted features of any model behind a reported performance number",
+      "why": "The column is recorded after the outcome. It is unavailable when a prediction would be made (Kaufman, Rosset and Perlich 2012, ACM TKDD 6:15; Kapoor and Narayanan 2023, illegitimate features). The data dictionary states when it is recorded, and on its own it predicts the target almost perfectly, so both the meaning and the data reveal it."
+    },
+    "selection": {
+      "text": "the rows behind the headline metric were not used to choose the model, its hyperparameters, its features or its decision threshold",
+      "why": "Choosing on the rows that are then reported biases the headline upward (Cawley and Talbot 2010, JMLR 11:2079). With few candidates the bias is often small; this criterion measures evaluation hygiene, not the size of the bias."
+    }
+  },
+  "binding": {
+    "procedure": "The scorer reads each notebook before executing it (as in v1) and writes a Python snippet into scoring.tsv, tied to the notebook's sha256, that sets the names below. Row labels are the 0-based row positions of data.csv.",
+    "PROBE_EVALS": "list of (train_labels, test_labels, feature_names), one entry per split behind any reported performance number: every CV fold, every validation split, every test split. Features derived from a column are listed under that column's name.",
+    "PROBE_HEADLINE": "row labels behind the metric the notebook's conclusion rests on.",
+    "PROBE_SELECTED_ON": "row labels whose outcomes were used to choose the reported model, hyperparameters, features or threshold; empty if nothing was chosen.",
+    "HEADLINE": "(metric_name, value) of the headline, descriptive only.",
+    "reported": "A performance number computed on held-out rows and shown in an output or in the notebook text. Excluded: numbers the notebook itself labels as invalid for deployment, e.g. a deliberate with/without-leak comparison.",
+    "failures": "A run without a notebook, a notebook that fails to execute, or a notebook with no reported performance number fails every criterion of its dataset.",
+    "PROBE_FUTURE_AUC": "roc_auc of the notebook's headline model on future.csv (same columns as data.csv), using the notebook's own fitted preprocessing and model objects without refitting; None if that is impossible without refitting."
+  },
+  "primary_endpoint": "failure rate per arm: a run fails if any applicable criterion is not pass (no notebook, execution error and unbound count as fail)",
+  "secondary": {
+    "estimation_gap": "median over runs of |headline value - PROBE_FUTURE_AUC|, only runs whose headline metric is ROC AUC (name roc_auc, roc auc or auc, case-insensitive) and both values numeric; the number of such runs per arm is reported",
+    "completion": "share of runs with a notebook"
+  },
+  "decision": {
+    "c_better": "Newcombe 95% lower bound of (B failure rate - C failure rate) > 0, AND C median gap <= B median gap + 0.02, AND C completion >= B completion - 0.05 The gap condition holds when neither arm has a gap or only B lacks one, and fails when only C lacks one.",
+    "no_evidence": "lower bound <= 0: do not build the protocol as a separate product layer; keep the linter and evidence",
+    "c_worse": "upper bound < 0: drop the protocol",
+    "fixed_n": "Run counts are fixed and do not change after interim results."
+  },
+  "rating": {
+    "bindings": "One session-agent reviewer per dataset reads each notebook in full, unblinded to arm (C notebooks reference holdout.csv), and writes scoring.tsv.",
+    "second_rater": "A fresh agent rules selection pass/fail on redacted B and C notebooks (scripts/agent_baseline.py redact --arms B C, seed 20261020; notebook and cell metadata cleared) seeing only criteria.selection and binding.PROBE_SELECTED_ON.",
+    "adjudication": "Disagreements go to a third fresh agent with the redacted notebook and both rulings. The adjudicated ruling sets PROBE_SELECTED_ON in scoring.tsv before scoring.",
+    "agreement": "Cohen's kappa between first and second rater is reported.",
+    "note": "Superseded for the second rater, agreement and adjudication by amendments[1].rating."
+  },
+  "order": "jobs shuffled with random.Random(20261020) within each --only batch",
+  "independence": "--jobs 1. /private/tmp/claude is swept into the run dir before and after each arm run. Agents also write scratch files to /private/tmp/claude-<uid>, which holds Claude Code session state and is never swept wholesale: each run records the entries it added there (meta.json user_tmp_new), and before each --only batch and before any rerun the entries listed in user_tmp_new of finished runs (except cache-break-state-*) are moved to /private/tmp/waldean-agent-baseline/stale-scratch/. scripts/agent_baseline.py similar must report no pair >= 0.6 before scoring, else the later run is excluded and rerun.",
+  "integrity": "After all runs, protocol.yaml and holdout.csv in every arm C run dir are hashed and compared with files_sha256; mismatches are reported in the eval notes. protocol check itself verifies data.csv and holdout.csv against protocol.yaml.",
+  "datasets": [
+    {
+      "name": "shipments",
+      "target": "late_delivery",
+      "question": "whether a consignment is delivered late (the late_delivery column)",
+      "criteria": {
+        "temporal": "import pandas as _pd\n_t = _pd.to_datetime(_pd.read_csv('data.csv', usecols=['dispatched_on'])['dispatched_on'])\nprint('PROBE', bool(PROBE_EVALS) and all(_t.loc[list(tr)].max() < _t.loc[list(te)].min() for tr, te, _ in PROBE_EVALS))",
+        "leak": "print('PROBE', bool(PROBE_EVALS) and all(not any(str(f) == 'claim_paid_eur' or str(f).endswith('__claim_paid_eur') for f in fs) for _, _, fs in PROBE_EVALS))",
+        "selection": "print('PROBE', bool(PROBE_HEADLINE) and not set(PROBE_SELECTED_ON) & set(PROBE_HEADLINE))"
+      },
+      "rows": 8051,
+      "future_rows": 949,
+      "csv_sha256": "859a474044a292565d72b06a6180ade1c1adbc8c72a47c4a518186876f581f27",
+      "columns_sha256": "8ece7e8562e74ff3b27470e2e9a04a1994291cd7d1d45dd3612a035be1ecc305",
+      "files_sha256": {
+        "checklist.md": "e2ce1d358d6f0db1327620275819645d541c5c9c8f6ccfc2e71bf042a5401697",
+        "protocol.yaml": "9099f6dba8962a00208240975cea5545c40bf505a6f6fcbcb39c30a445e8250d",
+        "holdout.csv": "fae5c02170970fe92fcadaee6d1109bb1d459c9dc033dfc487bb2c823d0f6736"
+      },
+      "trap_check": {
+        "positive_rate": 0.21,
+        "auc_temporal_holdout_last_25pct": 0.679,
+        "auc_temporal_holdout_with_leak": 0.992,
+        "auc_random_5fold": 0.799,
+        "single_column_auc_leak": 0.993
+      }
+    },
+    {
+      "name": "tutoring",
+      "target": "passed_quiz",
+      "question": "whether a student passes the quiz that closes a session (the passed_quiz column)",
+      "criteria": {
+        "group": "import pandas as _pd\n_p = _pd.read_csv('data.csv', usecols=['student_key'])['student_key']\nprint('PROBE', bool(PROBE_EVALS) and all(not set(_p.loc[list(tr)]) & set(_p.loc[list(te)]) for tr, te, _ in PROBE_EVALS))",
+        "selection": "print('PROBE', bool(PROBE_HEADLINE) and not set(PROBE_SELECTED_ON) & set(PROBE_HEADLINE))"
+      },
+      "rows": 12453,
+      "future_rows": 2884,
+      "csv_sha256": "5a0b0221ed641db40322e1a95cae32cc67d3525ecb500813f95d6c109b2a7409",
+      "columns_sha256": "0090a76fc46d4bb7d5222a148fc492167511f81bd2d349f896ac550107c79ba0",
+      "files_sha256": {
+        "checklist.md": "e2ce1d358d6f0db1327620275819645d541c5c9c8f6ccfc2e71bf042a5401697",
+        "protocol.yaml": "c6afcf0a580f8c7f98c4c75fc76bfb4218db5aac44bc8c9bf6641d056ef3ad57",
+        "holdout.csv": "ff08c7a88fd7e15b17b05a390393550fdf57ea2b6df584f1d0594cc2ec1f00e6"
+      },
+      "trap_check": {
+        "positive_rate": 0.421,
+        "auc_random_5fold": 0.682,
+        "auc_row_5fold_random_forest": 0.658,
+        "auc_group_5fold_random_forest": 0.56
+      }
+    },
+    {
+      "name": "meters",
+      "target": "arrears_next_month",
+      "question": "whether an account is in arrears next month (the arrears_next_month column)",
+      "criteria": {
+        "temporal": "import pandas as _pd\n_t = _pd.to_datetime(_pd.read_csv('data.csv', usecols=['billing_month'])['billing_month'])\nprint('PROBE', bool(PROBE_EVALS) and all(_t.loc[list(tr)].max() < _t.loc[list(te)].min() for tr, te, _ in PROBE_EVALS))",
+        "leak": "print('PROBE', bool(PROBE_EVALS) and all(not any(str(f) == 'final_notice_sent' or str(f).endswith('__final_notice_sent') for f in fs) for _, _, fs in PROBE_EVALS))",
+        "selection": "print('PROBE', bool(PROBE_HEADLINE) and not set(PROBE_SELECTED_ON) & set(PROBE_HEADLINE))"
+      },
+      "rows": 20939,
+      "future_rows": 8885,
+      "csv_sha256": "42accdc3f8c6ae3514896d73516d98c54e4a27c5422d4fe88e5c4fe1b00a14f7",
+      "columns_sha256": "7ebe2d6423e4ca8b537cce117c99137bf5a1b5a00ab41194f853f72398db662b",
+      "files_sha256": {
+        "checklist.md": "e2ce1d358d6f0db1327620275819645d541c5c9c8f6ccfc2e71bf042a5401697",
+        "protocol.yaml": "1c69a2faad46687af9ce30b26f9253f83b07ad25d20e01c3426a825f6c1bc85e",
+        "holdout.csv": "903bb064736772428ae27c90c6c03ac7f9c28c7eb54a50c70b7601b731258ba6"
+      },
+      "trap_check": {
+        "positive_rate": 0.12,
+        "auc_temporal_holdout_last_25pct": 0.738,
+        "auc_temporal_holdout_with_leak": 0.963,
+        "auc_random_5fold": 0.813,
+        "single_column_auc_leak": 0.938
+      }
+    },
+    {
+      "name": "warranty",
+      "target": "claim_within_year",
+      "question": "whether a warranty claim is filed within a year (the claim_within_year column)",
+      "criteria": {
+        "selection": "print('PROBE', bool(PROBE_HEADLINE) and not set(PROBE_SELECTED_ON) & set(PROBE_HEADLINE))"
+      },
+      "rows": 7000,
+      "future_rows": 2000,
+      "csv_sha256": "25552b73fd810f7dfa81a14849736291d84f91da2f8b5a58bcfaf0cc018962f4",
+      "columns_sha256": "7cf7ec6cc80df7bfad237792d0f3ae72011148e8cc7f782292853288100b1018",
+      "files_sha256": {
+        "checklist.md": "e2ce1d358d6f0db1327620275819645d541c5c9c8f6ccfc2e71bf042a5401697",
+        "protocol.yaml": "c06625c68b7dd399032ba37bcb05ec707ee5cedf8c0ef6143eb5d7d2fa27ed95",
+        "holdout.csv": "083821b17b5c7fdf81de46633ca08a7d601bd8266b269faa3911938d26bf66bf"
+      },
+      "trap_check": {
+        "positive_rate": 0.126,
+        "auc_random_5fold": 0.688
+      }
+    }
+  ],
+  "power_note": "80 runs per arm give about 0.82 power for 20% vs 5% failure (normal approximation); smaller differences are likely missed.",
+  "amendments": [
+    {
+      "id": 1,
+      "date": "2026-10-13T20:11+02:00",
+      "state_when_written": "Main runs started 2026-10-13 after 18:51. At 19:42, 28 of 192 runs were finished, all on meters (A 3, B 14, C 11). No run has been scored, no binding written, no criterion ruled. Known partial information: every finished run produced a notebook, and the 11 finished C notebooks returned ok from `waldean protocol check`. Nothing about temporal, group, leak or selection rulings, headline values or future AUC was seen.",
+      "reason": "Power check (power_note) covers 20% vs 5% failure. The pilot (agent-protocol-pilot) showed B at 2/20, so the main comparison may be 5% vs 0%, where 80 runs per arm give a Newcombe lower bound near 0 even when C never fails. A no_evidence result at this n would mean 'difference under about 7 points not resolved', not 'no difference'. This amendment fixes, before any scoring, what happens then and which secondary analyses are reported, so none of it is chosen after seeing the result.",
+      "unchanged": "primary, primary_endpoint, decision.c_better, decision.no_evidence, decision.c_worse, decision.fixed_n for the first batch, datasets, arms, prompt, criteria, binding, rating, order, independence. The first-batch result is reported under the original rule exactly as registered.",
+      "extension": {
+        "trigger": "First batch gives no_evidence AND the Newcombe 95% upper bound of (B failure rate - C failure rate) >= 0.10. If the upper bound is below 0.10, no extension: the first batch already rules out a 10-point improvement and the no_evidence consequence stands.",
+        "design": "Second batch of B 20 and C 20 per dataset (80 + 80), same datasets, prompts, arm files and rater procedure, jobs shuffled with random.Random(20261021). No A runs. Registered as a second look of a two-look group-sequential design, not as a new experiment.",
+        "analysis": "Pooled 160 vs 160, same primary endpoint, same three conditions as decision.c_better, but the Newcombe interval on the pooled difference is 97.06% (Pocock two-look boundary, z = 2.178). The first look stays at 95% as registered; the overall type I error is therefore at most about 0.05 + 0.029 and is stated in the report, not hidden.",
+        "outcome_labels": "pooled lower bound > 0 with the two secondary conditions met: c_better_extended; pooled upper bound < 0: c_worse_extended; otherwise no_evidence_final, with the same product consequence as decision.no_evidence.",
+        "fixed_n": "The extension size is fixed here. No third batch."
+      },
+      "secondary_analyses": {
+        "rule": "Reported in the eval file in every case, in this order, regardless of result. None of them changes the decision label. The report may not omit one because of its result.",
+        "exact_test": "Boschloo exact unconditional test, two-sided, on the 2x2 table of fail/pass for B vs C, p-value reported.",
+        "ordinal": "Number of applicable criteria not passed per run (0 to 3), B vs C, two-sided Mann-Whitney U, p-value and the two mean counts reported.",
+        "bayesian": "Beta(1,1) prior per arm, binomial likelihood, posterior probability that C failure rate < B failure rate, from 200000 draws with seed 20261020.",
+        "stratified": "Mantel-Haenszel common odds ratio of failure (B vs C) stratified by dataset, with 95% CI, plus the per-dataset 2x2 tables.",
+        "per_criterion": "Failure counts per criterion per arm, descriptive only."
+      },
+      "integrity": "Written and committed before scoring. The commit date of this amendment and the first binding row in scoring.tsv prove the order. Any analysis not listed here or in the original decision is exploratory and must be labelled so."
+    },
+    {
+      "id": 2,
+      "date": "2026-10-13T20:25+02:00",
+      "state_when_written": "55 of 192 runs finished (meters complete, warranty in progress). No run scored, no binding written, no criterion ruled. Nothing beyond amendment 1's partial information was seen.",
+      "reason": "The registered blinding covers only selection. Temporal and group rulings come from the first reviewer's PROBE_EVALS binding, written unblinded to arm. Both arms of the primary comparison differ most on exactly these criteria, so an unblinded binding is where rater bias would enter. This amendment extends the second-rater and adjudication procedure to every applicable criterion.",
+      "rating": {
+        "second_rater": "A fresh agent rules pass or fail for every applicable criterion (temporal, group, selection) on each redacted B and C notebook (scripts/agent_baseline.py redact --arms B C, seed 20261020), seeing only the criterion texts from criteria, the binding definitions of PROBE_EVALS and PROBE_SELECTED_ON, and columns.csv. It writes evals/agent-protocol/second-rater.tsv with columns run, criterion, ruling, one row per applicable criterion. Leak stays mechanical (feature name match) and is not re-rated.",
+        "agreement": "Cohen's kappa and raw agreement between first and second rater, per criterion and pooled, via scripts/agent_baseline.py kappa, reported in the eval file.",
+        "adjudication": "Every disagreement, on any criterion, goes to a third fresh agent with the redacted notebook, the criterion text and both rulings unlabelled. Where the third agrees with the second, the first reviewer corrects the binding in scoring.tsv (PROBE_EVALS for temporal and group, PROBE_SELECTED_ON for selection) so that the mechanical probe gives the adjudicated ruling. The notebook sha256 does not change. Final scoring runs after all corrections.",
+        "unchanged": "First reviewer procedure, probes, criteria, redaction, seed, decision rules."
+      },
+      "integrity": "Written and committed before scoring; order proven by commit date against the first row of scoring.tsv.",
+      "redaction": "ARM_WORDS additionally redact walk_forward and TimeSeriesSplit, since the protocol's cv.kind vocabulary and the generic sklearn splitter would otherwise hint at the arm. The second rater judges temporal CV from the index logic, not from the splitter name."
+    }
+  ]
+}
