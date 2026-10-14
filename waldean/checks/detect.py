@@ -785,7 +785,8 @@ def _wrapper_labels(nb: ParsedNotebook, flow: NotebookDataflow) -> dict[str, tup
             local |= {p.arg for p in (a.vararg, a.kwarg) if p is not None}
             end = fn.end_lineno or fn.lineno
             names: set[str] = set()
-            for c in flow.calls:
+            body = flow.functions[fn.name].calls if fn.name in flow.functions else flow.calls
+            for c in body:
                 if c.cell == cell.index and fn.lineno < c.line <= end and c.name in SCORE_FUNCS:
                     names |= c.pos_args[0] if c.pos_args else c.kw_args.get("y_true", set())
             names = {n for n in names if n in positional or n in kwonly or n not in local}
@@ -800,7 +801,8 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
     src = {c.index: c.source.splitlines() for c in nb.code_cells}
     calls_by_cell: dict[int, list] = {}
     for c in flow.calls:
-        calls_by_cell.setdefault(c.cell, []).append(c)
+        if c.inlined_from is None or (c.inlined_from not in wrappers and c.name not in SCORE_FUNCS):
+            calls_by_cell.setdefault(c.cell, []).append(c)
 
     def span_text(ev) -> str:
         lines = src.get(ev.cell, [])

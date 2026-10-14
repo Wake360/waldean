@@ -118,6 +118,7 @@ class CallSite:
     loop_vars: set[str] = field(default_factory=set)  # targets of enclosing for-loops
     end_line: int = 0
     helper_local: bool = False
+    inlined_from: str | None = None
 
     @property
     def arg_names(self) -> set[str]:
@@ -554,6 +555,7 @@ def _rename_call(c: CallSite, rename: dict[str, set[str]], site: CallSite) -> Ca
         kw_args={k: _rename_names(v, rename) for k, v in c.kw_args.items()},
         loop_vars=set(site.loop_vars), end_line=site.end_line,
         helper_local=c.receiver_base is not None and c.receiver_base not in rename,
+        inlined_from=site.name,
     )
 
 
