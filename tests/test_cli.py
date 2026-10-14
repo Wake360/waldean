@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from waldean.analysis.dataflow import analyze
+from waldean.analysis.ingest import parse_script
 from waldean.api import EmptyDir as _EmptyDir, expand_notebooks as _expand_notebooks
 from waldean.cli import main
 from waldean.llm.backends import BackendError
@@ -345,7 +347,7 @@ def test_llm_progress_on_tty_stderr_only(monkeypatch, tmp_path, capsys):
     assert "checking 1/2" in err
     assert "checking 2/2" in err
     assert "checking" not in out
-    assert err.count("\n") == 1  # \r-overwrite, single close newline
+    assert err.count("\n") == 2  # warning line, then \r-overwrite with a single close newline
 
 
 def test_llm_progress_absent_when_piped(monkeypatch, tmp_path, capsys):
@@ -399,7 +401,7 @@ def test_message_llm_missing_keys(monkeypatch, capsys):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     rc = main(["check", "--llm", LEAKY])
     assert rc == 3
-    assert capsys.readouterr().err == (
+    assert capsys.readouterr().err.endswith(
         "waldean: --llm needs ANTHROPIC_API_KEY and OPENAI_API_KEY set in the environment\n"
     )
 
@@ -409,7 +411,7 @@ def test_eval_llm_missing_keys_exits_3(monkeypatch, capsys):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     rc = main(["eval", "--llm", "--split", "dev"])
     assert rc == 3
-    assert capsys.readouterr().err == (
+    assert capsys.readouterr().err.endswith(
         "waldean: --llm needs ANTHROPIC_API_KEY and OPENAI_API_KEY set in the environment\n"
     )
 
@@ -550,7 +552,7 @@ def test_llm_subscription_missing_clis_exits_3(monkeypatch, capsys):
     monkeypatch.setattr("waldean.api.shutil.which", lambda name: None)
     rc = main(["check", "--llm", "--llm-subscription", LEAKY])
     assert rc == 3
-    assert capsys.readouterr().err == (
+    assert capsys.readouterr().err.endswith(
         "waldean: --llm-subscription needs the claude and codex CLIs on PATH\n"
     )
 
@@ -705,3 +707,33 @@ def test_create_input_errors_exit_3(tmp_path, capsys):
     assert main(["create", str(csv), "--target", "churn", "--out", str(tmp_path / "exp")]) == 3
     assert "--time-column" in capsys.readouterr().err
     assert main(["create", str(tmp_path / "missing.csv"), "--target", "y", "--out", str(tmp_path / "e")]) == 3
+
+
+def test_probe_on_script_exits_3(tmp_path, capsys):
+    script = tmp_path / "a.py"
+    script.write_text("x = 1\n")
+    assert main(["check", str(script), "--probe"]) == 3
+    assert "--probe runs .ipynb" in capsys.readouterr().err
+
+
+def test_llm_flag_prints_experimental_warning(tmp_path, capsys, monkeypatch):
+    import nbformat
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setenv("OPENAI_API_KEY", "x")
+    nb_path = tmp_path / "a.ipynb"
+    nbformat.write(nbformat.v4.new_notebook(), nb_path)
+    main(["check", str(nb_path), "--llm", "--replay-dir", str(tmp_path / "replay")])
+    assert "experimental: no validated precision or recall" in capsys.readouterr().err
+
+
+def test_inlining_cap_lists_every_uninlined_cell_in_the_warning(tmp_path, capsys):
+    helper = "def prep(d):\n" + "".join(f"    a{i} = d\n" for i in range(50)) + "    return d\n"
+    src = "".join(f"# %%\n{c}" for c in [helper, "x = 1\n" + "prep(x)\n" * 300, "X = prep(X)\n", "Y = prep(Y)\n"])
+    p = _write(tmp_path, "cap.py", src)
+    flow = analyze(parse_script(p))
+    assert flow.skipped_cells == []
+    assert flow.uninlined_cells == [1, 2, 3]
+    main(["check", "--format", "json", p])
+    warning = json.loads(capsys.readouterr().out)["parse_warning"]
+    assert warning == "warning: 3 of 4 code cells could not be fully analysed; results are partial"

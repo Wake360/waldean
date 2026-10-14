@@ -124,24 +124,43 @@ class FitBeforeSplitMutation(Mutation):
         if call_args is None:
             raise ValueError("canonical split cell not found")
         pre_name = call_args.group(1)
-        new_fit = cst.parse_statement(f"{pre_name} = scaler.fit_transform({pre_name})\n")
-
         rest = [s for s in stmts if s not in {split_stmt, fit_stmt, transform_stmt, scaler_def}]
-        new_body = [scaler_def, new_fit, split_stmt] + rest
+        if seed % 2 == 1:
+            hand = cst.parse_statement(
+                f"{pre_name} = ({pre_name} - {pre_name}.mean()) / {pre_name}.std()\n"
+            )
+            new_body = [hand, split_stmt] + rest
+        else:
+            new_fit = cst.parse_statement(f"{pre_name} = scaler.fit_transform({pre_name})\n")
+            new_body = [scaler_def, new_fit, split_stmt] + rest
         new_source = module.with_changes(body=new_body).code.rstrip("\n")
         return _replace_cell(nb_node, idx, new_source)
 
     def verify(self, mutated_node) -> tuple[bool, dict]:
-        probe = (
-            "print('WALDEAN_VERIFY_LEAK', int(getattr(scaler, 'n_samples_seen_', -1)), int(len(y)))"
-        )
+        m = meta(mutated_node)
+        src = mutated_node.cells[m["split_cell"]]["source"]
+        if "scaler.fit_transform" in src:
+            probe = (
+                "print('WALDEAN_VERIFY_LEAK', int(getattr(scaler, 'n_samples_seen_', -1)), int(len(y)))"
+            )
+        else:
+            call_args = re.search(r"train_test_split\(\s*(\w+)\s*,", src)
+            if call_args is None:
+                return False, {"reason": "train_test_split not found in split_cell"}
+            pre_name = call_args.group(1)
+            probe = (
+                f"_m = np.asarray({pre_name}, dtype=float)\n"
+                f"print('WALDEAN_VERIFY_LEAK', int(len(_m)) if "
+                f"np.abs(_m.mean(axis=0)).max() < 1e-9 and np.abs(_m.std(axis=0, ddof=1) - 1).max() < 1e-9 "
+                f"else -1, int(len(y)))"
+            )
         executed = ex.execute(ex.with_appended_code_cell(mutated_node, probe))
         lines = ex.stdout_lines(executed, "WALDEAN_VERIFY_LEAK")
         if not lines:
             return False, {"reason": "no verify output"}
         _, seen, total = lines[-1].split()
         ok = int(seen) == int(total) and int(seen) > 0
-        return ok, {"scaler_samples_seen": int(seen), "total_rows": int(total)}
+        return ok, {"rows_in_statistic": int(seen), "total_rows": int(total)}
 
 
 class MultipleTestingMutation(Mutation):

@@ -34,6 +34,7 @@ verdict: 1 high, 0 medium | static layer (no LLM)
 - **Failure scenario:** Test metrics are inflated; the production model will underperform the reported numbers.
 - **Fix:** Fit the transformer on the training split only; apply transform to the test split.
 - **Confidence:** 0.92
+- **Repair:** `waldean propose examples/leaky.ipynb` writes a repair contract that an agent or a person can apply and Waldean can verify
 
 ## CLEAN (checked): baserate-accuracy-imbalanced, leakage-temporal-shuffle, leakage-test-selection, testing-multiple-uncorrected
 
@@ -50,7 +51,7 @@ with `TimeSeriesSplit`, numbers computed in the notebook
 
 ## Repair loop (experimental)
 
-Waldean does not stop at the finding. For a shuffled split on time-ordered data it writes a repair contract that a coding agent or a person applies, and then checks the result.
+Waldean does not stop at the finding. For a shuffled split on time-ordered data, and for a transformer fitted before the split, it writes a repair contract that a coding agent or a person applies, and then checks the result. With `--diff`, `propose` also writes `patch.diff` when the fix is mechanical: today only `X = scaler.fit_transform(X)` followed by a four-target `train_test_split(X, ...)`.
 
 ```bash
 waldean propose forecast.ipynb          # writes .waldean/repairs/forecast--leakage-temporal-shuffle/brief.md
@@ -62,9 +63,29 @@ waldean verify .waldean/repairs/forecast--leakage-temporal-shuffle --execute --m
 
 `verify` rejects edits outside the cells the contract names, a deleted evaluation call, a finding that is still there, and a new confident finding of a class the original did not have. With `--execute` it runs the original and the repaired notebook and records both metrics, package versions and file hashes in `evidence.json`. A repair is `static-pass` without execution and `verified` with it. Neither status says the new number is right.
 
-On the mutation corpus the verifier accepted all 16 true repairs and rejected all 48 constructed bad repairs of three kinds (file unchanged, edit outside the scope, evaluation call deleted) ([`evals/2026-10-13-repair-loop.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-repair-loop.md)). Agent trial: 5 of 5 demo runs verified, 2 of 2 real notebooks static-pass, N=7, indicative ([`evals/2026-10-13-repair-trial.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-repair-trial.md)).
+On the mutation corpus the verifier accepted all 16 true temporal-shuffle repairs and all 48 true fit-before-split repairs, and rejected all 48 and all 144 constructed bad repairs of three kinds (file unchanged, edit outside the scope, evaluation call deleted). `propose --diff` wrote a patch for the 24 fit-before-split mutants in the scaler form, and all 24 patched notebooks passed the static check ([`evals/2026-10-13-repair-loop.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-repair-loop.md)). Agent trial: 5 of 5 demo runs verified, 2 of 2 real notebooks static-pass, N=7, indicative ([`evals/2026-10-13-repair-trial.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-repair-trial.md)).
 
-Limits: one flaw class so far (`leakage-temporal-shuffle`). Comparison is cell by cell, so an added cell is rejected. `--execute` runs code on your machine with your permissions. It hides secret-looking environment variables and isolates nothing else. `verify` trusts the files in the repair directory, so do not let the agent write there. The static check reads names and literal arguments, not behaviour, so a disguised split can pass; read the delta in `evidence.json`. `train_test_split(shuffle=False)` on rows not sorted by time passes the static check; only `--execute` plus reading the evidence catches it. A `.py` file without `# %%` markers is one cell, so the scope check covers the whole file. The metric regex is yours; one that matches unrelated lines gives a misleading delta. The kernel runs with Waldean's Python, so the notebook's dependencies must be installed there. Both runs share the repaired notebook's directory, so files one run writes can affect the other.
+Limits: two flaw classes so far (`leakage-temporal-shuffle`, `leakage-fit-before-split`). Comparison is cell by cell, so an added cell is rejected. `--execute` runs code on your machine with your permissions. It hides secret-looking environment variables and isolates nothing else. `verify` trusts the files in the repair directory, so do not let the agent write there. The static check reads names and literal arguments, not behaviour, so a disguised split can pass; read the delta in `evidence.json`. `train_test_split(shuffle=False)` on rows not sorted by time passes the static check; only `--execute` plus reading the evidence catches it. A `.py` file without `# %%` markers is one cell, so the scope check covers the whole file. The metric regex is yours; one that matches unrelated lines gives a misleading delta. The kernel runs with Waldean's Python, so the notebook's dependencies must be installed there. Both runs share the repaired notebook's directory, so files one run writes can affect the other.
+
+## Experiment builder (experimental)
+
+```bash
+pip install 'waldean[builder]'
+waldean experiment data.csv --target churn          # plan.yaml, design.md, experiment.ipynb in data-experiment/
+waldean experiment data.csv --target churn --run    # also executes it and writes evidence/
+```
+
+The builder reads the CSV and decides: the task (binary, multi-class or regression, from the target), the split
+(time column > repeated-entity column > stratified or random), and the metrics (never accuracy). It excludes
+constant, identifier, high-cardinality and target-leaking columns and prints each exclusion with the flag that
+reverses it (`--keep COL`). Every notebook is a `ColumnTransformer` + model pipeline fitted inside each fold.
+`design.md` gives the reasons; `waldean check` runs on the result. Override with `--task`, `--time-column`,
+`--group-column COL|none`, `--exclude`, `--keep`. Leak detection is by near-perfect correlation or purity against
+the target only; a weaker future-derived feature passes.
+
+Measured with the v3 temporal probe on two synthetic datasets: the earlier temporal-only Builder passed on maintenance and subscriptions (1/1 each). Claude sonnet default runs in v3 passed 15/15 on maintenance and 7/15 on subscriptions. Indicative only. The Builder has one deterministic run per dataset, against 30 sampled agent runs. The agent was sonnet. The scored result is from commit 15c61d3; later renderer changes mean a fresh build differs ([`evals/2026-10-13-builder-vs-agents.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-builder-vs-agents.md)).
+
+`--run` executes the notebook on your machine in the `waldean-verify` kernel with secret-looking environment variables hidden. It is not a sandbox.
 
 ## Status
 
@@ -72,8 +93,9 @@ Limits: one flaw class so far (`leakage-temporal-shuffle`). Comparison is cell b
 |---|---|
 | **Available now** | `waldean check` on `.ipynb` and `.py` (plain and `# %%`); five static flaw classes (below); a survivorship candidate; Markdown, JSON and SARIF output; GitHub Action; pre-commit hooks; `waldean rules`; `waldean eval --predictions` for scoring other tools on the corpus |
 | **Experimental** | `--llm` / `--llm-subscription` narrative layer (prose claims vs computation). No validated precision or recall; its quality gates never ran |
-| **Experimental** | Repair loop: `waldean propose` / `waldean verify` for one class (`leakage-temporal-shuffle`). Measured on the synthetic corpus and in a 7-run agent trial, indicative (see Repair loop) |
-| **Planned** | Repair contracts for more flaw classes, starting with `leakage-fit-before-split`. Not shipped |
+| **Experimental** | Repair loop: `waldean propose` / `waldean verify` for two classes (`leakage-temporal-shuffle`, `leakage-fit-before-split`), plus `propose --diff` for the canonical fit-before-split form. Measured on the synthetic corpus; the 7-run agent trial covers temporal shuffle only, indicative (see Repair loop) |
+| **Experimental** | Experiment builder: `waldean experiment` for binary, multi-class and regression targets with time, group or random splits. Deterministic; not compared against hand-written notebooks on the new task types |
+| **Planned** | Repair contracts for the remaining flaw classes. Not shipped |
 
 Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
 
@@ -88,6 +110,8 @@ Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
 | `leakage-test-selection` | A model, feature set or threshold picked by its score on the rows that are then reported as the held-out result |
 | `selection-survivorship-cohort` | Candidate only: a filter on a survival-correlated column before aggregation |
 
+For `leakage-fit-before-split`, `waldean check --probe` runs an `.ipynb` up to the split in a separate `waldean-verify` kernel, reads the fitted transformer's `n_samples_seen_`, and raises the flag's confidence when the fit saw every row and lowers it when it saw fewer. Candidates below the confidence floor keep their confidence and only gain the measurement note. The probe executes your code with your permissions.
+
 `waldean rules` prints the full list from `waldean/core/taxonomy/flaws.yaml`.
 
 ## Known limitations
@@ -98,20 +122,23 @@ Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
   evidence covers the two leakage classes only
   ([`evals/2026-07-07-dogfood-wide.md`](https://github.com/Wake360/waldean/blob/v0.5.0/evals/2026-07-07-dogfood-wide.md)).
 - On the 100 notebooks of Yang et al. (ASE'22), 66 of them labeled for
-  pre-split leakage, `leakage-fit-before-split` reached 0.58 precision and
-  0.37 recall against the authors' `pre` label. The labels were not
+  pre-split leakage, `leakage-fit-before-split` reached 0.62 precision and
+  0.42 recall against the authors' `pre` label. The labels were not
   re-adjudicated, and two files Waldean could not analyse count as not
   flagged
-  ([`evals/2026-10-12-yang-pre.md`](https://github.com/Wake360/waldean/blob/v0.5.0/evals/2026-10-12-yang-pre.md)).
-- Misses cluster in pandas-arithmetic leaks with no syntactic anchor
-  (per-group imputation, `fillna(df[col].mean())` before the split). A
-  scaler fit on full data that feeds `cross_val_score` is reported only as
-  a candidate below the 0.8 floor, by design. Python 2 cells are not
+  ([`evals/2026-10-13-yang-pre.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-yang-pre.md)).
+- Later changes catch some misses of that eval (see CHANGELOG, Unreleased,
+  and `evals/2026-10-13-yang-pre-rerun.md`). Misses that remain: a split
+  returned from a helper or reached more than one helper level deep, test
+  data known only by name, a manual `KFold.split` loop, and files over
+  the input size cap. A scaler fit on full data that feeds
+  `cross_val_score` is reported only as a candidate below the 0.8 floor,
+  by design. Python 2 cells are not
   parsed, so leaks in them are missed.
 - The 0.0% false-positive rate holds on the curated corpus, not on messy
   real code.
 - Flaws with no imprint in code, outputs or prose are invisible to Waldean.
-- Waldean never executes your notebook unless you run `waldean verify --execute`.
+- Waldean never executes your notebook unless you run `waldean check --probe` or `waldean verify --execute`.
 
 Full evaluation, corpus method and dogfood history:
 [`docs/EVALUATION.md`](https://github.com/Wake360/waldean/blob/v0.5.0/docs/EVALUATION.md).
@@ -215,21 +242,12 @@ notebook ──> ingest (nbformat) ──> layer A: static detectors ──> rep
              layer A candidates (filter + population claim = flag)
 ```
 
-The hybrid split is the point: leakage is an AST pattern — an LLM has no
-business there. The LLM layer handles only what statics cannot: whether
-the prose claims match what the code computes. Its quality gates (G2/G3)
-never ran, so **no narrative-layer numbers are claimed; the static
-linter is the validated product.**
-
-The narrative layer runs through the `claude`/`codex` CLIs on
-subscription billing: `waldean check --llm --llm-subscription <notebook>`.
-Its numbers are dev-split and indicative by construction
-(`gate_evidence: false`); it has not passed a quality gate. An
-indicative dev-split run is at
-`evals/2026-07-25-llm-eval-dev-subscription-indicative-rerun.md` —
-unpinned models, not reproducible (the prior 2026-07-09 run lost 17/45
-files to backend errors; the rerun after hook isolation completed all
-files). Static-only is the default; without `--llm`, Waldean calls no LLM.
+The hybrid split is the point: leakage is an AST pattern, and the LLM
+layer handles only whether the prose claims match what the code computes.
+Its quality gates (G2/G3) never ran, so **no narrative-layer numbers are
+claimed; the static linter is the validated product.** Run it with
+`waldean check --llm --llm-subscription <notebook>`; without `--llm`,
+Waldean calls no LLM.
 
 Taxonomy is data (`flaws.yaml`): 10 flaw classes with definition, book
 anchor, mutation recipe and severity (`waldean rules` lists them). Adding a
@@ -258,6 +276,8 @@ waldean corpus build                    # build clean corpus + verified mutants
 waldean eval                            # confusion matrix -> evals/<date>-eval.md
 pytest                               # unit tests + golden gates G0/G1
 ```
+
+Editor use through SARIF: [`docs/editor.md`](https://github.com/Wake360/waldean/blob/main/docs/editor.md).
 
 `examples/leaky.ipynb` ships in the repo and reproduces the report shown
 at the top of this file. `examples/leaky.py` is the same analysis as a

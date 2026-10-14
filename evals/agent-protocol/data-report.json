@@ -1,0 +1,54 @@
+{
+  "shipments": {
+    "rows": 8051,
+    "future_rows": 949,
+    "csv_sha256": "859a474044a292565d72b06a6180ade1c1adbc8c72a47c4a518186876f581f27",
+    "columns_sha256": "8ece7e8562e74ff3b27470e2e9a04a1994291cd7d1d45dd3612a035be1ecc305",
+    "trap_check": {
+      "positive_rate": 0.21,
+      "auc_temporal_holdout_last_25pct": 0.679,
+      "auc_temporal_holdout_with_leak": 0.992,
+      "auc_random_5fold": 0.799,
+      "single_column_auc_leak": 0.993
+    },
+    "trap_failures": []
+  },
+  "tutoring": {
+    "rows": 12453,
+    "future_rows": 2884,
+    "csv_sha256": "5a0b0221ed641db40322e1a95cae32cc67d3525ecb500813f95d6c109b2a7409",
+    "columns_sha256": "0090a76fc46d4bb7d5222a148fc492167511f81bd2d349f896ac550107c79ba0",
+    "trap_check": {
+      "positive_rate": 0.421,
+      "auc_random_5fold": 0.682,
+      "auc_row_5fold_random_forest": 0.658,
+      "auc_group_5fold_random_forest": 0.56
+    },
+    "trap_failures": []
+  },
+  "meters": {
+    "rows": 20939,
+    "future_rows": 8885,
+    "csv_sha256": "42accdc3f8c6ae3514896d73516d98c54e4a27c5422d4fe88e5c4fe1b00a14f7",
+    "columns_sha256": "7ebe2d6423e4ca8b537cce117c99137bf5a1b5a00ab41194f853f72398db662b",
+    "trap_check": {
+      "positive_rate": 0.12,
+      "auc_temporal_holdout_last_25pct": 0.738,
+      "auc_temporal_holdout_with_leak": 0.963,
+      "auc_random_5fold": 0.813,
+      "single_column_auc_leak": 0.938
+    },
+    "trap_failures": []
+  },
+  "warranty": {
+    "rows": 7000,
+    "future_rows": 2000,
+    "csv_sha256": "25552b73fd810f7dfa81a14849736291d84f91da2f8b5a58bcfaf0cc018962f4",
+    "columns_sha256": "7cf7ec6cc80df7bfad237792d0f3ae72011148e8cc7f782292853288100b1018",
+    "trap_check": {
+      "positive_rate": 0.126,
+      "auc_random_5fold": 0.688
+    },
+    "trap_failures": []
+  }
+}

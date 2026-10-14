@@ -49,8 +49,99 @@ def leaky(tmp_path):
     return write_nb(tmp_path / "demand.ipynb", [IMPORTS, DATA, FEATURES, SHUFFLED])
 
 
-def test_only_temporal_shuffle_has_a_repair_contract():
-    assert {fid for fid in load_taxonomy() if supported(fid)} == {"leakage-temporal-shuffle"}
+def test_temporal_shuffle_and_fit_before_split_have_repair_contracts():
+    assert supported("leakage-temporal-shuffle")
+    assert supported("leakage-fit-before-split")
+    assert not supported("selection-survivorship-cohort")
+
+
+FBS = [
+    "import pandas as pd\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.model_selection import train_test_split\ndf = pd.read_csv('x.csv')\nX, y = df[['a', 'b']], df['y']",
+    "scaler = StandardScaler()\nX = scaler.fit_transform(X)\nX_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)",
+    "print('acc=', 0.9)",
+]
+FBS_FIXED = "scaler = StandardScaler()\nX_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)\nX_train = scaler.fit_transform(X_train)\nX_test = scaler.transform(X_test)"
+
+
+def write_code(path: Path, sources: list[str]) -> Path:
+    nb = nbformat.v4.new_notebook()
+    nb.cells = [nbformat.v4.new_code_cell(s) for s in sources]
+    nbformat.write(nb, path)
+    return path
+
+
+def test_fit_before_split_contract_scope_is_fit_and_split_cells(tmp_path):
+    written, _ = propose(write_code(tmp_path / "fbs.ipynb", FBS), out_root=tmp_path / "r")
+    protocol = json.loads((written[0] / "protocol.json").read_text())
+    assert protocol["flaw_id"] == "leakage-fit-before-split"
+    assert protocol["edit_scope"] == [1]
+
+
+def test_fit_before_split_fix_passes_static_checks(tmp_path):
+    written, _ = propose(write_code(tmp_path / "fbs.ipynb", FBS), out_root=tmp_path / "r")
+    write_code(tmp_path / "fbs.ipynb", [FBS[0], FBS_FIXED, FBS[2]])
+    evidence = verify(written[0])
+    assert evidence["status"] == "static-pass"
+    assert "shuffle=False" not in " ".join(evidence["static"]["reasons"])
+
+
+def test_fit_before_split_scope_includes_a_separate_split_cell(tmp_path):
+    cells = [FBS[0], "scaler = StandardScaler()\nX = scaler.fit_transform(X)",
+             "X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)"]
+    written, _ = propose(write_code(tmp_path / "fbs.ipynb", cells), out_root=tmp_path / "r", diff=True)
+    protocol = json.loads((written[0] / "protocol.json").read_text())
+    assert protocol["edit_scope"] == [1, 2]
+    patch = (written[0] / "patch.diff").read_text()
+    assert "-X = scaler.fit_transform(X)" in patch
+    assert "+X_train = scaler.fit_transform(X_train)" in patch
+
+
+def test_patch_for_canonical_fit_transform(tmp_path):
+    written, _ = propose(write_code(tmp_path / "fbs.ipynb", FBS), out_root=tmp_path / "r", diff=True)
+    patch = (written[0] / "patch.diff").read_text()
+    assert "-X = scaler.fit_transform(X)" in patch
+    assert "+X_train = scaler.fit_transform(X_train)" in patch
+    assert "+X_test = scaler.transform(X_test)" in patch
+    assert "patch.diff" in (written[0] / "brief.md").read_text()
+
+
+def patched_cell(written) -> str | None:
+    patch = written[0] / "patch.diff"
+    if not patch.exists():
+        return None
+    hunk = patch.read_text().split("@@\n", 1)[1].splitlines()
+    return "\n".join(ln[1:] for ln in hunk if ln[:1] in (" ", "+"))
+
+
+@pytest.mark.parametrize("split", [
+    "X_train, X_test, y_train, y_test = train_test_split(X, y,\n    random_state=0,\n)",
+    "X_train, X_test, y_train, y_test = train_test_split(X, y, \\\n    random_state=0)",
+])
+def test_patch_for_multiline_split_compiles(tmp_path, split):
+    cell = "scaler = StandardScaler()\nX = scaler.fit_transform(X)\n" + split
+    written, _ = propose(write_code(tmp_path / "fbs.ipynb", [FBS[0], cell, FBS[2]]), out_root=tmp_path / "r", diff=True)
+    source = patched_cell(written)
+    assert source is not None
+    compile(source, "cell", "exec")
+    assert source.splitlines()[-2:] == ["X_train = scaler.fit_transform(X_train)", "X_test = scaler.transform(X_test)"]
+
+
+def test_patch_absent_when_name_is_used_between_fit_and_split(tmp_path):
+    cell = "scaler = StandardScaler()\nX = scaler.fit_transform(X)\nprint(X.shape)\nX_train, X_test, y_train, y_test = train_test_split(X, y)"
+    written, _ = propose(write_code(tmp_path / "fbs.ipynb", [FBS[0], cell, FBS[2]]), out_root=tmp_path / "r", diff=True)
+    assert not (written[0] / "patch.diff").exists()
+
+
+def test_patch_absent_for_hand_written_statistic(tmp_path):
+    cells = [FBS[0], "X = (X - X.mean()) / X.std()\nX_train, X_test, y_train, y_test = train_test_split(X, y)", FBS[2]]
+    written, _ = propose(write_code(tmp_path / "fbs.ipynb", cells), out_root=tmp_path / "r", diff=True)
+    assert all(not (d / "patch.diff").exists() for d in written)
+
+
+def test_patch_absent_when_fitted_name_is_not_the_split_input(tmp_path):
+    cells = [FBS[0], "scaler = StandardScaler()\nX = scaler.fit_transform(X)\nZ = X\nZ_train, Z_test, y_train, y_test = train_test_split(Z, y)", FBS[2]]
+    written, _ = propose(write_code(tmp_path / "fbs.ipynb", cells), out_root=tmp_path / "r", diff=True)
+    assert all(not (d / "patch.diff").exists() for d in written)
 
 
 def test_propose_writes_protocol_brief_and_snapshot(leaky, tmp_path):
@@ -89,8 +180,9 @@ def test_two_findings_in_one_file_share_one_contract(tmp_path):
 
 
 def test_unsupported_class_is_listed_not_written(tmp_path):
-    written, unsupported = propose(Path(__file__).parent.parent / "examples" / "leaky.ipynb",
-                                   out_root=tmp_path / "repairs")
+    path = write_code(tmp_path / "tests.ipynb", [
+        "from scipy.stats import ttest_ind", "for c in cols:\n    s, p = ttest_ind(a[c], b[c])"])
+    written, unsupported = propose(path, out_root=tmp_path / "repairs")
     assert written == []
     assert unsupported and all("no repair contract for this class yet" in u for u in unsupported)
 

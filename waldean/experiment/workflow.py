@@ -22,10 +22,10 @@ def dataset_path(exp: Path, plan: dict) -> Path:
 
 
 def create(csv_path, target: str, out_dir, goal: str = "", exclude=(), time_column: str | None = None,
-           seed: int = 0) -> Path:
+           seed: int = 0, *, keep=(), group_column: str | None = None, task: str | None = None) -> Path:
     csv, out = Path(csv_path).resolve(), Path(out_dir).resolve()
-    prof = profile(csv, target)
-    plan = design(prof, csv, out, goal, list(exclude), time_column, seed)
+    prof = profile(csv, target, task=task)
+    plan = design(prof, csv, out, goal, list(exclude), time_column, seed, keep=list(keep), group_column=group_column)
     out.mkdir(parents=True, exist_ok=True)
     write_plan(plan, out / "plan.yaml")
     (out / "design.md").write_text(design_md(plan, prof), encoding="utf-8")
@@ -38,7 +38,7 @@ def build(exp_dir) -> tuple[list[str], list[Flag]]:
     csv = dataset_path(exp, plan)
     if sha256(csv) != plan["dataset"]["sha256"]:
         raise PlanError(f"{csv.name} changed since create: its sha256 differs from plan.yaml")
-    fields = contradictions(plan, profile(csv, plan["target"]))
+    fields = contradictions(plan, profile(csv, plan["target"], task=plan.get("task")))
     if fields:
         return fields, []
     nb_path = exp / "experiment.ipynb"
@@ -56,6 +56,8 @@ def limitations(plan: dict, metrics: dict) -> str:
     reason = plan["split"].get("override_reason")
     if reason:
         lines.append(f"- The split was overridden by the user: \"{reason}\".")
+    for col in plan.get("kept_columns", []):
+        lines.append(f"- {col} was flagged by the profile and kept by the user (--keep); its scores may be leaked.")
     if metrics.get("skipped_folds"):
         lines.append(f"- {metrics['skipped_folds']} CV fold(s) were skipped because their train or test rows hold one class.")
     return "\n".join(lines) + "\n"
