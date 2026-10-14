@@ -36,7 +36,7 @@ SCORING = BENCH / "scoring.tsv"
 AGENT_ROOT = Path("/private/tmp/waldean-agent-baseline")
 AGENT_KERNEL = "waldean-agent-baseline"
 SHARED_TMP = Path("/private/tmp/claude")
-USER_TMP = Path(f"/private/tmp/claude-{os.getuid()}")
+USER_TMP = Path(f"/private/tmp/claude-{os.getuid() if hasattr(os, 'getuid') else 0}")
 CLAUDE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit",
                 "Bash(python *)", "Bash(python3 *)", "Bash(jupyter *)", "Bash(ls *)", "Bash(head *)"]
 HOME = str(Path.home())
