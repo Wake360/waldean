@@ -113,6 +113,13 @@ def test_headline_value_rejects_text():
     assert ab.headline_value("") is None
 
 
+def test_headline_is_auc_accepts_roc_names_only():
+    for name in ["test_roc_auc", "test_auc", "oof_roc_auc", "roc_auc", "auc"]:
+        assert ab.headline_is_auc(f"('{name}', 0.74)")
+    for name in ["pr_auc", "average_precision", "f1"]:
+        assert not ab.headline_is_auc(f"('{name}', 0.74)")
+
+
 def test_gap_needs_both_numbers():
     assert round(ab.gap({"headline": "('roc_auc', 0.75)", "future_auc": "0.70"}), 3) == 0.05
     assert ab.gap({"headline": "('roc_auc', 0.75)", "future_auc": "None"}) is None

@@ -425,7 +425,10 @@ def headline_value(text: str) -> float | None:
 
 def headline_is_auc(text: str) -> bool:
     match = re.match(r"^\('([^']*)'", text.strip())
-    return bool(match) and re.sub(r"[^a-z]", "", match.group(1).lower()) in ("rocauc", "auc")
+    if not match:
+        return False
+    name = re.sub(r"[^a-z]", "", match.group(1).lower())
+    return name.endswith("auc") and not name.endswith("prauc")
 
 
 def gap(row: dict) -> float | None:
