@@ -117,6 +117,7 @@ class CallSite:
     kw_args: dict[str, set[str]] = field(default_factory=dict)  # names per keyword arg
     loop_vars: set[str] = field(default_factory=set)  # targets of enclosing for-loops
     end_line: int = 0
+    helper_local: bool = False
 
     @property
     def arg_names(self) -> set[str]:
@@ -139,6 +140,24 @@ class AssignEvent:
     call: CallSite | None = None  # the exact CallSite object when the value is a call
     end_line: int = 0
     col: int = 0
+    ordered_targets: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SliceEvent:
+    base: str
+    cell: int
+    line: int
+    lower: str
+    upper: str
+
+
+@dataclass
+class FuncDef:
+    name: str
+    params: list[str]
+    calls: list[CallSite] = field(default_factory=list)
+    assigns: list[AssignEvent] = field(default_factory=list)
 
 
 class _CellVisitor(cst.CSTVisitor):
@@ -151,6 +170,11 @@ class _CellVisitor(cst.CSTVisitor):
         self.calls: list[CallSite] = []
         self.assigns: list[AssignEvent] = []
         self.mutations: list[AssignEvent] = []
+        self.slices: list[SliceEvent] = []
+        self.functions: list[FuncDef] = []
+        self._func: FuncDef | None = None
+        self._lambda: FuncDef | None = None
+        self._pipe_lambdas: set[int] = set()
         self._pending: dict[int, AssignEvent] = {}  # id(call node) -> its assign event
         self._loop_vars: list[set[str]] = []  # target names per enclosing for-loop
 
@@ -176,15 +200,30 @@ class _CellVisitor(cst.CSTVisitor):
 
     def visit_FunctionDef(self, node: cst.FunctionDef) -> None:
         self.scope_depth += 1
+        if self.scope_depth == 1:
+            params = [p.name.value for p in node.params.params]
+            self._func = FuncDef(name=node.name.value, params=params)
+            self.functions.append(self._func)
 
     def leave_FunctionDef(self, original_node: cst.FunctionDef) -> None:
         self.scope_depth -= 1
+        if self.scope_depth == 0:
+            self._func = None
 
     def visit_Lambda(self, node: cst.Lambda) -> None:
         self.scope_depth += 1
+        if self.scope_depth == 1 and self._func is None and id(node) in self._pipe_lambdas:
+            params = [p.name.value for p in node.params.params]
+            self._func = self._lambda = FuncDef(name=self._lambda_name(node), params=params)
+            self.functions.append(self._func)
 
     def leave_Lambda(self, original_node: cst.Lambda) -> None:
         self.scope_depth -= 1
+        if self.scope_depth == 0 and self._lambda is not None and self._lambda is self._func:
+            self._lambda = self._func = None
+
+    def _lambda_name(self, node: cst.Lambda) -> str:
+        return f"<lambda@{self._line(node)}:{cast(CodeRange, self.get_metadata(PositionProvider, node)).start.column}>"
 
     def visit_ClassDef(self, node: cst.ClassDef) -> None:
         self.scope_depth += 1
@@ -201,8 +240,11 @@ class _CellVisitor(cst.CSTVisitor):
             receiver = _dotted(node.func.value)
         pos_args: list[set[str]] = []
         kw_args: dict[str, set[str]] = {}
-        for arg in node.args:
+        for position, arg in enumerate(node.args):
             names = expr_names(arg.value)
+            if position == 0 and dotted.endswith(".pipe") and isinstance(arg.value, cst.Lambda):
+                self._pipe_lambdas.add(id(arg.value))
+                names = {self._lambda_name(arg.value)}
             if arg.keyword is not None:
                 kw_args[arg.keyword.value] = names
             else:
@@ -224,7 +266,10 @@ class _CellVisitor(cst.CSTVisitor):
         site = self._call_site(node, self._line(node))
         if site is None:
             return
-        self.calls.append(site)
+        if self._func is None:
+            self.calls.append(site)
+        elif self.scope_depth == 1:
+            self._func.calls.append(site)
         base = site.receiver_base
         if site.name in MUTATING_METHODS and base is not None and base == site.receiver and self.scope_depth == 0:
             self.mutations.append(AssignEvent(
@@ -237,8 +282,16 @@ class _CellVisitor(cst.CSTVisitor):
             ev.call = site  # identity-shared: detect can test `ev.call is call`
 
     def _record_assign(self, targets: set[str], value: cst.BaseExpression, node: cst.CSTNode,
-                       extra_sources: Collection[str] = frozenset()) -> None:
+                       extra_sources: Collection[str] = frozenset(),
+                       ordered: list[str] | None = None) -> None:
         if self.scope_depth > 0:
+            if self._func is not None and self.scope_depth == 1:
+                self._func.assigns.append(AssignEvent(
+                    targets=targets, sources=expr_names(value) | set(extra_sources),
+                    cell=self.cell, line=self._line(node), end_line=self._end_line(node),
+                    col=cast(CodeRange, self.get_metadata(PositionProvider, node)).start.column,
+                    ordered_targets=ordered or [],
+                ))
             return  # function/class locals do not rebind notebook names
         ev = AssignEvent(
             targets=targets,
@@ -247,6 +300,7 @@ class _CellVisitor(cst.CSTVisitor):
             line=self._line(node),
             end_line=self._end_line(node),
             col=cast(CodeRange, self.get_metadata(PositionProvider, node)).start.column,
+            ordered_targets=ordered or [],
         )
         self.assigns.append(ev)
         if isinstance(value, cst.Call):
@@ -255,11 +309,38 @@ class _CellVisitor(cst.CSTVisitor):
     def visit_Assign(self, node: cst.Assign) -> None:
         targets: set[str] = set()
         mutated: set[str] = set()  # df["x"] = ... mutates df: keep df's history
+        ordered: list[str] = []
         for t in node.targets:
             if isinstance(t.target, (cst.Subscript, cst.Attribute)):
                 mutated |= _target_names(t.target)
             targets |= _target_names(t.target)
-        self._record_assign(targets, node.value, node, extra_sources=mutated)
+            if isinstance(t.target, (cst.Tuple, cst.List)):
+                ordered = [el.value.value if isinstance(el.value, cst.Name) else "" for el in t.target.elements]
+        self._record_assign(targets, node.value, node, extra_sources=mutated, ordered=ordered)
+        self._record_slices(node.value)
+
+    def _record_slices(self, value: cst.BaseExpression) -> None:
+        if self.scope_depth > 0:
+            return
+        exprs = [el.value for el in value.elements] if isinstance(value, cst.Tuple) else [value]
+        code = cst.Module(body=[]).code_for_node
+        for expr in exprs:
+            if not isinstance(expr, cst.Subscript):
+                continue
+            sl = expr.slice[0].slice
+            if not isinstance(sl, cst.Slice):
+                continue
+            head = expr.value
+            if isinstance(head, cst.Attribute) and head.attr.value == "iloc":
+                head = head.value
+            if not isinstance(head, cst.Name):
+                continue
+            lower = code(sl.lower).replace(" ", "") if sl.lower is not None else ""
+            self.slices.append(SliceEvent(
+                base=head.value, cell=self.cell, line=self._line(expr),
+                lower="" if lower == "0" else lower,
+                upper=code(sl.upper).replace(" ", "") if sl.upper is not None else "",
+            ))
 
     def visit_AnnAssign(self, node: cst.AnnAssign) -> None:
         if node.value is not None:
@@ -305,10 +386,44 @@ class NotebookDataflow:
     calls: list[CallSite] = field(default_factory=list)
     assigns: list[AssignEvent] = field(default_factory=list)
     mutations: list[AssignEvent] = field(default_factory=list)  # x.append(v)-style in-place updates
+    slices: list[SliceEvent] = field(default_factory=list)
+    functions: dict[str, FuncDef] = field(default_factory=dict)
     parse_errors: list[int] = field(default_factory=list)  # cell indices that failed to parse
     skipped_cells: list[int] = field(default_factory=list)  # cell indices skipped by a size/depth cap
+    uninlined_cells: list[int] = field(default_factory=list)
     _by_name: dict[str, list[AssignEvent]] | None = field(default=None, repr=False)
     _by_name_mut: dict[str, list[AssignEvent]] | None = field(default=None, repr=False)
+
+    def slice_splits(self) -> list[CallSite]:
+        sinks: list[CallSite] = []
+        by_base: dict[str, list[SliceEvent]] = {}
+        for s in self.slices:
+            by_base.setdefault(s.base, []).append(s)
+        for base, events in by_base.items():
+            first_tail: dict[str, int] = {}
+            first_open_tail: dict[str, int] = {}
+            for i, e in enumerate(events):
+                if not e.lower:
+                    continue
+                first_tail.setdefault(e.lower, i)
+                if not e.upper:
+                    for j, ch in enumerate(e.lower):
+                        if ch == "-":
+                            first_open_tail.setdefault(e.lower[:j], i)
+            pair = None
+            for h in events:
+                if not h.upper or h.lower:
+                    continue
+                hits = [k for k in (first_tail.get(h.upper), first_open_tail.get(h.upper)) if k is not None]
+                if hits:
+                    pair = (h, events[min(hits)])
+                    break
+            if pair is None:
+                continue
+            last = max(pair, key=lambda e: (e.cell, e.line))
+            sinks.append(CallSite(func="slice_split", name="slice_split", receiver=None,
+                                  cell=last.cell, line=last.line, loop_depth=0, pos_args=[{base}]))
+        return sinks
 
     def _index(self, mutations: bool) -> dict[str, list[AssignEvent]]:
         cached = self._by_name_mut if mutations else self._by_name
@@ -328,6 +443,7 @@ class NotebookDataflow:
     def last_assign(self, name: str, before: tuple[int, ...], mutations: bool = False) -> AssignEvent | None:
         """Latest assignment to `name` strictly before (cell, line), in
         document order — the notebook's v1 linear-execution assumption."""
+        before = (*before, 0)[:3]
         for ev in reversed(self._index(mutations).get(name, [])):
             if (ev.cell, ev.line, ev.col) < before:
                 return ev
@@ -410,6 +526,48 @@ def _structural_depth(source: str) -> int:
     return peak
 
 
+def _rename_names(names: set[str], rename: dict[str, set[str]]) -> set[str]:
+    out: set[str] = set()
+    for n in names:
+        out |= rename.get(n, {n})
+    return out
+
+
+def _rename_dotted(text: str | None, rename: dict[str, set[str]]) -> str | None:
+    if text is None:
+        return None
+    head, sep, rest = text.partition(".")
+    head, bracket, idx = head.partition("[")
+    target = rename.get(head)
+    if not target or len(target) != 1:
+        return text
+    return next(iter(target)) + bracket + idx + sep + rest
+
+
+def _rename_call(c: CallSite, rename: dict[str, set[str]], site: CallSite) -> CallSite:
+    return CallSite(
+        func=_rename_dotted(c.func, rename) or c.func,
+        name=c.name,
+        receiver=_rename_dotted(c.receiver, rename),
+        cell=site.cell, line=site.line, loop_depth=site.loop_depth,
+        pos_args=[_rename_names(a, rename) for a in c.pos_args],
+        kw_args={k: _rename_names(v, rename) for k, v in c.kw_args.items()},
+        loop_vars=set(site.loop_vars), end_line=site.end_line,
+        helper_local=c.receiver_base is not None and c.receiver_base not in rename,
+    )
+
+
+def _call_target(site: CallSite, functions: dict[str, FuncDef]) -> tuple[FuncDef | None, list[set[str]]]:
+    if site.receiver is None and site.name in functions:
+        return functions[site.name], site.pos_args
+    if site.name == "pipe" and site.receiver is not None and site.pos_args:
+        if len(site.pos_args[0]) == 1 and site.receiver_base:
+            fname = next(iter(site.pos_args[0]))
+            if fname in functions:
+                return functions[fname], [{site.receiver_base}] + site.pos_args[1:]
+    return None, []
+
+
 def analyze(nb: ParsedNotebook) -> NotebookDataflow:
     flow = NotebookDataflow()
     for cell in nb.code_cells:
@@ -441,4 +599,30 @@ def analyze(nb: ParsedNotebook) -> NotebookDataflow:
         flow.calls.extend(visitor.calls)
         flow.assigns.extend(visitor.assigns)
         flow.mutations.extend(visitor.mutations)
+        flow.slices.extend(visitor.slices)
+        flow.functions.update({f.name: f for f in visitor.functions})
+    own_events = len(flow.calls) + len(flow.assigns) + sum(len(f.calls) + len(f.assigns) for f in flow.functions.values())
+    inline_budget = 4 * own_events
+    inlined = 0
+    for site in list(flow.calls):
+        fn, args = _call_target(site, flow.functions)
+        if fn is None:
+            continue
+        inlined += len(fn.calls) + len(fn.assigns)
+        if inlined > inline_budget:
+            inline_budget = -1
+            if site.cell not in flow.uninlined_cells:
+                flow.uninlined_cells.append(site.cell)
+            continue
+        rename = {p: a for p, a in zip(fn.params, args) if a}
+        for c in fn.calls:
+            flow.calls.append(_rename_call(c, rename, site))
+        for i, ev in enumerate(fn.assigns):
+            flow.assigns.append(AssignEvent(
+                targets=_rename_names(ev.targets, rename), sources=_rename_names(ev.sources, rename),
+                cell=site.cell, line=site.line, end_line=site.end_line or site.line,
+                col=i - len(fn.assigns),
+            ))
+    flow.assigns.sort(key=lambda e: (e.cell, e.line, e.col))
+    flow.uninlined_cells.sort()
     return flow

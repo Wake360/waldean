@@ -38,7 +38,7 @@ def test_to_json_honors_severity_gate():
 def test_parse_warning_surfaced_in_reports():
     assert parse_warning(0, 3) is None
     warning = parse_warning(2, 3)
-    assert warning == "warning: 2 of 3 code cells could not be parsed; results are partial"
+    assert warning == "warning: 2 of 3 code cells could not be fully analysed; results are partial"
     assert warning in to_markdown("nb.ipynb", [], warning=warning)
     assert json.loads(to_json("nb.ipynb", [], warning=warning))["parse_warning"] == warning
 
@@ -226,3 +226,21 @@ def test_sarif_result_fields():
     assert r["message"]["text"] == "ev | Failure: fs | Fix: fx (cell 5, line 2)"
     assert r["locations"][0]["physicalLocation"]["region"]["startLine"] == 2
     assert r["properties"] == {"cell": 5, "confidence": 0.92}
+
+
+def test_sarif_script_region_uses_file_lines(tmp_path):
+    from waldean.analysis.ingest import parse_notebook
+    from waldean.api import absolutize
+    from waldean.checks.detect import run_static
+
+    script = tmp_path / "s.py"
+    script.write_text(
+        "import pandas as pd\n# %%\nX = scaler.fit_transform(X)\n# %%\n"
+        "X_tr, X_te, y_tr, y_te = train_test_split(X, y)\n"
+    )
+    notebook = parse_notebook(script)
+    flags = absolutize(notebook, run_static(notebook))
+    log = json.loads(to_sarif([(str(script), flags)]))
+    results = [r for r in log["runs"][0]["results"] if r["ruleId"] == "leakage-fit-before-split"]
+    assert results
+    assert results[0]["locations"][0]["physicalLocation"]["region"]["startLine"] == 3

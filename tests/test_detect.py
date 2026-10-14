@@ -1,3 +1,5 @@
+import time
+
 from waldean.checks.detect import run_static
 from waldean.analysis.ingest import Cell, ParsedNotebook
 
@@ -707,3 +709,287 @@ def test_temporal_flagged_parse_dates_survives_value_sort():
         ("code", "X_tr, X_te, y_tr, y_te = train_test_split(df[cols], df['y'])"),
     ])
     assert "leakage-temporal-shuffle" in flag_ids(notebook, floor=0.8)
+
+
+SPLIT4 = "X_train, X_holdout, y_train, y_holdout = train_test_split(X, y)"
+
+
+def test_refit_on_split_output_by_position():
+    notebook = nb([
+        ("code", SPLIT4),
+        ("code", "X_train = scaler.fit_transform(X_train)\nX_holdout = scaler.fit_transform(X_holdout)"),
+        ("code", "model.fit(X_train, y_train)\nprint(model.score(X_holdout, y_holdout))"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert len(flags) == 1
+    assert flags[0].line == 2
+    assert flags[0].confidence >= 0.8
+    assert "X_holdout" in flags[0].evidence
+
+
+def test_fit_on_train_only_is_silent():
+    notebook = nb([
+        ("code", SPLIT4),
+        ("code", "X_train = scaler.fit_transform(X_train)\nX_holdout = scaler.transform(X_holdout)"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_tokenizer_fit_on_texts_before_split():
+    notebook = nb([
+        ("code", "tok = Tokenizer(num_words=5000)\ntok.fit_on_texts(texts)\nX = tok.texts_to_sequences(texts)"),
+        ("code", "X_train, X_test, y_train, y_test = train_test_split(X, y)"),
+    ])
+    assert "leakage-fit-before-split" in flag_ids(notebook)
+
+
+def test_fit_on_concat_of_train_and_test():
+    notebook = nb([
+        ("code", SPLIT4),
+        ("code", "both = pd.concat([X_train, X_holdout])\nenc = OneHotEncoder()\nenc.fit(both)"),
+        ("code", "model.fit(enc.transform(X_train), y_train)\nprint(model.score(enc.transform(X_holdout), y_holdout))"),
+    ])
+    assert "leakage-fit-before-split" in flag_ids(notebook)
+
+
+def test_fit_before_slice_split_is_flagged():
+    notebook = nb([
+        ("code", "X = scaler.fit_transform(X)"),
+        ("code", "X_train, X_test = X[:800], X[800:]"),
+        ("code", "model.fit(X_train, y[:800])"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert flags and flags[0].confidence >= 0.8
+    assert "row slice" in flags[0].evidence
+
+
+def test_fit_after_slice_split_is_silent():
+    notebook = nb([
+        ("code", "X_train, X_test = X[:800], X[800:]"),
+        ("code", "X_train = scaler.fit_transform(X_train)\nX_test = scaler.transform(X_test)"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_fit_before_iloc_split_is_flagged():
+    notebook = nb([
+        ("code", "X = scaler.fit_transform(X)"),
+        ("code", "X_train, X_test = X.iloc[:800], X.iloc[800:]"),
+        ("code", "model.fit(X_train, y[:800])"),
+    ])
+    assert "leakage-fit-before-split" in flag_ids(notebook)
+
+
+def test_statistic_inside_helper_before_split_is_flagged():
+    notebook = nb([
+        ("code", "def prep(d):\n    d['a'] = d['a'].fillna(d['a'].median())\n    return d"),
+        ("code", "df = prep(df)"),
+        ("code", "X_tr, X_te, y_tr, y_te = train_test_split(df[feats], df.y)"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert flags and flags[0].cell == 1 and flags[0].confidence >= 0.8
+
+
+def test_helper_applied_to_train_split_only_is_silent():
+    notebook = nb([
+        ("code", "def prep(d):\n    d['a'] = d['a'].fillna(d['a'].median())\n    return d"),
+        ("code", "X_tr, X_te, y_tr, y_te = train_test_split(df[feats], df.y)"),
+        ("code", "X_tr = prep(X_tr)"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_helper_locals_do_not_leak_between_inlined_helpers():
+    notebook = nb([
+        ("code", "tr, val = train_test_split(df)"),
+        ("code", "def fit_enc(d):\n    rows = d[cols]\n    enc = DictVectorizer()\n    X = enc.fit_transform(rows)\n    return enc"),
+        ("code", "def score(d, enc):\n    rows = d[cols]\n    return enc.transform(rows)"),
+        ("code", "p = score(val, enc)"),
+        ("code", "enc = fit_enc(tr)"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_test_split_filled_with_its_own_statistic_is_flagged():
+    notebook = nb([
+        ("code", "X_tr, X_te, y_tr, y_te = train_test_split(X, y)"),
+        ("code", "X_te['a'] = X_te['a'].fillna(X_te['a'].median())"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert flags and flags[0].cell == 1 and flags[0].confidence >= 0.8
+
+
+def test_helper_filling_test_split_with_its_own_statistic_is_flagged():
+    notebook = nb([
+        ("code", "def prep(d):\n    f = d[cols].copy()\n    f['a'] = d.a.fillna(d.a.median())\n    return f"),
+        ("code", "tr, te = train_test_split(df)"),
+        ("code", "model.fit(prep(tr), tr.y)\npred = model.predict(prep(te))"),
+    ])
+    assert "leakage-fit-before-split" in flag_ids(notebook)
+
+
+def test_test_split_filled_with_train_statistic_is_silent():
+    notebook = nb([
+        ("code", "X_tr, X_te, y_tr, y_te = train_test_split(X, y)"),
+        ("code", "X_te['a'] = X_te['a'].fillna(X_tr['a'].median())"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_frame_mixing_train_and_test_split_rows_is_not_a_test_fill():
+    notebook = nb([
+        ("code", "a, b = train_test_split(df)"),
+        ("code", "both = pd.concat([a, b])\nboth['f'] = both['f'].fillna(both['f'].median())"),
+    ])
+    assert not any("test split output" in f.evidence for f in run_static(notebook))
+
+
+def test_rolling_window_slices_after_full_fit_are_silent():
+    notebook = nb([
+        ("code", "s = scaler.fit_transform(s)"),
+        ("code", "hist = s[:i]\nwin = s[i-k:i]"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_bounded_overlap_slices_after_full_fit_are_silent():
+    notebook = nb([
+        ("code", "X = scaler.fit_transform(X)"),
+        ("code", "a = X[:n]\nb = X[n-1:m]"),
+    ])
+    assert "leakage-fit-before-split" not in flag_ids(notebook)
+
+
+def test_fit_before_open_lookback_slice_split_is_flagged():
+    notebook = nb([
+        ("code", "X = scaler.fit_transform(X)"),
+        ("code", "train = X[:n, :]\ntest = X[n-60:, :]"),
+    ])
+    assert "leakage-fit-before-split" in flag_ids(notebook)
+
+
+def test_min_max_inside_helper_before_split_is_flagged():
+    notebook = nb([
+        ("code", "def prep(d):\n    d['a'] = (d['a'] - d['a'].min()) / (d['a'].max() - d['a'].min())\n    X_tr, X_te, y_tr, y_te = train_test_split(d[feats], d.y)\n    return X_tr"),
+        ("code", "prep(df)"),
+    ])
+    assert "leakage-fit-before-split" in flag_ids(notebook)
+
+
+def fit_flag_arg(fit_source):
+    notebook = nb([
+        ("code", fit_source),
+        ("code", "X_tr, X_te, y_tr, y_te = train_test_split(X, y)"),
+    ])
+    return next(f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split").extra["arg"]
+
+
+def test_probe_arg_is_single_name_or_empty():
+    assert fit_flag_arg("X = scaler.fit_transform(X)") == "X"
+    assert fit_flag_arg("X = scaler.fit_transform(df[features])") == ""
+
+
+def test_attribute_target_in_split_keeps_test_positions():
+    notebook = nb([
+        ("code", "X_train, self.X_test, y_train, y_test = train_test_split(X, y)"),
+        ("code", "sc = StandardScaler().fit(y_train)"),
+    ])
+    assert not any("test split output" in f.evidence for f in run_static(notebook))
+
+
+def test_reread_test_name_is_not_a_test_split_output():
+    notebook = nb([
+        ("code", "X_train, X_test, y_train, y_test = train_test_split(X, y)\nsc = StandardScaler().fit(X_train)"),
+        ("code", "X_test = pd.read_csv('holdout.csv')\nother = MinMaxScaler()\nother.fit(X_test)"),
+    ])
+    assert not any("test split output" in f.evidence for f in run_static(notebook))
+
+
+def test_reread_test_name_filled_with_its_own_statistic_is_not_a_test_fill():
+    notebook = nb([
+        ("code", "X_tr, X_te, y_tr, y_te = train_test_split(X, y)"),
+        ("code", "X_te = pd.read_csv('holdout.csv')\nX_te['a'] = X_te['a'].fillna(X_te['a'].median())"),
+    ])
+    assert not any("test split output" in f.evidence for f in run_static(notebook))
+
+
+def _refit_flags(notebook):
+    return [f for f in run_static(notebook) if "test split output" in f.evidence]
+
+
+def test_final_refit_on_all_rows_for_deployment_is_a_candidate():
+    notebook = nb([
+        ("code", "X_train, X_test, y_train, y_test = train_test_split(X, y)\nsc = StandardScaler().fit(X_train)\nclf = LogisticRegression().fit(sc.transform(X_train), y_train)\nprint(clf.score(sc.transform(X_test), y_test))"),
+        ("code", "X_all = pd.concat([X_train, X_test])\nfinal_sc = StandardScaler()\nX_all_s = final_sc.fit_transform(X_all)\nfinal = LogisticRegression().fit(X_all_s, pd.concat([y_train, y_test]))\njoblib.dump(final, 'model.pkl')"),
+    ])
+    flags = _refit_flags(notebook)
+    assert flags and all(f.confidence == 0.75 for f in flags)
+
+
+def test_embedding_fit_on_test_for_plotting_is_a_candidate():
+    notebook = nb([
+        ("code", "X_train, X_test, y_train, y_test = train_test_split(X, y)\nclf = RandomForestClassifier().fit(X_train, y_train)\nprint(clf.score(X_test, y_test))"),
+        ("code", "emb = TSNE(n_components=2).fit_transform(X_test)\nplt.scatter(emb[:,0], emb[:,1], c=clf.predict(X_test))"),
+    ])
+    flags = _refit_flags(notebook)
+    assert flags and all(f.confidence == 0.75 for f in flags)
+
+
+def test_refit_on_test_whose_transform_feeds_a_scored_model_is_confident():
+    notebook = nb([
+        ("code", SPLIT4),
+        ("code", "sc = MinMaxScaler().fit(X_holdout)\nXh = sc.transform(X_holdout)\nmodel.fit(sc.transform(X_train), y_train)\nprint(accuracy_score(y_holdout, model.predict(Xh)))"),
+    ])
+    flags = _refit_flags(notebook)
+    assert flags and flags[0].confidence == 0.9
+
+
+def test_fit_on_helper_local_receiver_is_marked_helper_local():
+    notebook = nb([
+        ("code", "def prep(d):\n    sc = StandardScaler()\n    d = sc.fit_transform(d)\n    return d\n"),
+        ("code", "X = prep(X)\nX_train, X_test, y_train, y_test = train_test_split(X, y)"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert flags and flags[0].extra.get("helper_local") is True
+
+
+def test_fit_on_notebook_receiver_is_not_marked_helper_local():
+    notebook = nb([
+        ("code", "sc = StandardScaler()\nX = sc.fit_transform(X)"),
+        ("code", "X_train, X_test, y_train, y_test = train_test_split(X, y)"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert flags and "helper_local" not in flags[0].extra
+
+
+def test_groupby_apply_fillna_gives_one_flag_naming_the_frame():
+    notebook = nb([
+        ("code", "df = pd.read_csv('d.csv')\ndf['x'] = df.groupby('g')['x'].apply(lambda s: s.fillna(s.mean()))\nX_train, X_test, y_train, y_test = train_test_split(df[['x']], df['y'])"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert len(flags) == 1
+    assert flags[0].extra["leaked_names"] == ["df"]
+
+
+def test_refit_on_test_reaching_a_score_through_list_mutation_is_confident():
+    notebook = nb([
+        ("code", "def encode(df, ohe):\n    arr = ohe.fit_transform(df[['c']]).toarray()\n    return pd.DataFrame(arr)"),
+        ("code", "X, X_test, y, y_test = train_test_split(data, target)\nohe = OneHotEncoder().fit(X[['c']])\nmodel.fit(X, y)"),
+        ("code", "parts = []\nparts.append(encode(X_test, ohe))\nframes = [X_test[num]]\nframes.extend(parts)\nX_test = pd.concat(frames, axis=1)"),
+        ("code", "print(model.score(X_test, y_test))"),
+    ])
+    flags = _refit_flags(notebook)
+    assert flags and flags[0].confidence == 0.9
+
+
+def test_refit_scoring_check_stays_fast_on_many_later_calls():
+    n = 400
+    cells = [
+        "X_train, X_test, y_train, y_test = train_test_split(X, y)",
+        "".join(f"e{i} = TSNE().fit_transform(X_test)\n" for i in range(n)),
+        "".join(f"z{i} = foo(X_train, z{i-1} if {i} else 0)\n" for i in range(n)),
+    ]
+    notebook = nb([("code", c) for c in cells])
+    start = time.perf_counter()
+    run_static(notebook)
+    assert time.perf_counter() - start < 3.0

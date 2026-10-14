@@ -18,8 +18,11 @@ def _load():
 def test_verifier_separates_true_repairs_from_bad_ones():
     repair_eval = _load()
     rows = repair_eval.run(CORPUS, execute=False)
-    assert len(rows) == 16
+    assert [sum(r["flaw_id"] == c for r in rows) for c in repair_eval.CLASSES] == [16, 48]
     for row in rows:
         assert row["contracts"] == 1, row
         for case, expected in repair_eval.EXPECTED.items():
             assert row[case] == expected, (row["mutant"], case)
+    patched = [r for r in rows if "patched" in r]
+    assert len(patched) == 24
+    assert all(r["patched"] == "static-pass" for r in patched)

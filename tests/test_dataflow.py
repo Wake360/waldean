@@ -1,6 +1,8 @@
+import time
+
 import libcst as cst
 
-from waldean.analysis.dataflow import analyze, expr_names
+from waldean.analysis.dataflow import NotebookDataflow, SliceEvent, analyze, expr_names
 from waldean.analysis.ingest import Cell, ParsedNotebook
 
 
@@ -179,3 +181,117 @@ def test_bang_line_inside_triple_quoted_string_keeps_cell_parseable():
     flow = analyze(nb_from_sources('%matplotlib inline\ns = """\n! not code\n"""\nb = 2'))
     assert not flow.parse_errors
     assert any("b" in ev.targets for ev in flow.assigns)
+
+
+def test_tuple_assign_keeps_target_order():
+    flow = analyze(nb_from_sources("a, b, c, d = train_test_split(X, y)"))
+    assert flow.assigns[0].ordered_targets == ["a", "b", "c", "d"]
+
+
+def test_complementary_slices_form_a_split_sink():
+    flow = analyze(nb_from_sources("n = 800\ntrain = X[:n]\ntest = X[n:]"))
+    sinks = flow.slice_splits()
+    assert [s.name for s in sinks] == ["slice_split"]
+    assert sinks[0].pos_args == [{"X"}]
+    assert (sinks[0].cell, sinks[0].line) == (0, 3)
+
+
+def test_iloc_slices_form_a_split_sink():
+    flow = analyze(nb_from_sources("train = df.iloc[:800]\ntest = df.iloc[800:]"))
+    assert len(flow.slice_splits()) == 1
+
+
+def test_single_slice_peek_is_not_a_split():
+    flow = analyze(nb_from_sources("sample = df[:5]"))
+    assert flow.slice_splits() == []
+
+
+def test_head_and_tail_peeks_are_not_a_split():
+    flow = analyze(nb_from_sources("head = df[:5]\ntail = df[-5:]"))
+    assert flow.slice_splits() == []
+
+
+def test_shifted_slices_are_not_a_split():
+    flow = analyze(nb_from_sources("inputs = s[:-1]\ntargets = s[1:]"))
+    assert flow.slice_splits() == []
+
+
+def test_function_body_is_inlined_at_call_site():
+    flow = analyze(nb_from_sources(
+        "def prep(d):\n    d['a'] = d['a'].fillna(d['a'].median())\n    return d",
+        "df = prep(df)",
+    ))
+    inlined = [c for c in flow.calls if c.cell == 1 and c.name == "fillna"]
+    assert inlined and inlined[0].receiver_base == "df"
+    assert inlined[0].arg_names == {"df"}
+    assert any(ev.cell == 1 and "df" in ev.targets for ev in flow.assigns if ev.call is None)
+
+
+def test_pipe_inlines_like_a_call():
+    flow = analyze(nb_from_sources(
+        "def prep(d):\n    d['a'] = d['a'] / d['a'].max()\n    return d",
+        "df = df.pipe(prep)",
+    ))
+    assert any(c.cell == 1 and c.name == "max" and c.receiver_base == "df" for c in flow.calls)
+
+
+def test_inlined_function_called_twice_binds_per_call_site():
+    flow = analyze(nb_from_sources(
+        "def prep(d):\n    d['a'] = d['a'] / d['a'].max()\n    return d",
+        "a = prep(a)",
+        "b = prep(b)",
+    ))
+    bases = sorted((c.cell, c.receiver_base) for c in flow.calls if c.name == "max")
+    assert bases == [(1, "a"), (2, "b")]
+
+
+def test_bounded_tail_slice_forms_a_split_sink():
+    flow = analyze(nb_from_sources("train = X[:n]\ntest = X[n:m]"))
+    assert len(flow.slice_splits()) == 1
+
+
+def test_zero_lower_bound_is_a_head_slice():
+    flow = analyze(nb_from_sources("train = X[0:n]\ntest = X[n:]"))
+    assert len(flow.slice_splits()) == 1
+
+
+def test_two_dim_row_slices_form_a_split_sink():
+    flow = analyze(nb_from_sources("train = X[:n, :]\ntest = X[n:, :]"))
+    assert len(flow.slice_splits()) == 1
+
+
+def test_column_slices_are_not_a_split():
+    flow = analyze(nb_from_sources("a = X[:, :n]\nb = X[:, n:]"))
+    assert flow.slice_splits() == []
+
+
+def test_tail_with_lookback_window_forms_a_split_sink():
+    flow = analyze(nb_from_sources("train = X[:n]\ntest = X[n - 60:]"))
+    assert len(flow.slice_splits()) == 1
+
+
+def test_inlining_stops_at_four_times_the_notebook_own_events():
+    body = "def f(d):\n" + "".join(f"    a{i} = d\n" for i in range(200)) + "    return d\n"
+    start = time.perf_counter()
+    flow = analyze(nb_from_sources(body, "x = 1\n" + "f(x)\n" * 200))
+    assert time.perf_counter() - start < 2.0
+    own = 200 + 1 + 200
+    assert len(flow.assigns) + len(flow.calls) <= 5 * own
+    assert flow.skipped_cells == []
+    assert flow.uninlined_cells == [1]
+
+
+def test_slice_split_pairing_does_not_materialise_every_pair():
+    slices = [SliceEvent(base="X", cell=0, line=2 * i + 1, lower="", upper=f"n{i}") for i in range(3000)]
+    slices += [SliceEvent(base="X", cell=0, line=2 * i + 2, lower=f"m{i}", upper="") for i in range(3000)]
+    slices.append(SliceEvent(base="X", cell=1, line=1, lower="n2999-5", upper=""))
+    flow = NotebookDataflow(slices=slices)
+    start = time.perf_counter()
+    sinks = flow.slice_splits()
+    assert time.perf_counter() - start < 0.1
+    assert [(s.cell, s.line) for s in sinks] == [(1, 1)]
+
+
+def test_slice_split_picks_the_first_head_with_a_matching_tail():
+    flow = analyze(nb_from_sources("a = X[:5]\nb = X[:n]\nc = X[n:]\nd = X[:m]\ne = X[m:]"))
+    assert [(s.cell, s.line) for s in flow.slice_splits()] == [(0, 3)]

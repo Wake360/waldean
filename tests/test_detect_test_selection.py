@@ -271,3 +271,19 @@ def test_wrapper_loop_target_label_is_local():
         "print(evaluate(models[best], {'test': (X_te, y_te)}))",
     ]
     assert not selection_flags(cells)
+
+
+def test_threshold_tuned_on_oof_recorded_with_choice_then_fresh_test_is_silent():
+    cells = [
+        "rows = []\noof = {}\nfor name, m in models.items():\n"
+        "    p = cross_val_predict(m, X_tr, y_tr, cv=folds, method='predict_proba')[:, 1]\n"
+        "    oof[name] = p\n"
+        "    rows.append((name, roc_auc_score(y_tr, p)))\n"
+        "cvres = pd.DataFrame(rows, columns=['model', 'cv_auc']).set_index('model')",
+        "best = cvres.cv_auc.idxmax()\np = oof[best]\nths = np.linspace(0.05, 0.6, 111)\n"
+        "f1 = [f1_score(y_tr, p >= t) for t in ths]\nthr = float(ths[int(np.argmax(f1))])\n"
+        "choice = {'model': best, 'threshold': round(thr, 3)}\nprint(json.dumps(choice))",
+        "final = models[best].fit(X_tr, y_tr)\npt = final.predict_proba(X_te)[:, 1]\n"
+        "print(roc_auc_score(y_te, pt), f1_score(y_te, pt >= thr))",
+    ]
+    assert not confident(cells)

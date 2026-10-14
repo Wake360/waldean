@@ -88,9 +88,16 @@ run the gate; nothing here needs re-deriving.
   (a scoped-claim notebook emits the identical below-floor candidate;
   static-alone cannot hold precision). Decided by the narrative layer's
   claim signal if the gate ever runs.
-- **Known miss classes** left to a future narrative pass, not more static
-  heuristics: groupby-`apply` imputation, function-scoped
-  target-correlation selection.
+- **Known miss classes** (fit before split, from
+  `evals/2026-10-13-yang-pre-rerun.md` and
+  `evals/2026-10-13-dogfood-wide-rerun.md`): splits returned from a helper
+  (no return-value binding) or reached two helper levels deep; train and
+  test loaded from separate files, test known only by name; unsupervised
+  fits before `cross_val_score` (0.75 candidates by policy) or before a
+  manual `KFold` loop (not a sink); a group-statistic fill before a CV
+  sink (no candidate); a statistic of one frame filling a frame derived from it;
+  `LabelEncoder` fit on train plus test; `get_dummies` key leakage;
+  target-correlation feature selection, at notebook level or in a function.
 - **Editor integration** (LSP or extension surfacing flags inline) is a
   v2 candidate, not scoped or started.
 

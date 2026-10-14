@@ -32,8 +32,13 @@ def cmd_check(args) -> int:
     if not 0.0 <= args.floor <= 1.0:
         print(f"waldean: --floor must be between 0 and 1 (got {args.floor})", file=sys.stderr)
         return 3
+    if args.probe and any(Path(n).suffix == ".py" for n in args.notebooks):
+        print("waldean: --probe runs .ipynb notebooks only", file=sys.stderr)
+        return 3
     det = ver = None
     if args.llm:
+        print("waldean: --llm is experimental: no validated precision or recall; "
+              "its quality gates never ran (see README, Architecture)", file=sys.stderr)
         if args.llm_subscription and missing_subscription_clis():
             print("waldean: --llm-subscription needs the claude and codex CLIs on PATH",
                   file=sys.stderr)
@@ -73,7 +78,7 @@ def cmd_check(args) -> int:
                 print(f"waldean: {refusal}", file=sys.stderr)
                 return 3
         try:
-            nb, flow, flags = check(path, det, ver)
+            nb, flow, flags = check(path, det, ver, args.probe)
         except BackendError as exc:
             close_progress()
             print(f"waldean: narrative layer failed: {exc}", file=sys.stderr)
@@ -85,7 +90,7 @@ def cmd_check(args) -> int:
                 n_failed += 1
                 continue
             return 3
-        warning = parse_warning(len(flow.parse_errors) + len(flow.skipped_cells),
+        warning = parse_warning(len(set(flow.parse_errors) | set(flow.skipped_cells) | set(flow.uninlined_cells)),
                                 len(nb.code_cells))
         if args.format == "json":
             reports.append(report_obj(path, flags, args.floor, args.severity_gate, warning))
@@ -225,7 +230,7 @@ def cmd_propose(args) -> int:
     from .repair.loop import propose
 
     try:
-        written, unsupported = propose(args.file, out_root=Path(args.out), floor=args.floor)
+        written, unsupported = propose(args.file, out_root=Path(args.out), floor=args.floor, diff=args.diff)
     except Exception as exc:
         print(f"waldean: {args.file}: {_input_error(exc)}", file=sys.stderr)
         return 3
@@ -401,6 +406,10 @@ def main(argv=None) -> int:
                          help="run the narrative layer through the claude/codex CLIs "
                               "(subscription billing, no API keys); never gate-eligible")
     p_check.add_argument("--replay-dir", help="record/replay LLM responses here")
+    p_check.add_argument("--probe", action="store_true",
+                         help="run the notebook up to each fit-before-split sink in a separate "
+                              "waldean-verify kernel and rewrite the flag's confidence from "
+                              "n_samples_seen_; executes your code with your permissions; .ipynb only")
     p_check.add_argument("--keep-going", action="store_true",
                          help="continue past unreadable files (reported on stderr); "
                               "exit 3 if any file could not be checked")
@@ -448,6 +457,8 @@ def main(argv=None) -> int:
                            help="directory for repair contracts (default: %(default)s)")
     p_propose.add_argument("--floor", type=float, default=DEFAULT_CONFIDENCE_FLOOR,
                            help="confidence floor (default: %(default)s)")
+    p_propose.add_argument("--diff", action="store_true",
+                           help="also write patch.diff when the fix is mechanical")
     p_propose.set_defaults(func=cmd_propose)
 
     p_verify = sub.add_parser(

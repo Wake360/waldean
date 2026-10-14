@@ -12,7 +12,7 @@ import ast
 import re
 import textwrap
 
-from ..analysis.dataflow import NotebookDataflow, _strip_magics, analyze
+from ..analysis.dataflow import AssignEvent, NotebookDataflow, _strip_magics, analyze
 from ..analysis.ingest import ParsedNotebook
 from ..core.flag import Flag
 from ..core.taxonomy import load_taxonomy
@@ -64,9 +64,16 @@ TRANSFORMER_CLASSES = {
     "OneHotEncoder", "OrdinalEncoder",
     "CountVectorizer", "TfidfVectorizer", "TfidfTransformer",
     "SelectKBest", "SelectPercentile", "RFE", "VarianceThreshold",
+    "Tokenizer",
 }
+FIT_METHODS = {"fit", "fit_transform", "fit_on_texts"}
 # fitting a label encoding on full y is standard practice, not leakage
 NON_LEAKY_TRANSFORMERS = {"LabelEncoder", "LabelBinarizer"}
+
+
+STAT_METHODS = {"mean", "median", "std", "var", "min", "max", "quantile", "mode"}
+GROUP_STAT_RE = re.compile(r"\b(?:mean|median|std|var|min|max|mode)\b")
+COMPARE_RE = re.compile(r"[<>!=]=|[<>]")
 
 
 # cross-validation calls are evaluation sinks too: a transformer fitted on
@@ -245,18 +252,22 @@ def detect_leakage_temporal_shuffle(nb: ParsedNotebook, flow: NotebookDataflow) 
 
 
 def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) -> list[Flag]:
-    sinks = [c for c in flow.calls if c.name == "train_test_split" or c.name in CV_SINKS]
+    sinks = [c for c in flow.calls if c.name == "train_test_split" or c.name in CV_SINKS] + flow.slice_splits()
     if not sinks:
         return []
 
     # names assigned from a train_test_split call (X_train, X_test, ...)
     split_outputs: set[str] = set()
+    split_binds: set[tuple[str, int | None]] = set()
+    test_binds: set[tuple[str, int | None]] = set()
     for ev in flow.assigns:
         if ev.call is not None and ev.call.name == "train_test_split":
             split_outputs |= ev.targets
+            split_binds |= {(t, id(ev)) for t in ev.targets}
+            test_binds |= {(t, id(ev)) for t in ev.ordered_targets[1::2]}
     # every .transform call, for binding-aware receiver checks
     transform_calls = [c for c in flow.calls if c.name == "transform" and c.receiver]
-    assign_event_of: dict[int, "object"] = {
+    assign_event_of: dict[int, AssignEvent] = {
         id(ev.call): ev for ev in flow.assigns if ev.call is not None
     }
 
@@ -298,15 +309,41 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
         events, bindings = flow.chain(seed, (s.cell, s.line))
         chains.append((s, {id(e) for e in events}, bindings))
 
+    calls_in_order = sorted(flow.calls, key=lambda c: (c.cell, c.line))
+
+    call_binds: dict[int, set] = {}
+
+    def binds_of(c) -> set:
+        if id(c) not in call_binds:
+            names = c.arg_names | ({c.receiver_base} if c.receiver_base else set())
+            call_binds[id(c)] = flow.chain(names, (c.cell, c.line), mutations=True)[1]
+        return call_binds[id(c)]
+
+    def reaches_score(call, reached: set) -> bool:
+        reached = set(reached)
+        for c in calls_in_order:
+            at = (c.cell, c.line)
+            if at < (call.cell, call.line) or c is call:
+                continue
+            if not binds_of(c) & reached:
+                continue
+            if c.name in PREDICT_CALLS or c.name in SCORE_FUNCS or c.name in CV_SINKS or c.name == "score":
+                return True
+            if c.name == "fit" and c.receiver_base and c.receiver_base.isidentifier():
+                reached.add(flow.binding(c.receiver_base, at, mutations=True))
+        return False
+
     best: dict[object, Flag] = {}
 
-    def emit(call, confidence, leaked, evidence, key=None, sink_cell=None):
+    def emit(call, confidence, leaked, evidence, key=None, sink_cell=None, **more):
         key = key if key is not None else id(call)
         if key in best and best[key].confidence >= confidence:
             return
-        extra = {"leaked_names": sorted(leaked)}
+        extra = {"leaked_names": sorted(leaked), **more}
         if sink_cell is not None:
-            extra["sink_cell"] = sink_cell  # CV sink cell, read by the pre-CV fusion rule
+            extra["sink_cell"] = sink_cell
+        if call.helper_local:
+            extra["helper_local"] = True
         best[key] = _make_flag(
             "leakage-fit-before-split",
             confidence=confidence,
@@ -320,7 +357,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
         pos = (call.cell, call.line)
 
         # -- transformer fitted on data that reaches an evaluation sink --
-        if call.name in {"fit", "fit_transform"} and call.receiver is not None:
+        if call.name in FIT_METHODS and call.receiver is not None:
             if "[?]" in call.receiver:
                 continue  # dynamic container element: object identity unknown
             cls = recv_class(call)
@@ -328,6 +365,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                 continue
             is_transformer = (
                 call.name == "fit_transform"
+                or call.name == "fit_on_texts"
                 or cls in TRANSFORMER_CLASSES
                 or any(same_receiver(call, t) for t in transform_calls)
             )
@@ -340,6 +378,20 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                 same_receiver(call, t) and t.arg_names & split_outputs
                 for t in transform_calls
             )
+            _, arg_chain = flow.chain(call.arg_names, pos)
+            touched_test = {n for n, _ in arg_chain & test_binds}
+            if touched_test:
+                reached: set[tuple[str, int | None]] = (
+                    {(t, id(my_event)) for t in my_event.targets} if my_event is not None else set())
+                if call.receiver_base and call.receiver_base.isidentifier():
+                    reached.add(flow.binding(call.receiver_base, pos, mutations=True))
+                scored = reaches_score(call, reached)
+                emit(call, 0.9 if scored else 0.75, touched_test, (
+                    f"`{call.func}(...)` is fitted on {_join_names(touched_test)}, "
+                    f"a test split output; the transformer learns from the rows it is scored on"
+                    + ("" if scored else "; no later scoring call reads its output (candidate)")
+                ))
+                continue
             for sink, chain_ids, bindings in chains:
                 leaked = {name for name, ev_id in arg_binds if (name, ev_id) in bindings}
                 if not leaked:
@@ -348,16 +400,17 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                 # assigned result, or through the receiver's .transform output
                 # (a bare `skb.fit(X, y)` produces no assign event)
                 on_chain = (my_event is not None and id(my_event) in chain_ids) or recv_bind in bindings
-                if sink.name == "train_test_split":
+                if sink.name in {"train_test_split", "slice_split"}:
                     # (a) its output feeds the split, or (b) the fitted
                     # receiver later transforms a split output
                     if not (on_chain or transforms_split_part):
                         continue
+                    how = "`train_test_split`" if sink.name == "train_test_split" else "a row slice split"
                     emit(call, 0.92, leaked, (
                         f"`{call.func}(...)` consumes {_join_names(leaked)}, "
-                        f"feeding `train_test_split` (cell {sink.cell}) — "
+                        f"feeding {how} (cell {sink.cell}) — "
                         f"the fit happened before the split"
-                    ))
+                    ), sink_cell=sink.cell, sink=sink.name, receiver=call.receiver, arg=probe_arg(call))
                 else:
                     if not on_chain:
                         continue
@@ -370,7 +423,7 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
                         f"transformed output feeds `{sink.name}` (cell {sink.cell}); "
                         f"every CV fold's test rows were in the transformer fit"
                         + (" (fitted with labels)" if supervised else "")
-                    ), sink_cell=sink.cell)
+                    ), sink_cell=sink.cell, sink=sink.name, receiver=call.receiver, arg=probe_arg(call))
 
         # -- imputation with statistics of the same frame, before the split --
         elif call.name in {"fillna", "replace"} and call.receiver is not None:
@@ -381,17 +434,73 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
             _, arg_bindings = flow.chain(call.arg_names, pos)
             if base_bind not in arg_bindings:
                 continue  # fill values do not derive from the frame itself
+            _, base_chain = flow.chain({base}, pos)
+            filled_test = {n for n, _ in base_chain & test_binds}
+            if filled_test and not base_chain & (split_binds - test_binds):
+                emit(call, 0.85, filled_test, (
+                    f"`{call.func}(...)` fills `{base}` with statistics of {_join_names(filled_test)}, "
+                    f"a test split output; the imputation learns from the rows it is scored on"
+                ), key=f"impute:{base}")
+                continue
             for sink, _ids, bindings in chains:
-                if sink.name != "train_test_split":
+                if sink.name not in {"train_test_split", "slice_split"}:
                     continue
                 if base_bind in bindings and pos < (sink.cell, sink.line):
                     # one flag per frame: imputing N columns is one violation
+                    how = "`train_test_split`" if sink.name == "train_test_split" else "a row slice split"
                     emit(call, 0.85, {base}, (
                         f"`{call.func}(...)` fills values of `{base}` with statistics "
-                        f"computed on the full `{base}` before `train_test_split` "
+                        f"computed on the full `{base}` before {how} "
                         f"(cell {sink.cell}); imputation statistics include the test rows"
                     ), key=f"impute:{base}")
                     break
+
+    src = {c.index: c.source.splitlines() for c in nb.code_cells}
+    for ev in flow.assigns:
+        end = max(ev.end_line, ev.line)
+        text = "\n".join(src.get(ev.cell, [])[ev.line - 1:end])
+        if COMPARE_RE.search(text):
+            continue
+        for base in ev.targets & ev.sources:
+            stats = [
+                c for c in flow.calls
+                if c.cell == ev.cell and ev.line <= c.line <= end and c.receiver_base == base and (
+                    (c.name in STAT_METHODS and c.receiver is not None and "(" not in c.receiver)
+                    or (c.name in {"transform", "apply"} and c.receiver is not None
+                        and c.receiver.startswith(f"{base}.groupby") and GROUP_STAT_RE.search(text))
+                )
+            ]
+            if not stats:
+                continue
+            stat = stats[0]
+            for sink, chain_ids, _bindings in chains:
+                if id(ev) not in chain_ids:
+                    continue
+                if sink.name in {"train_test_split", "slice_split"}:
+                    how = "`train_test_split`" if sink.name == "train_test_split" else "a row slice split"
+                    emit(stat, 0.85, {base}, (
+                        f"`{stat.func}(...)` is computed over the full `{base}` and written back "
+                        f"into `{base}` before {how} (cell {sink.cell}); "
+                        f"the statistic includes the test rows"
+                    ), key=f"impute:{base}", sink_cell=sink.cell, sink=sink.name)
+                else:
+                    emit(stat, 0.75, {base}, (
+                        f"`{stat.func}(...)` is computed over the full `{base}` and written back "
+                        f"into `{base}` whose rows feed `{sink.name}` (cell {sink.cell}); "
+                        f"every CV fold's test rows were in the statistic"
+                    ), key=f"impute:{base}", sink_cell=sink.cell, sink=sink.name)
+                break
+
+    impute_at: dict[tuple[int, int], str] = {}
+    for key in [k for k in best if isinstance(k, str) and k.startswith("impute:")]:
+        at = (best[key].cell, best[key].line)
+        other = impute_at.setdefault(at, key)
+        if other == key:
+            continue
+        ranked = sorted((other, key), key=lambda k: (
+            flow.binding(k.removeprefix("impute:"), at)[1] is not None, best[k].confidence))
+        del best[ranked[0]]
+        impute_at[at] = ranked[1]
 
     return list(best.values())
 
@@ -742,6 +851,9 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
         return frozenset(out)
 
     def score_bearing(name: str, at: tuple[int, int] | tuple[int, int, int]) -> bool:
+        own = flow.last_assign(name, at, mutations=True)
+        if own is not None and SELECT_RE.search(span_text(own)):
+            return False
         events, _ = flow.chain({name}, at, mutations=True)
         return any(is_metric(c) or c.name in PREDICT_CALLS for ev in events for c in calls_in(ev))
 
@@ -843,6 +955,11 @@ STATIC_DECIDABLE = {
     "baserate-accuracy-imbalanced",
     "leakage-test-selection",
 }
+
+
+def probe_arg(call) -> str:
+    names = call.pos_args[0] if call.pos_args else call.kw_args.get("X", set())
+    return next(iter(names)) if len(names) == 1 else ""
 
 
 def run_static(nb: ParsedNotebook, flow: NotebookDataflow | None = None) -> list[Flag]:
