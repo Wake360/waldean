@@ -390,6 +390,7 @@ class NotebookDataflow:
     functions: dict[str, FuncDef] = field(default_factory=dict)
     parse_errors: list[int] = field(default_factory=list)  # cell indices that failed to parse
     skipped_cells: list[int] = field(default_factory=list)  # cell indices skipped by a size/depth cap
+    uninlined_cells: list[int] = field(default_factory=list)
     _by_name: dict[str, list[AssignEvent]] | None = field(default=None, repr=False)
     _by_name_mut: dict[str, list[AssignEvent]] | None = field(default=None, repr=False)
 
@@ -609,8 +610,10 @@ def analyze(nb: ParsedNotebook) -> NotebookDataflow:
             continue
         inlined += len(fn.calls) + len(fn.assigns)
         if inlined > inline_budget:
-            flow.skipped_cells.append(site.cell)
-            break
+            inline_budget = -1
+            if site.cell not in flow.uninlined_cells:
+                flow.uninlined_cells.append(site.cell)
+            continue
         rename = {p: a for p, a in zip(fn.params, args) if a}
         for c in fn.calls:
             flow.calls.append(_rename_call(c, rename, site))
@@ -621,4 +624,5 @@ def analyze(nb: ParsedNotebook) -> NotebookDataflow:
                 col=i - len(fn.assigns),
             ))
     flow.assigns.sort(key=lambda e: (e.cell, e.line, e.col))
+    flow.uninlined_cells.sort()
     return flow

@@ -90,7 +90,7 @@ def cmd_check(args) -> int:
                 n_failed += 1
                 continue
             return 3
-        warning = parse_warning(len(flow.parse_errors) + len(flow.skipped_cells),
+        warning = parse_warning(len(set(flow.parse_errors) | set(flow.skipped_cells) | set(flow.uninlined_cells)),
                                 len(nb.code_cells))
         if args.format == "json":
             reports.append(report_obj(path, flags, args.floor, args.severity_gate, warning))

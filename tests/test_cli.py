@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from waldean.analysis.dataflow import analyze
+from waldean.analysis.ingest import parse_script
 from waldean.api import EmptyDir as _EmptyDir, expand_notebooks as _expand_notebooks
 from waldean.cli import main
 from waldean.llm.backends import BackendError
@@ -685,3 +687,15 @@ def test_llm_flag_prints_experimental_warning(tmp_path, capsys, monkeypatch):
     nbformat.write(nbformat.v4.new_notebook(), nb_path)
     main(["check", str(nb_path), "--llm", "--replay-dir", str(tmp_path / "replay")])
     assert "experimental: no validated precision or recall" in capsys.readouterr().err
+
+
+def test_inlining_cap_lists_every_uninlined_cell_in_the_warning(tmp_path, capsys):
+    helper = "def prep(d):\n" + "".join(f"    a{i} = d\n" for i in range(50)) + "    return d\n"
+    src = "".join(f"# %%\n{c}" for c in [helper, "x = 1\n" + "prep(x)\n" * 300, "X = prep(X)\n", "Y = prep(Y)\n"])
+    p = _write(tmp_path, "cap.py", src)
+    flow = analyze(parse_script(p))
+    assert flow.skipped_cells == []
+    assert flow.uninlined_cells == [1, 2, 3]
+    main(["check", "--format", "json", p])
+    warning = json.loads(capsys.readouterr().out)["parse_warning"]
+    assert warning == "warning: 3 of 4 code cells could not be fully analysed; results are partial"

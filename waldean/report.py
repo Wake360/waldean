@@ -56,7 +56,7 @@ def parse_warning(n_failed: int, n_total: int) -> str | None:
     notebook whose cells all failed to parse cannot read as a clean pass."""
     if n_failed <= 0:
         return None
-    return f"warning: {n_failed} of {n_total} code cells could not be parsed; results are partial"
+    return f"warning: {n_failed} of {n_total} code cells could not be fully analysed; results are partial"
 
 
 def report_obj(path: str, flags: list[Flag], floor: float = DEFAULT_CONFIDENCE_FLOOR,

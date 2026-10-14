@@ -277,7 +277,8 @@ def test_inlining_stops_at_four_times_the_notebook_own_events():
     assert time.perf_counter() - start < 2.0
     own = 200 + 1 + 200
     assert len(flow.assigns) + len(flow.calls) <= 5 * own
-    assert flow.skipped_cells == [1]
+    assert flow.skipped_cells == []
+    assert flow.uninlined_cells == [1]
 
 
 def test_slice_split_pairing_does_not_materialise_every_pair():

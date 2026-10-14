@@ -38,7 +38,7 @@ def test_to_json_honors_severity_gate():
 def test_parse_warning_surfaced_in_reports():
     assert parse_warning(0, 3) is None
     warning = parse_warning(2, 3)
-    assert warning == "warning: 2 of 3 code cells could not be parsed; results are partial"
+    assert warning == "warning: 2 of 3 code cells could not be fully analysed; results are partial"
     assert warning in to_markdown("nb.ipynb", [], warning=warning)
     assert json.loads(to_json("nb.ipynb", [], warning=warning))["parse_warning"] == warning
 
