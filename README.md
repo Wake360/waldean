@@ -82,6 +82,10 @@ reverses it (`--keep COL`). Every notebook is a `ColumnTransformer` + model pipe
 `--group-column COL|none`, `--exclude`, `--keep`. Leak detection is by near-perfect correlation or purity against
 the target only; a weaker future-derived feature passes.
 
+Measured with the v3 temporal probe on two synthetic datasets: the earlier temporal-only Builder passed on maintenance and subscriptions (1/1 each). Claude sonnet default runs in v3 passed 15/15 on maintenance and 7/15 on subscriptions. Indicative only. The Builder has one deterministic run per dataset, against 30 sampled agent runs. The agent was sonnet. The scored result is from commit 15c61d3; later renderer changes mean a fresh build differs ([`evals/2026-10-13-builder-vs-agents.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-builder-vs-agents.md)).
+
+`--run` executes the notebook on your machine in the `waldean-verify` kernel with secret-looking environment variables hidden. It is not a sandbox.
+
 ## Status
 
 | | What |
