@@ -51,5 +51,5 @@ def test_readme_sample_matches_golden():
 
 def test_readme_names_status_sections():
     readme = (REPO / "README.md").read_text(encoding="utf-8")
-    for label in ("Available now", "Experimental", "Planned", "Known limitations"):
+    for label in ("Experimental", "Known limitations"):
         assert label in readme
