@@ -1,0 +1,14 @@
+{
+  "name": "waldean",
+  "description": "Waldean: statistical-integrity checks for agent-written notebooks and scripts.",
+  "owner": {
+    "name": "Wake360"
+  },
+  "plugins": [
+    {
+      "name": "waldean",
+      "source": "./",
+      "description": "Methodology checklist for model evaluation plus `waldean check` before an agent reports a metric."
+    }
+  ]
+}
