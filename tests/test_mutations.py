@@ -11,7 +11,7 @@ from waldean.bench.corpus import FAMILIES, _build_date, abtest_notebook, churn_n
 from waldean.core.flag import DEFAULT_CONFIDENCE_FLOOR
 from waldean.checks.detect import run_static
 from waldean.analysis.ingest import from_nbnode
-from waldean.bench.mutate import BaserateAccuracyMutation, FitBeforeSplitMutation, MultipleTestingMutation, MUTATIONS, RegressionToMeanMutation, SignificanceMeaninglessMutation, SurvivorshipMutation, TemporalShuffleMutation, TestSelectionMutation, phrasing_variant
+from waldean.bench.mutate import BaserateAccuracyMutation, FitBeforeSplitMutation, MultipleTestingMutation, MUTATIONS, RegressionToMeanMutation, ResampleBeforeSplitMutation, SignificanceMeaninglessMutation, SurvivorshipMutation, TemporalShuffleMutation, TestSelectionMutation, phrasing_variant
 
 
 def code_of(nb):
@@ -290,3 +290,34 @@ def test_best_of_n_verify_and_flag():
     shapes = [f.extra.get("shape") for f in run_static(from_nbnode(mutant))
               if f.flaw_id == "leakage-test-selection" and f.confidence >= DEFAULT_CONFIDENCE_FLOOR]
     assert shapes == ["best-of-n"]
+
+
+def test_resample_mutation_applicable_only_on_fraud():
+    m = ResampleBeforeSplitMutation()
+    for family, builder in FAMILIES.items():
+        assert m.applicable(builder(7)) == (family == "fraud"), family
+
+
+@pytest.mark.parametrize("seed,marker", [(0, "resample(minority"), (1, "minority.sample(")])
+def test_resample_mutation_inserts_cell_before_split(seed, marker):
+    clean = fraud_notebook(7)
+    mutant = ResampleBeforeSplitMutation().apply(clean, seed)
+    assert len(mutant.cells) == len(clean.cells) + 1
+    assert marker in mutant.cells[5]["source"]
+    assert "train_test_split" in mutant.cells[6]["source"]
+
+
+@pytest.mark.parametrize("seed", [0, 1])
+def test_resample_verify_and_flag(seed):
+    m = ResampleBeforeSplitMutation()
+    mutant = m.apply(fraud_notebook(7), seed)
+    ok, evidence = m.verify(mutant)
+    assert ok, evidence
+    assert evidence["rows_in_both_splits"] > 0
+    assert any(f.flaw_id == "leakage-resample-before-split" and f.confidence >= DEFAULT_CONFIDENCE_FLOOR
+               for f in run_static(from_nbnode(mutant)))
+
+
+def test_resample_verify_rejects_clean_fraud():
+    ok, _ = ResampleBeforeSplitMutation().verify(fraud_notebook(7))
+    assert not ok
