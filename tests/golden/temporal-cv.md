@@ -11,5 +11,5 @@ verdict: 1 high, 0 medium | static layer (no LLM)
 - **Confidence:** 0.90
 - **Repair:** `waldean propose examples/temporal-cv-before-after.ipynb` writes a repair contract that an agent or a person can apply and Waldean can verify
 
-## CLEAN (checked): baserate-accuracy-imbalanced, leakage-fit-before-split, leakage-test-selection, testing-multiple-uncorrected
+## CLEAN (checked): baserate-accuracy-imbalanced, leakage-fit-before-split, leakage-resample-before-split, leakage-test-selection, testing-multiple-uncorrected
 
