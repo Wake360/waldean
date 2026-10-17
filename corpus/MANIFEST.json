@@ -1,5 +1,5 @@
 {
-  "built": "2026-10-13",
+  "built": "2026-10-17",
   "clean": [
     {
       "file": "clean/churn-s11.ipynb",
@@ -1792,6 +1792,21 @@
       }
     },
     {
+      "file": "mutated/selection-s11__leakage-test-selection__m2.ipynb",
+      "base": "clean/selection-s11.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 2,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 2,
+        "candidates": 20,
+        "reported": 0.6741898148148148,
+        "mean_over_candidates": 0.6541997354497354,
+        "selection_scores_are_test_scores": true
+      }
+    },
+    {
       "file": "mutated/selection-s12__leakage-test-selection__m0.ipynb",
       "base": "clean/selection-s12.ipynb",
       "flaw_id": "leakage-test-selection",
@@ -1817,6 +1832,21 @@
         "selection_scores_are_test_scores": true,
         "reported_test_auc_is_max_over_candidates": true,
         "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s12__leakage-test-selection__m2.ipynb",
+      "base": "clean/selection-s12.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 2,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 2,
+        "candidates": 20,
+        "reported": 0.6378968253968254,
+        "mean_over_candidates": 0.62041583994709,
+        "selection_scores_are_test_scores": true
       }
     },
     {
@@ -1848,6 +1878,21 @@
       }
     },
     {
+      "file": "mutated/selection-s13__leakage-test-selection__m2.ipynb",
+      "base": "clean/selection-s13.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 2,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 2,
+        "candidates": 20,
+        "reported": 0.6789847883597884,
+        "mean_over_candidates": 0.6674892526455027,
+        "selection_scores_are_test_scores": true
+      }
+    },
+    {
       "file": "mutated/selection-s14__leakage-test-selection__m0.ipynb",
       "base": "clean/selection-s14.ipynb",
       "flaw_id": "leakage-test-selection",
@@ -1873,6 +1918,21 @@
         "selection_scores_are_test_scores": true,
         "reported_test_auc_is_max_over_candidates": true,
         "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s14__leakage-test-selection__m2.ipynb",
+      "base": "clean/selection-s14.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 2,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 2,
+        "candidates": 20,
+        "reported": 0.6896494708994709,
+        "mean_over_candidates": 0.6828538359788359,
+        "selection_scores_are_test_scores": true
       }
     },
     {
@@ -3252,10 +3312,10 @@
       }
     },
     {
-      "file": "mutated/selection-s21__leakage-test-selection__m2.ipynb",
+      "file": "mutated/selection-s21__leakage-test-selection__m3.ipynb",
       "base": "clean/selection-s21.ipynb",
       "flaw_id": "leakage-test-selection",
-      "mutation_seed": 2,
+      "mutation_seed": 3,
       "split": "heldout",
       "verified": true,
       "evidence": {
@@ -3266,10 +3326,10 @@
       }
     },
     {
-      "file": "mutated/selection-s21__leakage-test-selection__m3.ipynb",
+      "file": "mutated/selection-s21__leakage-test-selection__m4.ipynb",
       "base": "clean/selection-s21.ipynb",
       "flaw_id": "leakage-test-selection",
-      "mutation_seed": 3,
+      "mutation_seed": 4,
       "split": "heldout",
       "verified": true,
       "evidence": {
@@ -3280,17 +3340,18 @@
       }
     },
     {
-      "file": "mutated/selection-s22__leakage-test-selection__m2.ipynb",
-      "base": "clean/selection-s22.ipynb",
+      "file": "mutated/selection-s21__leakage-test-selection__m5.ipynb",
+      "base": "clean/selection-s21.ipynb",
       "flaw_id": "leakage-test-selection",
-      "mutation_seed": 2,
+      "mutation_seed": 5,
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "variant": 0,
-        "selection_scores_are_test_scores": true,
-        "reported_test_auc_is_max_over_candidates": true,
-        "same_choice_as_validation": false
+        "variant": 2,
+        "candidates": 20,
+        "reported": 0.6693948412698413,
+        "mean_over_candidates": 0.6492063492063491,
+        "selection_scores_are_test_scores": true
       }
     },
     {
@@ -3301,6 +3362,20 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
+        "variant": 0,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": false
+      }
+    },
+    {
+      "file": "mutated/selection-s22__leakage-test-selection__m4.ipynb",
+      "base": "clean/selection-s22.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 4,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
         "variant": 1,
         "selection_scores_are_test_scores": true,
         "reported_test_auc_is_max_over_candidates": true,
@@ -3308,17 +3383,18 @@
       }
     },
     {
-      "file": "mutated/selection-s23__leakage-test-selection__m2.ipynb",
-      "base": "clean/selection-s23.ipynb",
+      "file": "mutated/selection-s22__leakage-test-selection__m5.ipynb",
+      "base": "clean/selection-s22.ipynb",
       "flaw_id": "leakage-test-selection",
-      "mutation_seed": 2,
+      "mutation_seed": 5,
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "variant": 0,
-        "selection_scores_are_test_scores": true,
-        "reported_test_auc_is_max_over_candidates": true,
-        "same_choice_as_validation": true
+        "variant": 2,
+        "candidates": 20,
+        "reported": 0.6815476190476191,
+        "mean_over_candidates": 0.6630001653439154,
+        "selection_scores_are_test_scores": true
       }
     },
     {
@@ -3329,6 +3405,20 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
+        "variant": 0,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": true
+      }
+    },
+    {
+      "file": "mutated/selection-s23__leakage-test-selection__m4.ipynb",
+      "base": "clean/selection-s23.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 4,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
         "variant": 1,
         "selection_scores_are_test_scores": true,
         "reported_test_auc_is_max_over_candidates": true,
@@ -3336,17 +3426,18 @@
       }
     },
     {
-      "file": "mutated/selection-s24__leakage-test-selection__m2.ipynb",
-      "base": "clean/selection-s24.ipynb",
+      "file": "mutated/selection-s23__leakage-test-selection__m5.ipynb",
+      "base": "clean/selection-s23.ipynb",
       "flaw_id": "leakage-test-selection",
-      "mutation_seed": 2,
+      "mutation_seed": 5,
       "split": "heldout",
       "verified": true,
       "evidence": {
-        "variant": 0,
-        "selection_scores_are_test_scores": true,
-        "reported_test_auc_is_max_over_candidates": true,
-        "same_choice_as_validation": false
+        "variant": 2,
+        "candidates": 20,
+        "reported": 0.685681216931217,
+        "mean_over_candidates": 0.6674603174603175,
+        "selection_scores_are_test_scores": true
       }
     },
     {
@@ -3357,10 +3448,39 @@
       "split": "heldout",
       "verified": true,
       "evidence": {
+        "variant": 0,
+        "selection_scores_are_test_scores": true,
+        "reported_test_auc_is_max_over_candidates": true,
+        "same_choice_as_validation": false
+      }
+    },
+    {
+      "file": "mutated/selection-s24__leakage-test-selection__m4.ipynb",
+      "base": "clean/selection-s24.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 4,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
         "variant": 1,
         "selection_scores_are_test_scores": true,
         "reported_test_auc_is_max_over_candidates": true,
         "same_choice_as_validation": false
+      }
+    },
+    {
+      "file": "mutated/selection-s24__leakage-test-selection__m5.ipynb",
+      "base": "clean/selection-s24.ipynb",
+      "flaw_id": "leakage-test-selection",
+      "mutation_seed": 5,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 2,
+        "candidates": 20,
+        "reported": 0.6727017195767196,
+        "mean_over_candidates": 0.6570105820105819,
+        "selection_scores_are_test_scores": true
       }
     }
   ],

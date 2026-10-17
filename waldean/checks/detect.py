@@ -12,7 +12,7 @@ import ast
 import re
 import textwrap
 
-from ..analysis.dataflow import AssignEvent, NotebookDataflow, _strip_magics, analyze
+from ..analysis.dataflow import AssignEvent, CallSite, NotebookDataflow, _strip_magics, analyze
 from ..analysis.ingest import ParsedNotebook
 from ..core.flag import Flag
 from ..core.taxonomy import load_taxonomy
@@ -720,6 +720,9 @@ IFEXP_RE = re.compile(r"\bif\b[^\n]*\belse\b")
 ATTR_PASSTHROUGH_RE = re.compile(r"^\w+\s*=\s*\w+\.(?:values|T)\s*(?:;|$)")
 LABEL_PASSTHROUGH = {"to_numpy", "values", "copy", "astype", "reset_index", "ravel", "squeeze"}
 DEF_RE = re.compile(r"^def (\w+)\(", re.MULTILINE)
+MAX_CALLS = {"max", "nanmax"}
+SUMMARY_CALLS = {"mean", "nanmean", "median", "nanmedian", "std", "nanstd", "describe"}
+LOOP_TEXT_RE = re.compile(r"\bfor\b")
 
 
 def _metric_functions(nb: ParsedNotebook) -> set[str]:
@@ -808,6 +811,33 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
         lines = src.get(ev.cell, [])
         return "\n".join(lines[ev.line - 1:max(ev.end_line, ev.line)])
 
+    def printed_directly(mx: CallSite) -> bool:
+        text = src.get(mx.cell, [""] * mx.line)[mx.line - 1]
+        start = text.find("print(")
+        if start < 0:
+            return False
+        for m in re.finditer(re.escape(mx.func) + r"\(", text):
+            if m.start() < start or (m.start() > 0 and (text[m.start() - 1].isalnum() or text[m.start() - 1] in "_.")):
+                continue
+            opens = []
+            for i in range(start + len("print"), m.start()):
+                if text[i] == "(":
+                    opens.append(i)
+                elif text[i] == ")" and opens:
+                    opens.pop()
+            if any(not (text[o - 5:o] == "print" or text[o - 7:o] == ".format") for o in opens):
+                continue
+            depth, end = 0, m.end() - 1
+            for end in range(m.end() - 1, len(text)):
+                depth += (text[end] == "(") - (text[end] == ")")
+                if depth == 0:
+                    break
+            before, after = text[:m.start()].rstrip(), text[end + 1:].lstrip()
+            if re.match(r"[<>=!]", after) or re.search(r"[<>=!]$", before):
+                continue
+            return True
+        return False
+
     def calls_in(ev) -> list:
         end = max(ev.end_line, ev.line)
         return [c for c in calls_by_cell.get(ev.cell, []) if ev.line <= c.line <= end]
@@ -859,6 +889,22 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
         events, _ = flow.chain({name}, at, mutations=True)
         return any(is_metric(c) or c.name in PREDICT_CALLS for ev in events for c in calls_in(ev))
 
+    def has_fresh_eval(after: tuple[int, int], labels: set, targets: set[str] | None) -> bool:
+        known = [lab for lab in labels if lab]
+        for m in flow.calls:
+            at = (m.cell, m.line)
+            if at <= after or not is_metric(m):
+                continue
+            lab = canonical(label_names(m), at)
+            if not lab or any(lab <= k or k <= lab for k in known):
+                continue
+            if targets is None:
+                return True
+            _, binds = flow.chain(m.arg_names - label_names(m), at, mutations=True)
+            if {n for n, _ in binds} & targets:
+                return True
+        return False
+
     statements = [((ev.cell, ev.line, ev.col), ev.sources) for ev in flow.assigns] + [
         ((c.cell, c.line), c.arg_names | ({c.receiver_base} if c.receiver_base else set()))
         for c in flow.calls
@@ -890,19 +936,15 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
             return any(lab <= known or known <= lab for known in labels)
 
         reuse = None
-        fresh = False
+        fresh = has_fresh_eval((sel.cell, max(sel.end_line, sel.line)), labels, sel.targets)
         for m in flow.calls:
             at = (m.cell, m.line)
             if at <= (sel.cell, max(sel.end_line, sel.line)) or not is_metric(m):
                 continue
             _, binds = flow.chain(m.arg_names - label_names(m), at, mutations=True)
             lab = canonical(label_names(m), at)
-            if not lab:
-                continue
-            if binds & selected and related(lab):
+            if lab and binds & selected and related(lab):
                 reuse = reuse or at
-            elif {n for n, _ in binds} & sel.targets and not related(lab):
-                fresh = True
         for at, reads in sorted(statements, key=lambda s: s[0]):
             if reuse is not None:
                 break
@@ -937,7 +979,57 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
         if (f.cell, f.line) not in seen:
             seen.add((f.cell, f.line))
             unique.append(f)
-    return unique
+    flags = unique
+    flagged_at = seen
+    for mx in flow.calls:
+        if mx.name not in MAX_CALLS or mx.receiver not in (None, "np", "numpy") or mx.kw_args:
+            continue
+        if len(mx.pos_args) != 1 or len(mx.pos_args[0]) != 1:
+            continue
+        at = (mx.cell, mx.line)
+        if at in flagged_at:
+            continue
+        pool = next(iter(mx.pos_args[0]))
+        events, _ = flow.chain({pool}, at, mutations=True)
+        looped = [
+            c for ev in events for c in calls_in(ev)
+            if is_metric(c) and (c.loop_depth > 0 or LOOP_TEXT_RE.search(span_text(ev)))
+        ]
+        if not looped:
+            continue
+        loop_labels = {canonical(label_names(c), (c.cell, c.line)) for c in looped} - {frozenset()}
+        if len(loop_labels) != 1:
+            continue
+        pool_bind = flow.binding(pool, at, mutations=True)
+        reads_pool = {
+            (c.cell, c.line) for c in flow.calls
+            if pool in c.arg_names and flow.binding(pool, (c.cell, c.line), mutations=True) == pool_bind
+        }
+        if any(c.name in SUMMARY_CALLS and (c.cell, c.line) in reads_pool for c in flow.calls):
+            continue
+        own = next((ev for ev in flow.assigns if ev.call is mx), None)
+        printed = any(c.name == "print" and (c.cell, c.line) == at for c in calls_by_cell.get(mx.cell, [])) and printed_directly(mx)
+        if own is not None:
+            mine = {(t, id(own)) for t in own.targets}
+            printed = printed or any(
+                c.name == "print" and (c.cell, c.line) > at
+                and any(flow.binding(n, (c.cell, c.line)) in mine for n in c.arg_names)
+                for c in flow.calls
+            )
+        if not printed:
+            continue
+        fresh = has_fresh_eval(at, loop_labels, None)
+        flags.append(_make_flag(
+            "leakage-test-selection", confidence=0.6 if fresh else 0.9, cell=mx.cell, line=mx.line,
+            evidence=(
+                f"`{mx.func}({pool})` (cell {mx.cell}) reports the best of scores computed in a loop "
+                f"on the same rows, with no mean or spread across the candidates"
+                + ("; a later evaluation on other rows exists (candidate)" if fresh else "")
+            ),
+            selected=[pool], shape="best-of-n",
+        ))
+        flagged_at.add(at)
+    return flags
 
 
 DETECTORS = [

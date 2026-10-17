@@ -287,3 +287,97 @@ def test_threshold_tuned_on_oof_recorded_with_choice_then_fresh_test_is_silent()
         "print(roc_auc_score(y_te, pt), f1_score(y_te, pt >= thr))",
     ]
     assert not confident(cells)
+
+
+SEED_LOOP = (
+    "seed_aucs = []\n"
+    "for s in range(20):\n"
+    "    rf = RandomForestClassifier(random_state=s).fit(X_tr, y_tr)\n"
+    "    seed_aucs.append(roc_auc_score(y_te, rf.predict_proba(X_te)[:, 1]))"
+)
+
+
+def test_max_over_seed_scores_printed():
+    flags = confident([SEED_LOOP, "best_auc = max(seed_aucs)\nprint(f'forest test roc_auc={best_auc:.3f}')"])
+    assert len(flags) == 1
+    assert flags[0].extra == {"selected": ["seed_aucs"], "shape": "best-of-n"}
+    assert (flags[0].cell, flags[0].line) == (1, 1)
+
+
+def test_np_max_over_comprehension_scores_printed():
+    cells = [
+        "aucs = [roc_auc_score(y_te, RandomForestClassifier(random_state=s).fit(X_tr, y_tr)"
+        ".predict_proba(X_te)[:, 1]) for s in range(20)]",
+        "print('auc', np.max(aucs))",
+    ]
+    assert [f.extra["shape"] for f in confident(cells)] == ["best-of-n"]
+
+
+def test_best_of_n_with_mean_reported_is_silent():
+    assert not selection_flags([SEED_LOOP, "print(np.mean(seed_aucs), np.std(seed_aucs), max(seed_aucs))"])
+
+
+def test_best_of_n_with_series_mean_is_silent():
+    cells = [SEED_LOOP, "print(pd.Series(seed_aucs).mean())\nprint(max(seed_aucs))"]
+    assert not selection_flags(cells)
+
+
+def test_best_of_n_not_reported_is_silent():
+    assert not selection_flags([SEED_LOOP, "plt.ylim(0, max(seed_aucs))"])
+
+
+def test_max_over_non_metric_values_is_silent():
+    cells = [
+        "losses = []\nfor s in range(20):\n    losses.append(train_one(s))",
+        "print(max(losses))\nprint(max(df['price']))",
+    ]
+    assert not selection_flags(cells)
+
+
+def test_dict_key_shape_still_one_flag():
+    cells = [
+        "res = {}\nfor s in range(20):\n    m = RandomForestClassifier(random_state=s).fit(X_tr, y_tr)\n"
+        "    res[s] = roc_auc_score(y_te, m.predict_proba(X_te)[:, 1])",
+        "best = max(res, key=res.get)\nprint(res[best])",
+    ]
+    flags = confident(cells)
+    assert len(flags) == 1
+    assert "shape" not in flags[0].extra
+
+
+def test_mixed_label_pool_is_silent():
+    cells = [
+        "aucs = []\nfor m in models:\n"
+        "    aucs.append(roc_auc_score(y_va, m.predict_proba(X_va)[:, 1]))\n"
+        "    aucs.append(roc_auc_score(y_te, m.predict_proba(X_te)[:, 1]))",
+        "print(max(aucs))",
+    ]
+    assert not selection_flags(cells)
+
+
+def test_val_max_then_fresh_test_eval_is_candidate_only():
+    cells = [
+        "va = []\nfor c in [0.1, 1, 10]:\n"
+        "    m = LogisticRegression(C=c).fit(X_tr, y_tr)\n"
+        "    va.append(roc_auc_score(y_va, m.predict_proba(X_va)[:, 1]))",
+        "print('best val', max(va))",
+        "final = LogisticRegression().fit(X_tr, y_tr)\n"
+        "print(roc_auc_score(y_te, final.predict_proba(X_te)[:, 1]))",
+    ]
+    flags = selection_flags(cells)
+    assert not confident(cells)
+    assert [f.confidence for f in flags] == [0.6]
+
+
+def test_best_of_n_index_of_max_printed_is_silent():
+    cells = [SEED_LOOP, "print('best seed', seed_aucs.index(max(seed_aucs)) + 1)"]
+    assert not selection_flags(cells)
+
+
+def test_best_of_n_comparison_printed_is_silent():
+    assert not selection_flags([SEED_LOOP, "print(max(seed_aucs) > 0.9)"])
+
+
+def test_best_of_n_two_maxes_on_one_line_flags_once():
+    cells = [SEED_LOOP, "print('max', max(seed_aucs), 'seed', seed_aucs.index(max(seed_aucs)) + 1)"]
+    assert len(confident(cells)) == 1

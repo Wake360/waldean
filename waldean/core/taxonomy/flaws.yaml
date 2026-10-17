@@ -227,10 +227,12 @@
   layer: static
   severity: medium
   definition: >
-    A model, feature set or decision threshold is chosen by comparing
-    scores on a set of rows, and the score of the chosen candidate on
-    those same rows is then reported as its performance estimate.
-  book_anchor: "Cawley & Talbot 2010, JMLR 11:2079 (selection bias in performance evaluation); ESL §7.2"
+    A model, random seed, configuration, feature set or decision threshold
+    is chosen by comparing scores on a set of rows, and the score of the
+    chosen candidate on those same rows is then reported as its
+    performance estimate. Printing the maximum of a loop of scores is the
+    same choice made implicitly.
+  book_anchor: "Cawley & Talbot 2010, JMLR 11:2079 (selection bias in performance evaluation); ESL §7.2; Grinold & Kahn, Active Portfolio Management ch. 12 (data mining over many backtests)"
   failure_scenario: >
     The reported score is the maximum over several noisy estimates, so it
     is biased upward; the chosen model scores lower on new data. The bias

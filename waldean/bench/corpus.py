@@ -639,7 +639,7 @@ MUTATION_SEEDS = {
     "significance-meaningless": {"dev": (0, 1), "heldout": (2, 3)},
     "regression-to-mean-claim": {"dev": (0, 1), "heldout": (2, 3)},
     "leakage-temporal-shuffle": {"dev": (0, 1), "heldout": (2, 3)},
-    "leakage-test-selection": {"dev": (0, 1), "heldout": (2, 3)},
+    "leakage-test-selection": {"dev": (0, 1, 2), "heldout": (3, 4, 5)},
 }
 
 
