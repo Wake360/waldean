@@ -786,6 +786,22 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
         events, _ = flow.chain({name}, at, mutations=True)
         return any(is_metric(c) or c.name in PREDICT_CALLS for ev in events for c in calls_in(ev))
 
+    def has_fresh_eval(after: tuple[int, int], labels: set, targets: set[str] | None) -> bool:
+        known = [lab for lab in labels if lab]
+        for m in flow.calls:
+            at = (m.cell, m.line)
+            if at <= after or not is_metric(m):
+                continue
+            lab = canonical(label_names(m), at)
+            if not lab or any(lab <= k or k <= lab for k in known):
+                continue
+            if targets is None:
+                return True
+            _, binds = flow.chain(m.arg_names - label_names(m), at, mutations=True)
+            if {n for n, _ in binds} & targets:
+                return True
+        return False
+
     statements = [((ev.cell, ev.line, ev.col), ev.sources) for ev in flow.assigns] + [
         ((c.cell, c.line), c.arg_names | ({c.receiver_base} if c.receiver_base else set()))
         for c in flow.calls
@@ -817,19 +833,15 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
             return any(lab <= known or known <= lab for known in labels)
 
         reuse = None
-        fresh = False
+        fresh = has_fresh_eval((sel.cell, max(sel.end_line, sel.line)), labels, sel.targets)
         for m in flow.calls:
             at = (m.cell, m.line)
             if at <= (sel.cell, max(sel.end_line, sel.line)) or not is_metric(m):
                 continue
             _, binds = flow.chain(m.arg_names - label_names(m), at, mutations=True)
             lab = canonical(label_names(m), at)
-            if not lab:
-                continue
-            if binds & selected and related(lab):
+            if lab and binds & selected and related(lab):
                 reuse = reuse or at
-            elif {n for n, _ in binds} & sel.targets and not related(lab):
-                fresh = True
         for at, reads in sorted(statements, key=lambda s: s[0]):
             if reuse is not None:
                 break
@@ -875,7 +887,8 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
         ]
         if not looped:
             continue
-        if len({canonical(label_names(c), (c.cell, c.line)) for c in looped} - {frozenset()}) != 1:
+        loop_labels = {canonical(label_names(c), (c.cell, c.line)) for c in looped} - {frozenset()}
+        if len(loop_labels) != 1:
             continue
         pool_bind = flow.binding(pool, at, mutations=True)
         reads_pool = {
@@ -895,11 +908,13 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
             )
         if not printed:
             continue
+        fresh = has_fresh_eval(at, loop_labels, None)
         flags.append(_make_flag(
-            "leakage-test-selection", confidence=0.9, cell=mx.cell, line=mx.line,
+            "leakage-test-selection", confidence=0.6 if fresh else 0.9, cell=mx.cell, line=mx.line,
             evidence=(
                 f"`{mx.func}({pool})` (cell {mx.cell}) reports the best of scores computed in a loop "
                 f"on the same rows, with no mean or spread across the candidates"
+                + ("; a later evaluation on other rows exists (candidate)" if fresh else "")
             ),
             selected=[pool], shape="best-of-n",
         ))

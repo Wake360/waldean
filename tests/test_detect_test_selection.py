@@ -175,3 +175,17 @@ def test_mixed_label_pool_is_silent():
         "print(max(aucs))",
     ]
     assert not selection_flags(cells)
+
+
+def test_val_max_then_fresh_test_eval_is_candidate_only():
+    cells = [
+        "va = []\nfor c in [0.1, 1, 10]:\n"
+        "    m = LogisticRegression(C=c).fit(X_tr, y_tr)\n"
+        "    va.append(roc_auc_score(y_va, m.predict_proba(X_va)[:, 1]))",
+        "print('best val', max(va))",
+        "final = LogisticRegression().fit(X_tr, y_tr)\n"
+        "print(roc_auc_score(y_te, final.predict_proba(X_te)[:, 1]))",
+    ]
+    flags = selection_flags(cells)
+    assert not confident(cells)
+    assert [f.confidence for f in flags] == [0.6]
