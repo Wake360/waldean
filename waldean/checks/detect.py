@@ -749,6 +749,33 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
         lines = src.get(ev.cell, [])
         return "\n".join(lines[ev.line - 1:max(ev.end_line, ev.line)])
 
+    def printed_directly(mx) -> bool:
+        text = src.get(mx.cell, [""] * mx.line)[mx.line - 1]
+        start = text.find("print(")
+        if start < 0:
+            return False
+        for m in re.finditer(re.escape(mx.func) + r"\(", text):
+            if m.start() < start or (m.start() > 0 and (text[m.start() - 1].isalnum() or text[m.start() - 1] in "_.")):
+                continue
+            opens = []
+            for i in range(start + len("print"), m.start()):
+                if text[i] == "(":
+                    opens.append(i)
+                elif text[i] == ")" and opens:
+                    opens.pop()
+            if any(not (text[o - 5:o] == "print" or text[o - 7:o] == ".format") for o in opens):
+                continue
+            depth, end = 0, m.end() - 1
+            for end in range(m.end() - 1, len(text)):
+                depth += (text[end] == "(") - (text[end] == ")")
+                if depth == 0:
+                    break
+            before, after = text[:m.start()].rstrip(), text[end + 1:].lstrip()
+            if re.match(r"[<>=!]", after) or re.search(r"[<>=!]$", before):
+                continue
+            return True
+        return False
+
     def calls_in(ev) -> list:
         end = max(ev.end_line, ev.line)
         return [c for c in calls_by_cell.get(ev.cell, []) if ev.line <= c.line <= end]
@@ -898,7 +925,7 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
         if any(c.name in SUMMARY_CALLS and (c.cell, c.line) in reads_pool for c in flow.calls):
             continue
         own = next((ev for ev in flow.assigns if ev.call is mx), None)
-        printed = any(c.name == "print" and (c.cell, c.line) == at for c in calls_by_cell.get(mx.cell, []))
+        printed = any(c.name == "print" and (c.cell, c.line) == at for c in calls_by_cell.get(mx.cell, [])) and printed_directly(mx)
         if own is not None:
             mine = {(t, id(own)) for t in own.targets}
             printed = printed or any(
@@ -918,6 +945,7 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
             ),
             selected=[pool], shape="best-of-n",
         ))
+        flagged_at.add(at)
     return flags
 
 

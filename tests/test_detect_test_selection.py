@@ -189,3 +189,17 @@ def test_val_max_then_fresh_test_eval_is_candidate_only():
     flags = selection_flags(cells)
     assert not confident(cells)
     assert [f.confidence for f in flags] == [0.6]
+
+
+def test_best_of_n_index_of_max_printed_is_silent():
+    cells = [SEED_LOOP, "print('best seed', seed_aucs.index(max(seed_aucs)) + 1)"]
+    assert not selection_flags(cells)
+
+
+def test_best_of_n_comparison_printed_is_silent():
+    assert not selection_flags([SEED_LOOP, "print(max(seed_aucs) > 0.9)"])
+
+
+def test_best_of_n_two_maxes_on_one_line_flags_once():
+    cells = [SEED_LOOP, "print('max', max(seed_aucs), 'seed', seed_aucs.index(max(seed_aucs)) + 1)"]
+    assert len(confident(cells)) == 1
