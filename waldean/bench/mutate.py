@@ -613,13 +613,29 @@ class TestSelectionMutation(Mutation):
         "precision printed above."
     )
 
+    BEST_OF_N_CONCLUSION = (
+        "The random forest reaches the test ROC AUC printed above."
+    )
+    BEST_OF_N_CELL = (
+        "seed_aucs = []\n"
+        "for s in range(20):\n"
+        "    rf = RandomForestClassifier(n_estimators=100, min_samples_leaf=5, random_state=s).fit(X_tr, y_tr)\n"
+        "    seed_aucs.append(roc_auc_score(y_te, rf.predict_proba(X_te)[:, 1]))\n"
+        "best_auc = max(seed_aucs)\n"
+        'print(f"forest test roc_auc={best_auc:.3f}")'
+    )
+
     def applicable(self, nb_node) -> bool:
         m = meta(nb_node)
         return all(k in m for k in ("candidates_cell", "select_cell", "report_cell", "conclusion_cell"))
 
     def apply(self, nb_node, seed: int):
         m = meta(nb_node)
-        if seed % 2 == 0:
+        variant = seed % 3
+        if variant == 2:
+            nb = _insert_code_cell(nb_node, m["conclusion_cell"], self.BEST_OF_N_CELL)
+            return _replace_markdown(nb, m["conclusion_cell"] + 1, self.BEST_OF_N_CONCLUSION)
+        if variant == 0:
             idx = m["candidates_cell"]
             src = nb_node.cells[idx]["source"]
             needle = "roc_auc_score(y_va, fitted[name].predict_proba(X_va)[:, 1])"
@@ -638,7 +654,28 @@ class TestSelectionMutation(Mutation):
             ))
         return _replace_markdown(nb, m["conclusion_cell"], self.CONCLUSION)
 
+    def _verify_best_of_n(self, mutated_node) -> tuple[bool, dict]:
+        probe = (
+            "print('WALDEAN_VERIFY_BESTOFN', len(seed_aucs), int(best_auc == max(seed_aucs)), "
+            "float(np.mean(seed_aucs)), float(max(seed_aucs)))"
+        )
+        executed = ex.execute(ex.with_appended_code_cell(mutated_node, probe))
+        lines = ex.stdout_lines(executed, "WALDEAN_VERIFY_BESTOFN")
+        if not lines:
+            return False, {"reason": "no verify output"}
+        _, n, reports_max, mean, best = lines[-1].split()
+        flow = analyze(from_nbnode(mutated_node))
+        on_test = any(
+            c.name == "roc_auc_score" and c.loop_depth > 0 and c.pos_args and "y_te" in c.pos_args[0]
+            for c in flow.calls
+        )
+        ok = int(n) >= 10 and reports_max == "1" and float(best) > float(mean) and on_test
+        return ok, {"variant": 2, "candidates": int(n), "reported": float(best),
+                    "mean_over_candidates": float(mean), "selection_scores_are_test_scores": on_test}
+
     def verify(self, mutated_node) -> tuple[bool, dict]:
+        if any("seed_aucs" in c["source"] for c in mutated_node.cells if c["cell_type"] == "code"):
+            return self._verify_best_of_n(mutated_node)
         m = meta(mutated_node)
         variant = 1 if "key=lambda" in mutated_node.cells[m["select_cell"]]["source"] else 0
         probe = (

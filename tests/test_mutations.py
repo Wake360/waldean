@@ -7,11 +7,11 @@ import re
 
 import pytest
 
-from waldean.bench.corpus import FAMILIES, _build_date, abtest_notebook, churn_notebook, cohort_notebook, forecast_notebook, fraud_notebook, program_notebook
+from waldean.bench.corpus import FAMILIES, _build_date, abtest_notebook, churn_notebook, cohort_notebook, forecast_notebook, fraud_notebook, program_notebook, selection_notebook
 from waldean.core.flag import DEFAULT_CONFIDENCE_FLOOR
 from waldean.checks.detect import run_static
 from waldean.analysis.ingest import from_nbnode
-from waldean.bench.mutate import BaserateAccuracyMutation, FitBeforeSplitMutation, MultipleTestingMutation, MUTATIONS, RegressionToMeanMutation, SignificanceMeaninglessMutation, SurvivorshipMutation, TemporalShuffleMutation, phrasing_variant
+from waldean.bench.mutate import BaserateAccuracyMutation, FitBeforeSplitMutation, MultipleTestingMutation, MUTATIONS, RegressionToMeanMutation, SignificanceMeaninglessMutation, SurvivorshipMutation, TemporalShuffleMutation, TestSelectionMutation, phrasing_variant
 
 
 def code_of(nb):
@@ -262,3 +262,31 @@ def test_build_date_env_override(monkeypatch):
     assert _build_date() == "2020-01-01"
     monkeypatch.delenv("WALDEAN_BUILD_DATE")
     assert _build_date() == date.today().isoformat()
+
+
+@pytest.mark.parametrize("seed,marker", [(0, "y_te, fitted[name]"), (1, "key=lambda"), (2, "seed_aucs"),
+                                         (3, "y_te, fitted[name]"), (4, "key=lambda"), (5, "seed_aucs")])
+def test_test_selection_variant_by_seed(seed, marker):
+    mutant = TestSelectionMutation().apply(selection_notebook(7), seed)
+    assert any(marker in c["source"] for c in mutant.cells if c["cell_type"] == "code")
+
+
+def test_best_of_n_variant_inserts_loop_before_conclusion():
+    clean = selection_notebook(7)
+    mutant = TestSelectionMutation().apply(clean, 2)
+    assert len(mutant.cells) == len(clean.cells) + 1
+    assert "best_auc = max(seed_aucs)" in mutant.cells[8]["source"]
+    assert mutant.cells[9]["cell_type"] == "markdown"
+    assert mutant.cells[9]["source"] == TestSelectionMutation.BEST_OF_N_CONCLUSION
+
+
+def test_best_of_n_verify_and_flag():
+    m = TestSelectionMutation()
+    mutant = m.apply(selection_notebook(7), 2)
+    ok, evidence = m.verify(mutant)
+    assert ok, evidence
+    assert evidence["candidates"] == 20
+    assert evidence["reported"] > evidence["mean_over_candidates"]
+    shapes = [f.extra.get("shape") for f in run_static(from_nbnode(mutant))
+              if f.flaw_id == "leakage-test-selection" and f.confidence >= DEFAULT_CONFIDENCE_FLOOR]
+    assert shapes == ["best-of-n"]
