@@ -79,6 +79,15 @@ COMPARE_RE = re.compile(r"[<>!=]=|[<>]")
 # cross-validation calls are evaluation sinks too: a transformer fitted on
 # the full data whose output feeds CV has seen every fold's test rows
 CV_SINKS = {"cross_val_score", "cross_val_predict", "cross_validate"}
+RESAMPLE_METHODS = {"fit_resample", "fit_sample"}
+SKLEARN_RESAMPLE_RE = re.compile(r"from\s+sklearn\.utils\s+import[^\n]*\bresample\b")
+SKLEARN_UTILS_RE = re.compile(r"from\s+sklearn\s+import[^\n]*\butils\b")
+UNDERSAMPLERS = (
+    "RandomUnderSampler|NearMiss|TomekLinks|EditedNearestNeighbours|RepeatedEditedNearestNeighbours"
+    "|AllKNN|CondensedNearestNeighbour|OneSidedSelection|NeighbourhoodCleaningRule|ClusterCentroids"
+    "|InstanceHardnessThreshold"
+)
+INLINE_UNDERSAMPLER_RE = re.compile(rf"(?:\w+\.)*(?:{UNDERSAMPLERS})\(")
 
 
 def _join_names(names) -> str:
@@ -171,7 +180,7 @@ def detect_leakage_temporal_shuffle(nb: ParsedNotebook, flow: NotebookDataflow) 
     for s in sinks:
         if s.name in CV_SINKS:
             seed = set().union(
-                set(), *s.pos_args[1:3],
+                *s.pos_args[1:3],
                 s.kw_args.get("X", set()), s.kw_args.get("y", set()),
             )
         else:
@@ -1032,6 +1041,62 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
     return flags
 
 
+def detect_leakage_resample_before_split(nb: ParsedNotebook, flow: NotebookDataflow) -> list[Flag]:
+    sinks = [c for c in flow.calls if c.name == "train_test_split" or c.name in CV_SINKS]
+    if not sinks:
+        return []
+    source = nb.full_source()
+    sklearn_resample = bool(SKLEARN_RESAMPLE_RE.search(source))
+    sklearn_utils = bool(SKLEARN_UTILS_RE.search(source))
+    calls_by_cell: dict[int, list[CallSite]] = {}
+    for c in flow.calls:
+        calls_by_cell.setdefault(c.cell, []).append(c)
+
+    def is_resample(c: CallSite) -> bool:
+        if c.name in RESAMPLE_METHODS:
+            r = c.receiver or ""
+            return not (
+                INLINE_UNDERSAMPLER_RE.match(r)
+                or (r and re.search(rf"\b{re.escape(r)}\s*=\s*(?:\w+\.)*(?:{UNDERSAMPLERS})\(", source))
+            )
+        if c.name == "resample":
+            if c.kw_args.get("replace") == {"False"}:
+                return False
+            return (
+                c.receiver == "sklearn.utils"
+                or (c.receiver == "utils" and sklearn_utils)
+                or (c.receiver is None and sklearn_resample)
+            )
+        return c.name == "sample" and c.receiver is not None and c.kw_args.get("replace") == {"True"}
+
+    flags: list[Flag] = []
+    seen: set[int] = set()
+    for s in sinks:
+        if s.name in CV_SINKS:
+            seed = set().union(
+                set(), *s.pos_args[1:3],
+                s.kw_args.get("X", set()), s.kw_args.get("y", set()),
+            )
+        else:
+            seed = s.arg_names
+        events, _ = flow.chain(seed, (s.cell, s.line))
+        for ev in events:
+            end = max(ev.end_line, ev.line)
+            for c in calls_by_cell.get(ev.cell, []):
+                if id(c) in seen or not ev.line <= c.line <= end or not is_resample(c):
+                    continue
+                seen.add(id(c))
+                flags.append(_make_flag(
+                    "leakage-resample-before-split", confidence=0.9, cell=c.cell, line=c.line,
+                    evidence=(
+                        f"`{c.func}(...)` adds resampled rows that reach `{s.name}` (cell {s.cell}); "
+                        f"copies of one original row can land in both the training and the test part"
+                    ),
+                    sink=s.name, sink_cell=s.cell,
+                ))
+    return flags
+
+
 DETECTORS = [
     detect_leakage_fit_before_split,
     detect_leakage_temporal_shuffle,
@@ -1039,6 +1104,7 @@ DETECTORS = [
     detect_baserate_accuracy,
     detect_survivorship_candidate,
     detect_leakage_test_selection,
+    detect_leakage_resample_before_split,
 ]
 
 # flaw classes the static layer can decide on its own (measured by gate G1)
@@ -1048,6 +1114,7 @@ STATIC_DECIDABLE = {
     "testing-multiple-uncorrected",
     "baserate-accuracy-imbalanced",
     "leakage-test-selection",
+    "leakage-resample-before-split",
 }
 
 

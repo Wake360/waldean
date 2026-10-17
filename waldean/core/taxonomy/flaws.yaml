@@ -242,3 +242,22 @@
     Choose on a validation split or by cross-validation within the
     training data, then report the chosen candidate once on an untouched
     test split (or use nested cross-validation).
+
+- id: leakage-resample-before-split
+  class: leakage
+  layer: static
+  severity: high
+  definition: >
+    Rows are oversampled or synthesized (resampling with replacement,
+    SMOTE or any fit_resample) on data that is split or cross-validated
+    afterwards, so copies or interpolations of one original row land on
+    both sides of the split.
+  book_anchor: "Huyen, Designing Machine Learning Systems ch. 5 (oversample after splitting) and ch. 4 (never evaluate on resampled data)"
+  failure_scenario: >
+    The test split contains copies of training rows, so the model is
+    scored partly on rows it has memorized; minority-class recall and AUC
+    drop on new data.
+  fix: >
+    Split first and resample the training split only, or put the sampler
+    in an imblearn Pipeline so it runs inside each training fold.
+    Evaluate on the original, unresampled test rows.
