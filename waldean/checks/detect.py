@@ -81,6 +81,13 @@ COMPARE_RE = re.compile(r"[<>!=]=|[<>]")
 CV_SINKS = {"cross_val_score", "cross_val_predict", "cross_validate"}
 RESAMPLE_METHODS = {"fit_resample", "fit_sample"}
 SKLEARN_RESAMPLE_RE = re.compile(r"from\s+sklearn\.utils\s+import[^\n]*\bresample\b")
+SKLEARN_UTILS_RE = re.compile(r"from\s+sklearn\s+import[^\n]*\butils\b")
+UNDERSAMPLERS = (
+    "RandomUnderSampler|NearMiss|TomekLinks|EditedNearestNeighbours|RepeatedEditedNearestNeighbours"
+    "|AllKNN|CondensedNearestNeighbour|OneSidedSelection|NeighbourhoodCleaningRule|ClusterCentroids"
+    "|InstanceHardnessThreshold"
+)
+INLINE_UNDERSAMPLER_RE = re.compile(rf"(?:\w+\.)*(?:{UNDERSAMPLERS})\(")
 
 
 def _join_names(names) -> str:
@@ -173,7 +180,7 @@ def detect_leakage_temporal_shuffle(nb: ParsedNotebook, flow: NotebookDataflow) 
     for s in sinks:
         if s.name in CV_SINKS:
             seed = set().union(
-                set(), *s.pos_args[1:3],
+                *s.pos_args[1:3],
                 s.kw_args.get("X", set()), s.kw_args.get("y", set()),
             )
         else:
@@ -1038,16 +1045,28 @@ def detect_leakage_resample_before_split(nb: ParsedNotebook, flow: NotebookDataf
     sinks = [c for c in flow.calls if c.name == "train_test_split" or c.name in CV_SINKS]
     if not sinks:
         return []
-    sklearn_resample = bool(SKLEARN_RESAMPLE_RE.search(nb.full_source()))
+    source = nb.full_source()
+    sklearn_resample = bool(SKLEARN_RESAMPLE_RE.search(source))
+    sklearn_utils = bool(SKLEARN_UTILS_RE.search(source))
     calls_by_cell: dict[int, list[CallSite]] = {}
     for c in flow.calls:
         calls_by_cell.setdefault(c.cell, []).append(c)
 
     def is_resample(c: CallSite) -> bool:
         if c.name in RESAMPLE_METHODS:
-            return True
+            r = c.receiver or ""
+            return not (
+                INLINE_UNDERSAMPLER_RE.match(r)
+                or (r and re.search(rf"\b{re.escape(r)}\s*=\s*(?:\w+\.)*(?:{UNDERSAMPLERS})\(", source))
+            )
         if c.name == "resample":
-            return c.receiver in {"utils", "sklearn.utils"} or (c.receiver is None and sklearn_resample)
+            if c.kw_args.get("replace") == {"False"}:
+                return False
+            return (
+                c.receiver == "sklearn.utils"
+                or (c.receiver == "utils" and sklearn_utils)
+                or (c.receiver is None and sklearn_resample)
+            )
         return c.name == "sample" and c.receiver is not None and c.kw_args.get("replace") == {"True"}
 
     flags: list[Flag] = []

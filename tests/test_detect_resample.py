@@ -83,3 +83,30 @@ def test_sampler_inside_imblearn_pipeline_is_silent():
 
 def test_pandas_sample_without_replace_is_silent():
     assert not flags(["df = df.sample(frac=1.0, random_state=0)", SPLIT])
+
+
+def test_random_undersampler_before_split_is_silent():
+    assert not flags(["X, y = NearMiss().fit_resample(X, y)", SPLIT])
+    assert not flags(["X, y = RandomUnderSampler(random_state=0).fit_resample(X, y)", SPLIT])
+    assert not flags(["rus = RandomUnderSampler(random_state=0)\nX, y = rus.fit_resample(X, y)", SPLIT])
+
+
+def test_resample_without_replace_before_split_is_silent():
+    cells = [
+        "from sklearn.utils import resample\n"
+        "df = pd.concat([resample(maj, replace=False, n_samples=len(mino)), mino])",
+        SPLIT,
+    ]
+    assert not flags(cells)
+
+
+def test_smote_tomek_before_split_is_still_flagged():
+    cells = [
+        "X_res, y_res = SMOTETomek().fit_resample(X, y)",
+        "X_tr, X_te, y_tr, y_te = train_test_split(X_res, y_res, test_size=0.25)",
+    ]
+    assert len(flags(cells)) == 1
+
+
+def test_project_utils_resample_is_silent():
+    assert not flags(["import utils\ndf['x'] = utils.resample(df['x'], '1D')", SPLIT])
