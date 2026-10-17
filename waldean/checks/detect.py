@@ -717,6 +717,9 @@ ROW_SELECT_RE = re.compile(r"\.iloc\[0\]\s*$|\.loc\[[^\n]*\.(?:idxmax|idxmin|arg
 IFEXP_RE = re.compile(r"\bif\b[^\n]*\belse\b")
 LABEL_PASSTHROUGH = {"to_numpy", "values", "copy", "astype", "reset_index", "ravel", "squeeze"}
 DEF_RE = re.compile(r"^def (\w+)\(", re.MULTILINE)
+MAX_CALLS = {"max", "nanmax"}
+SUMMARY_CALLS = {"mean", "nanmean", "median", "nanmedian", "std", "nanstd", "describe"}
+LOOP_TEXT_RE = re.compile(r"\bfor\b")
 
 
 def _metric_functions(nb: ParsedNotebook) -> set[str]:
@@ -854,6 +857,51 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
         flags.append(_make_flag(
             "leakage-test-selection", confidence=confidence, cell=sel.cell, line=sel.line,
             evidence=evidence, selected=sorted(t for t, _ in selected),
+        ))
+    flagged_at = {(f.cell, f.line) for f in flags}
+    for mx in flow.calls:
+        if mx.name not in MAX_CALLS or mx.receiver not in (None, "np", "numpy") or mx.kw_args:
+            continue
+        if len(mx.pos_args) != 1 or len(mx.pos_args[0]) != 1:
+            continue
+        at = (mx.cell, mx.line)
+        if at in flagged_at:
+            continue
+        pool = next(iter(mx.pos_args[0]))
+        events, _ = flow.chain({pool}, at, mutations=True)
+        looped = [
+            c for ev in events for c in calls_in(ev)
+            if is_metric(c) and (c.loop_depth > 0 or LOOP_TEXT_RE.search(span_text(ev)))
+        ]
+        if not looped:
+            continue
+        if len({canonical(label_names(c), (c.cell, c.line)) for c in looped} - {frozenset()}) != 1:
+            continue
+        pool_bind = flow.binding(pool, at, mutations=True)
+        reads_pool = {
+            (c.cell, c.line) for c in flow.calls
+            if pool in c.arg_names and flow.binding(pool, (c.cell, c.line), mutations=True) == pool_bind
+        }
+        if any(c.name in SUMMARY_CALLS and (c.cell, c.line) in reads_pool for c in flow.calls):
+            continue
+        own = next((ev for ev in flow.assigns if ev.call is mx), None)
+        printed = any(c.name == "print" and (c.cell, c.line) == at for c in calls_by_cell.get(mx.cell, []))
+        if own is not None:
+            mine = {(t, id(own)) for t in own.targets}
+            printed = printed or any(
+                c.name == "print" and (c.cell, c.line) > at
+                and any(flow.binding(n, (c.cell, c.line)) in mine for n in c.arg_names)
+                for c in flow.calls
+            )
+        if not printed:
+            continue
+        flags.append(_make_flag(
+            "leakage-test-selection", confidence=0.9, cell=mx.cell, line=mx.line,
+            evidence=(
+                f"`{mx.func}({pool})` (cell {mx.cell}) reports the best of scores computed in a loop "
+                f"on the same rows, with no mean or spread across the candidates"
+            ),
+            selected=[pool], shape="best-of-n",
         ))
     return flags
 
