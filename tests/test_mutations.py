@@ -167,7 +167,7 @@ def test_normalize_strips_execution_and_is_serialization_stable():
     # second build of an unchanged notebook is byte-identical
     import nbformat
 
-    from waldean.bench.corpus import _normalize
+    from waldean.core.notebook import normalize as _normalize
 
     nb = churn_notebook(7)
     nb.cells[1]["metadata"]["execution"] = {"iopub.status.busy": "2026-01-01T00:00:00Z"}

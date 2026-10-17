@@ -23,6 +23,7 @@ from pathlib import Path
 
 import nbformat
 
+from ..core.notebook import normalize
 from ..runtime import execute as ex
 from .mutate import MUTATIONS
 
@@ -46,17 +47,6 @@ def _md(text):
 
 def _code(text):
     return nbformat.v4.new_code_cell(text)
-
-
-def _normalize(nb, stem: str):
-    """Make serialization byte-deterministic across rebuilds (T15): derive
-    cell ids from the notebook stem + position (nbformat otherwise mints a
-    fresh random id per cell every build) and drop nbclient's per-cell
-    execution timestamps, which are transient and regenerated on each run."""
-    for i, cell in enumerate(nb.cells):
-        cell["id"] = f"{stem}-{i}"
-        cell.get("metadata", {}).pop("execution", None)
-    return nb
 
 
 CHURN_COLS = [
@@ -662,7 +652,7 @@ def build_clean(root: Path, seeds, split: str, log=print) -> list[dict]:
             name = f"{family}-s{seed}.ipynb"
             log(f"clean: {name}")
             executed = ex.execute(builder(seed))
-            _normalize(executed, Path(name).stem)
+            normalize(executed, Path(name).stem)
             nbformat.write(executed, str(clean_dir / name))
             entries.append({"file": f"clean/{name}", "family": family,
                             "seed": seed, "split": split})
@@ -699,7 +689,7 @@ def build_mutants(root: Path, clean_entries, log=print) -> tuple[list[dict], lis
                     # the edited cell, leaving downstream cells with stale
                     # clean outputs that can contradict the mutant's label
                     executed = ex.execute(mutated)
-                    _normalize(executed, Path(name).stem)
+                    normalize(executed, Path(name).stem)
                     nbformat.write(executed, str(mut_dir / name))
                     entries.append(record)
                 else:

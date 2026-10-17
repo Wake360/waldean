@@ -1,13 +1,21 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
 
+0.5.0 was prepared but never published to PyPI; its changes ship in 0.6.0.
+
+- `waldean experiment data.csv --target COL` (new `builder` extra) profiles a CSV and writes `plan.yaml`, `design.md` and `experiment.ipynb`; `--run` executes it and writes `evidence/`. It infers the task (binary, multi-class or regression), picks the split (time column, then repeated-entity column, then stratified or random) and the metrics (never accuracy), and excludes constant, identifier, high-cardinality and target-leaking columns, printing each exclusion with the `--keep COL` flag that reverses it. Every notebook fits a `ColumnTransformer` + model pipeline inside each fold. `waldean create`, `build` and `run` do the same in three steps with hash-checked evidence. Experimental; indicative measurement in `evals/2026-10-13-builder-vs-agents.md`.
+- `waldean protocol create` / `check` write a locked holdout and split rules from a CSV and a column description (`--columns`), and check a notebook's `evidence.json` against them. Experimental. The 192-run agent eval found no evidence that it beats a methodology checklist (`evals/2026-10-14-agent-protocol.md`).
+- Repair loop covers `leakage-fit-before-split`: `waldean propose` writes its contract, and `propose --diff` writes a mechanical patch for the canonical scaler form, including multi-line splits.
+- `leakage-test-selection` follows `.values` and `.T` label aliases, resolves labels inside user metric wrappers, recognises if/else picks that compare two lookups into a score table, and gives one flag per selection line. In-sample recall on agent baseline v3: 10/28 -> 12/28, no false positive (`evals/2026-10-13-test-selection-recall.md`).
+- The partial-results warning counts cells whose helper calls were cut by the inlining budget.
+- `--llm` prints its experimental warning when used.
 - `leakage-fit-before-split` reaches more real-world idioms: a refit on a test split output, `Tokenizer.fit_on_texts`, a concat of split parts, complementary row slices as a split (2-D slices, a 0 lower bound, a bounded tail, an open lookback tail), one level of function inlining including `.pipe` with a named function or a lambda, frame statistics in a pinned assign, chained `fillna` or a `.pipe` lambda, and a test split filled with its own statistic (0.85). `waldean check --probe` runs an `.ipynb` up to each flagged split in the `waldean-verify` kernel and sets the flag to 0.97 or 0.5 from the transformer's `n_samples_seen_`. JSON output carries `receiver`, `arg` and `sink_cell` in `extra` for these flags. Yang et al. `pre`: precision 0.71, recall 0.63 (`evals/2026-10-13-yang-pre-rerun.md`); dogfood-wide recall unchanged at 12 of 20 (`evals/2026-10-13-dogfood-wide-rerun.md`).
 - `leakage-fit-before-split` also flags a column or frame written back with a statistic of its own full rows (`(df[c] - df[c].mean()) / df[c].std()`, `df[c] / df[c].max()`, `groupby(...).transform('median')`) before `train_test_split` (0.85), or before a CV sink (0.75 candidate). Window statistics (`rolling`, `expanding`) and row filters on a quantile do not count. Yang et al. `pre` recall 0.37 -> 0.42 at 0.62 precision (`evals/2026-10-13-yang-pre.md`).
 - `leakage-test-selection` no longer fires when the chosen threshold is only recorded next to the chosen model name; a selection label is not a score report. Found on the agent-protocol pilot (clinic-claude-B-3).
 - Corpus: `leakage-fit-before-split` mutants gain a hand-written z-score variant (odd seeds) verified by the all-rows mean and unit standard deviation of the pre-split matrix.
 
-## 0.5.0
+### From 0.5.0
 
 - `waldean propose FILE` writes a repair contract (`protocol.json`, `brief.md`, a copy of the original) for confident `leakage-temporal-shuffle` findings. Other classes are listed as unsupported.
 - `waldean verify REPAIR_DIR` checks a repair against its contract and writes `evidence.json`. Exit 0 verified or static-pass, 1 inconclusive, 2 rejected, 3 error. `--execute --metric REGEX` runs the original and the repaired notebook (new `execute` extra).

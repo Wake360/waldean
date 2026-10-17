@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "waldean"
-version = "0.5.0"
+version = "0.6.0"
 description = "Statistical-integrity linter: flags survivorship bias, leakage, multiple testing and other inference flaws in notebooks — every flag with evidence, failure scenario and fix."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -40,6 +40,13 @@ corpus = [
 execute = [
     "nbclient>=0.9",
     "ipykernel",
+]
+builder = [
+    "nbclient>=0.9",
+    "ipykernel",
+    "numpy",
+    "pandas>=2.0",
+    "scikit-learn>=1.2",
 ]
 dev = ["pytest>=8.0"]
 

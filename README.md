@@ -2,23 +2,28 @@
 
 **Code linters check style. Waldean checks whether the analysis is a lie.**
 
-Waldean is a deterministic statistical-integrity linter for Python analysis.
-It flags a defined set of methodological hazards in notebooks and scripts,
-with evidence, and needs no LLM to do it.
+[![PyPI](https://img.shields.io/pypi/v/waldean)](https://pypi.org/project/waldean/)
+[![CI](https://github.com/Wake360/waldean/actions/workflows/ci.yml/badge.svg)](https://github.com/Wake360/waldean/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/pypi/pyversions/waldean)](https://pypi.org/project/waldean/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/Wake360/waldean/blob/main/LICENSE)
 
-Your model scores 0.99. Waldean asks whether the experiment that produced
-that number was valid: was the scaler fitted on the test rows, did the
-cross-validation shuffle a time series, were twenty tests run with no
-correction?
+A model scores 0.99. Was the scaler fitted on the test rows? Did the
+cross-validation shuffle a time series? Were twenty tests run with no
+correction? Waldean reads a notebook or `.py` script and answers those
+questions. Each finding names the cell and line, the evidence, what goes wrong
+and the fix. It is static analysis: no LLM, no API key, the same input gives
+the same output, and it does not run your code.
 
-![waldean check on a time-series notebook](https://raw.githubusercontent.com/Wake360/waldean/v0.5.0/assets/demo.gif)
+![waldean check on a time-series notebook](https://raw.githubusercontent.com/Wake360/waldean/v0.6.0/assets/demo.gif)
+
+## Try it
 
 ```bash
 pip install waldean
 waldean check your_notebook.ipynb
 ```
 
-A real report, on [`examples/leaky.ipynb`](https://github.com/Wake360/waldean/blob/v0.5.0/examples/leaky.ipynb):
+Exit codes: `0` clean, `1` medium, `2` high, `3` input error. On [`examples/leaky.ipynb`](https://github.com/Wake360/waldean/blob/v0.6.0/examples/leaky.ipynb):
 
 ```
 $ waldean check examples/leaky.ipynb
@@ -37,266 +42,116 @@ verdict: 1 high, 0 medium | static layer (no LLM)
 - **Repair:** `waldean propose examples/leaky.ipynb` writes a repair contract that an agent or a person can apply and Waldean can verify
 
 ## CLEAN (checked): baserate-accuracy-imbalanced, leakage-temporal-shuffle, leakage-test-selection, testing-multiple-uncorrected
-
 ```
 
-Exit codes: `0` clean, `1` medium findings, `2` high findings, `3` input
-error. Usable as a pre-merge gate.
+[`temporal-cv-before-after.ipynb`](https://github.com/Wake360/waldean/blob/v0.6.0/examples/temporal-cv-before-after.ipynb)
+scores one model with shuffled CV and with `TimeSeriesSplit`: how far the flaw moves the number.
 
-[`examples/temporal-cv-before-after.ipynb`](https://github.com/Wake360/waldean/blob/v0.5.0/examples/temporal-cv-before-after.ipynb)
-shows the effect on a metric: the same model scored with shuffled CV and
-with `TimeSeriesSplit`, numbers computed in the notebook
-(run record:
-[`evals/2026-10-12-temporal-cv-demo.md`](https://github.com/Wake360/waldean/blob/v0.5.0/evals/2026-10-12-temporal-cv-demo.md)).
+## Who it is for
 
-## Repair loop (experimental)
-
-Waldean does not stop at the finding. For a shuffled split on time-ordered data, and for a transformer fitted before the split, it writes a repair contract that a coding agent or a person applies, and then checks the result. With `--diff`, `propose` also writes `patch.diff` when the fix is mechanical: today only `X = scaler.fit_transform(X)` followed by a four-target `train_test_split(X, ...)`.
-
-```bash
-waldean propose forecast.ipynb          # writes .waldean/repairs/forecast--leakage-temporal-shuffle/brief.md
-claude -p "$(cat .waldean/repairs/forecast--leakage-temporal-shuffle/brief.md)"
-waldean verify .waldean/repairs/forecast--leakage-temporal-shuffle
-pip install 'waldean[execute]'
-waldean verify .waldean/repairs/forecast--leakage-temporal-shuffle --execute --metric 'R2=(-?\d+\.\d+)'
-```
-
-`verify` rejects edits outside the cells the contract names, a deleted evaluation call, a finding that is still there, and a new confident finding of a class the original did not have. With `--execute` it runs the original and the repaired notebook and records both metrics, package versions and file hashes in `evidence.json`. A repair is `static-pass` without execution and `verified` with it. Neither status says the new number is right.
-
-On the mutation corpus the verifier accepted all 16 true temporal-shuffle repairs and all 48 true fit-before-split repairs, and rejected all 48 and all 144 constructed bad repairs of three kinds (file unchanged, edit outside the scope, evaluation call deleted). `propose --diff` wrote a patch for the 24 fit-before-split mutants in the scaler form, and all 24 patched notebooks passed the static check ([`evals/2026-10-13-repair-loop.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-repair-loop.md)). Agent trial: 5 of 5 demo runs verified, 2 of 2 real notebooks static-pass, N=7, indicative ([`evals/2026-10-13-repair-trial.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-repair-trial.md)).
-
-Limits: two flaw classes so far (`leakage-temporal-shuffle`, `leakage-fit-before-split`). Comparison is cell by cell, so an added cell is rejected. `--execute` runs code on your machine with your permissions. It hides secret-looking environment variables and isolates nothing else. `verify` trusts the files in the repair directory, so do not let the agent write there. The static check reads names and literal arguments, not behaviour, so a disguised split can pass; read the delta in `evidence.json`. `train_test_split(shuffle=False)` on rows not sorted by time passes the static check; only `--execute` plus reading the evidence catches it. A `.py` file without `# %%` markers is one cell, so the scope check covers the whole file. The metric regex is yours; one that matches unrelated lines gives a misleading delta. The kernel runs with Waldean's Python, so the notebook's dependencies must be installed there. Both runs share the repaired notebook's directory, so files one run writes can affect the other.
-
-## Status
-
-| | What |
+| | |
 |---|---|
-| **Available now** | `waldean check` on `.ipynb` and `.py` (plain and `# %%`); five static flaw classes (below); a survivorship candidate; Markdown, JSON and SARIF output; GitHub Action; pre-commit hooks; `waldean rules`; `waldean eval --predictions` for scoring other tools on the corpus |
-| **Experimental** | `--llm` / `--llm-subscription` narrative layer (prose claims vs computation). No validated precision or recall; its quality gates never ran |
-| **Experimental** | Repair loop: `waldean propose` / `waldean verify` for two classes (`leakage-temporal-shuffle`, `leakage-fit-before-split`), plus `propose --diff` for the canonical fit-before-split form. Measured on the synthetic corpus; the 7-run agent trial covers temporal shuffle only, indicative (see Repair loop) |
-| **Planned** | Repair contracts for the remaining flaw classes. Not shipped |
+| Data scientists and ML engineers | Check a notebook before you report its number, and see which cell to change. |
+| CI and platform owners | Gate pull requests with the GitHub Action or pre-commit; findings appear as SARIF annotations on the diff. |
+| Teachers | Show why a method is unsound with a before/after notebook and the finding that explains it. |
+| Coding agents | A skill that gives the agent a methodology checklist and has it run `waldean check` before it reports a metric. |
 
-Tested on Python 3.10 to 3.13 (Linux CI; unit tests also on Windows).
-
-## Rules
+## What it checks
 
 | Flaw class | What triggers it |
 |---|---|
 | `leakage-fit-before-split` | A scaler, imputer, encoder, selector or vectorizer is fitted on data that later feeds `train_test_split` or cross-validation |
 | `leakage-temporal-shuffle` | Lag or rolling features on time-ordered data, evaluated with a shuffled split instead of `TimeSeriesSplit` or a time cutoff |
+| `leakage-test-selection` | A model, feature set or threshold picked by its score on the rows that are then reported as the held-out result |
 | `testing-multiple-uncorrected` | Many statistical tests with no multiple-comparison correction; reports the implied family-wise error rate |
 | `baserate-accuracy-imbalanced` | Accuracy as the only metric while stored outputs show class imbalance |
-| `leakage-test-selection` | A model, feature set or threshold picked by its score on the rows that are then reported as the held-out result |
 | `selection-survivorship-cohort` | Candidate only: a filter on a survival-correlated column before aggregation |
 
-For `leakage-fit-before-split`, `waldean check --probe` runs an `.ipynb` up to the split in a separate `waldean-verify` kernel, reads the fitted transformer's `n_samples_seen_`, and raises the flag's confidence when the fit saw every row and lowers it when it saw fewer. Candidates below the confidence floor keep their confidence and only gain the measurement note. The probe executes your code with your permissions.
+`waldean rules` prints the full list. Misses: [Known limitations](#known-limitations).
 
-`waldean rules` prints the full list from `waldean/core/taxonomy/flaws.yaml`.
+## Evidence
 
-## Known limitations
+| Set | Result | Record |
+|---|---|---|
+| Mutation corpus: 232 injected flaws, 91 clean notebooks | precision and recall 1.00 per static class, 0 false positives | [`2026-10-13-eval.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-eval.md) |
+| 60 fresh GitHub notebooks, leakage classes | 25 of 28 flags real (0.89); 12 of 20 leaky notebooks caught (0.60) | [`2026-07-07-dogfood-wide.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-07-07-dogfood-wide.md) |
+| Yang et al. (ASE'22), 100 notebooks, `pre` label | precision 0.62, recall 0.42 | [`2026-10-13-yang-pre.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-yang-pre.md) |
 
-- On 60 fresh GitHub notebooks, 25 of 28 flags were real (0.89 precision)
-  and Waldean caught 12 of 20 leaky notebooks in the audited subset (0.60
-  recall; audited subset, one seed, likely lower over all 60). That
-  evidence covers the two leakage classes only
-  ([`evals/2026-07-07-dogfood-wide.md`](https://github.com/Wake360/waldean/blob/v0.5.0/evals/2026-07-07-dogfood-wide.md)).
-- On the 100 notebooks of Yang et al. (ASE'22), 66 of them labeled for
-  pre-split leakage, `leakage-fit-before-split` reached 0.62 precision and
-  0.42 recall against the authors' `pre` label. The labels were not
-  re-adjudicated, and two files Waldean could not analyse count as not
-  flagged
-  ([`evals/2026-10-13-yang-pre.md`](https://github.com/Wake360/waldean/blob/main/evals/2026-10-13-yang-pre.md)).
-- Later changes catch some misses of that eval (see CHANGELOG, Unreleased,
-  and `evals/2026-10-13-yang-pre-rerun.md`). Misses that remain: a split
-  returned from a helper or reached more than one helper level deep, test
-  data known only by name, a manual `KFold.split` loop, and files over
-  the input size cap. A scaler fit on full data that feeds
-  `cross_val_score` is reported only as a candidate below the 0.8 floor,
-  by design. Python 2 cells are not
-  parsed, so leaks in them are missed.
-- The 0.0% false-positive rate holds on the curated corpus, not on messy
-  real code.
-- Flaws with no imprint in code, outputs or prose are invisible to Waldean.
-- Waldean never executes your notebook unless you run `waldean check --probe` or `waldean verify --execute`.
+Mutants are clean notebooks with one injected flaw, counted only if executing
+them proves it (a scaler whose `n_samples_seen_` equals the full row count).
+They use canonical idioms; real code is messier, hence rows two and three.
+[Method](https://github.com/Wake360/waldean/blob/main/docs/EVALUATION.md).
 
-Full evaluation, corpus method and dogfood history:
-[`docs/EVALUATION.md`](https://github.com/Wake360/waldean/blob/v0.5.0/docs/EVALUATION.md).
+## Compared with
 
-## How Waldean is measured
+| | Needs an LLM | Needs a GPU | Multiple testing | Reads stored outputs |
+|---|---|---|---|---|
+| Waldean | no | no | yes | yes |
+| [SciCode-Lint](https://arxiv.org/abs/2603.17893) | yes (Qwen3-8B) | 16 GB | no | no |
+| A chat LLM or coding agent asked to review | yes | no | if asked | if given them |
 
-Detectors are scored by mutation testing: clean notebooks get flaws
-injected, and every mutant must mechanically prove the flaw before it
-counts. Corpus tables, dogfood runs and detector scope:
-[`docs/EVALUATION.md`](https://github.com/Wake360/waldean/blob/v0.5.0/docs/EVALUATION.md).
+Three of SciCode-Lint's 66 patterns overlap Waldean classes. Any tool can be
+scored on the Waldean corpus: [`docs/benchmark.md`](https://github.com/Wake360/waldean/blob/main/docs/benchmark.md).
 
-## GitHub Action
+## Use it in CI, pre-commit or an agent
 
-`Wake360/waldean@v0.5.0` is a composite action that installs `waldean`, runs
-`waldean check` on the paths you pass, writes a SARIF 2.1.0 log, and reports a
-`gate-exit-code` mapped through `fail-on` (high, medium, or never). The
-action never fails the job itself — it exposes the code and lets your
-workflow upload SARIF before gating, so findings show up as inline PR
-annotations even on a red run. The consumer must grant `security-events:
-write` for the SARIF upload, put Python >= 3.10 on `PATH` (via
-`actions/setup-python`), and run on a Linux or macOS runner (the steps are
-bash).
+GitHub Action, gating on high findings
+([full workflow with SARIF upload](https://github.com/Wake360/waldean/blob/main/docs/ci.md)):
 
 ```yaml
-name: waldean
-on: [pull_request]
-
-jobs:
-  check-notebooks:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Find changed notebooks
-        id: changed
-        run: |
-          files=$(git diff --name-only \
-            origin/${{ github.base_ref }}...${{ github.sha }} -- '*.ipynb')
-          echo "files=$files" >> "$GITHUB_OUTPUT"
-
-      - name: waldean
-        id: waldean
-        if: steps.changed.outputs.files != ''
-        uses: Wake360/waldean@v0.5.0
-        with:
-          paths: ${{ steps.changed.outputs.files }}
-          fail-on: high
-
-      - name: Upload SARIF
-        if: always() && steps.changed.outputs.files != ''
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: ${{ steps.waldean.outputs.sarif-file }}
-
-      - name: Gate on waldean
-        if: steps.changed.outputs.files != ''
-        run: exit ${{ steps.waldean.outputs.gate-exit-code }}
+- uses: Wake360/waldean@v0.6.0
+  with:
+    paths: notebooks/
+    fail-on: high
 ```
 
-## Pre-commit
-
-`.pre-commit-hooks.yaml` ships two hooks: `waldean` for `.ipynb` files,
-`waldean-scripts` for `.py` files.
+pre-commit (`waldean` for `.ipynb`, `waldean-scripts` for `.py`):
 
 ```yaml
 repos:
   - repo: https://github.com/Wake360/waldean
-    rev: v0.5.0
+    rev: v0.6.0
     hooks:
       - id: waldean
       - id: waldean-scripts
 ```
 
-pre-commit fails the hook on any nonzero exit, so both exit 1 (a medium
-finding) and exit 2 (a high finding) block the commit — raise `--floor`
-via `args` if you want fewer low-confidence findings to count as
-confident. `waldean-scripts` runs on every changed `.py` file, so if your
-repo has many non-analysis scripts, scope it with `files:`/`exclude:`
-in your own pre-commit config.
-
-## Architecture
-
-```
-notebook ──> ingest (nbformat) ──> layer A: static detectors ──> report
-                                    - libcst def-use dataflow      md / json
-                                    - deterministic, key-free      exit code
-                                    - exact cell:line + evidence
-
-             layer B (--llm): LLM narrative detector
-             claims <-> computation consistency, closed taxonomy,
-             span-grounded, verified by a second provider; fuses with
-             layer A candidates (filter + population claim = flag)
-```
-
-The hybrid split is the point: leakage is an AST pattern, and the LLM
-layer handles only whether the prose claims match what the code computes.
-Its quality gates (G2/G3) never ran, so **no narrative-layer numbers are
-claimed; the static linter is the validated product.** Run it with
-`waldean check --llm --llm-subscription <notebook>`; without `--llm`,
-Waldean calls no LLM.
-
-Taxonomy is data (`flaws.yaml`): 10 flaw classes with definition, book
-anchor, mutation recipe and severity (`waldean rules` lists them). Adding a
-class = a record + a detector + a mutation; prompts and reports generate
-from the same file, so documentation and detector cannot drift.
-
-## Install & use
+Coding agents: a [skill](https://github.com/Wake360/waldean/blob/main/skills/waldean/SKILL.md) for agents that read `SKILL.md`.
 
 ```bash
-pip install waldean
-waldean check notebook.ipynb            # exit 0 clean / 1 medium / 2 high / 3 input or usage error
-waldean check analysis.py               # plain script, or percent-format (# %% cell markers)
-waldean check notebooks/ --keep-going   # continue past unreadable files; exit 3 if any file failed
-waldean rules                           # list the flaw classes waldean checks; --format json for machines
+/plugin install waldean --marketplace Wake360/waldean   # in Claude Code
+npx skills add Wake360/waldean                          # other agents
 ```
 
-Contributing to Waldean itself:
+With the checklist and `waldean check`, Claude Code built a valid experiment in
+79 of 80 runs, against 25 of 32 without, on synthetic data with planted traps
+([indicative](https://github.com/Wake360/waldean/blob/main/evals/2026-10-14-agent-protocol.md)).
+A [hook](https://github.com/Wake360/waldean/blob/main/docs/agent-gate.md) can block any edit that adds a high finding.
 
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[corpus,dev]"       # or: uv sync --all-extras
+## Experimental
 
-waldean check examples/leaky.ipynb      # exit 0 clean / 1 medium / 2 high / 3 input or usage error
-waldean check examples/leaky.ipynb --format json   # one object; a JSON array for multiple notebooks
-waldean corpus build                    # build clean corpus + verified mutants
-waldean eval                            # confusion matrix -> evals/<date>-eval.md
-pytest                               # unit tests + golden gates G0/G1
-```
+- Repair loop: `waldean propose` writes a repair contract for
+  `leakage-temporal-shuffle` and `leakage-fit-before-split`, and `waldean
+  verify` checks the repair. With `--execute` it compares the metric before
+  and after. Read the [limits](https://github.com/Wake360/waldean/blob/main/docs/repair.md)
+  before you trust a verified status.
+- Experiment builder: `waldean experiment data.csv --target y` writes a notebook with a split and
+  pipeline chosen from the data ([details](https://github.com/Wake360/waldean/blob/main/docs/cli.md#experiment-builder-experimental)).
+- Narrative layer: `--llm` checks prose claims against the computation. Its quality
+  gates never ran; [no numbers are claimed](https://github.com/Wake360/waldean/blob/main/docs/ARCHITECTURE.md).
 
-Editor use through SARIF: [`docs/editor.md`](https://github.com/Wake360/waldean/blob/main/docs/editor.md).
+## Known limitations
 
-`examples/leaky.ipynb` ships in the repo and reproduces the report shown
-at the top of this file. `examples/leaky.py` is the same analysis as a
-percent-format script.
+- Misses on real code: a split returned from a helper or reached more than one
+  helper level deep, test data known only by name, a manual `KFold.split`
+  loop, files over the input size cap, and Python 2 cells. A scaler fitted on
+  all rows that feeds `cross_val_score` is reported only as a candidate below
+  the 0.8 floor, by design.
+- The 0% false-positive rate holds on the curated corpus. Real-notebook
+  evidence covers the leakage classes only.
+- Flaws with no trace in code, outputs or prose are invisible to Waldean.
+- Waldean runs your code only with `waldean check --probe`,
+  `waldean verify --execute` or `waldean experiment --run`.
 
-Directory arguments still collect only `*.ipynb`; pass a `.py` file
-explicitly. Reported lines for `.py` input are file-absolute (not
-relative to the cell); the markdown report keeps `cell N, line M`, where
-`N` is the percent-cell's ordinal position in the file.
-
-By default `waldean check` aborts on the first unreadable file. `--keep-going`
-continues instead: each unreadable file is reported to stderr and the run
-still exits 3 if any file failed — even alongside a high-severity finding
-elsewhere in the batch, which would otherwise exit 2. The multi-file TTY
-summary line gains a `, N failed` suffix.
-
-`waldean rules` lists the flaw classes from the taxonomy (id, layer, severity,
-definition); `--format json` emits the same data as a JSON array.
-
-Waldean never executes *your* notebook unless you pass `waldean verify --execute` (static analysis + stored outputs otherwise). Only self-authored corpus notebooks are executed, at corpus build
-time, to verify mutations.
-
-## Roadmap
-
-- **M2** — LLM narrative layer + cross-provider verifier + fusion: built,
-  tested against replay fixtures, and runs on
-  subscription CLIs (`waldean check --llm --llm-subscription`). The G2/G3
-  gates never ran; narrative numbers stay dev-split and indicative
-  (`gate_evidence: false`).
-- **M3** — table consistency checks (cohort sums vs. declared population).
-- **Benchmark** — the corpus is scoreable by external tools:
-  `waldean eval --predictions` (`docs/benchmark.md`).
-- **M4** — GitHub Action with PR annotations: shipped in 0.2.1
-  (`action.yml`). Severity calibration stays parked until flag volume
-  exists. (Dogfood on real licensed notebooks: done,
-  `evals/2026-07-04-dogfood.md`.)
-- Corpus contributions welcome: see `CONTRIBUTING.md` for the clean-corpus
-  criteria, real-notebook licensing rules, and the flaw-class contribution
-  shape (taxonomy record, detector, mutation with mechanical `verify()`).
-
-## License
-
-MIT.
+[All docs](https://github.com/Wake360/waldean/blob/main/docs/README.md) ·
+[Contributing](https://github.com/Wake360/waldean/blob/main/CONTRIBUTING.md) · MIT license

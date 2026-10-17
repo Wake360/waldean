@@ -8,9 +8,11 @@ comes from the taxonomy.
 
 from __future__ import annotations
 
+import ast
 import re
+import textwrap
 
-from ..analysis.dataflow import AssignEvent, NotebookDataflow, analyze
+from ..analysis.dataflow import AssignEvent, CallSite, NotebookDataflow, _strip_magics, analyze
 from ..analysis.ingest import ParsedNotebook
 from ..core.flag import Flag
 from ..core.taxonomy import load_taxonomy
@@ -715,6 +717,7 @@ SORT_RE = re.compile(r"\.(?:sort_values|nlargest|nsmallest|sort_index)\(|\bsorte
 FIRST_TRUE_RE = re.compile(r"\([^()]*(?:>=|<=|==|!=|>|<)[^()]*\)\s*\.(?:argmax|idxmax|argmin|idxmin)\(")
 ROW_SELECT_RE = re.compile(r"\.iloc\[0\]\s*$|\.loc\[[^\n]*\.(?:idxmax|idxmin|argmax|argmin)\(")
 IFEXP_RE = re.compile(r"\bif\b[^\n]*\belse\b")
+ATTR_PASSTHROUGH_RE = re.compile(r"^\w+\s*=\s*\w+\.(?:values|T)\s*(?:;|$)")
 LABEL_PASSTHROUGH = {"to_numpy", "values", "copy", "astype", "reset_index", "ravel", "squeeze"}
 DEF_RE = re.compile(r"^def (\w+)\(", re.MULTILINE)
 MAX_CALLS = {"max", "nanmax"}
@@ -738,18 +741,77 @@ def _metric_functions(nb: ParsedNotebook) -> set[str]:
     return names
 
 
+def _compares_named_scores(text: str, targets: set[str]) -> bool:
+    try:
+        tree = ast.parse(textwrap.dedent(text))
+    except (SyntaxError, RecursionError, MemoryError):
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.IfExp):
+            continue
+        if not {n.id for t in node.targets for n in ast.walk(t) if isinstance(n, ast.Name)} & targets:
+            continue
+        e = node.value
+        if not (isinstance(e.body, ast.Constant) and isinstance(e.body.value, str)
+                and isinstance(e.orelse, ast.Constant) and isinstance(e.orelse.value, str)):
+            continue
+        t = e.test
+        if not (isinstance(t, ast.Compare) and len(t.ops) == 1 and isinstance(t.ops[0], (ast.Gt, ast.GtE, ast.Lt, ast.LtE))):
+            continue
+        left, right = t.left, t.comparators[0]
+        if not (isinstance(left, ast.Subscript) and isinstance(right, ast.Subscript)):
+            continue
+        kl, kr = (
+            {c.value for s in ast.walk(o) if isinstance(s, ast.Subscript) for c in ast.walk(s.slice) if isinstance(c, ast.Constant)}
+            for o in (left, right)
+        )
+        a, b = e.body.value, e.orelse.value
+        if (a in kl and b in kr) or (b in kl and a in kr):
+            return True
+    return False
+
+
+def _wrapper_labels(nb: ParsedNotebook, flow: NotebookDataflow) -> dict[str, tuple[list[str], list[str], set[str]]]:
+    out = {}
+    for cell in nb.code_cells:
+        try:
+            tree = ast.parse(_strip_magics(cell.source))
+        except (SyntaxError, RecursionError, MemoryError):
+            continue
+        for fn in tree.body:
+            if not isinstance(fn, ast.FunctionDef):
+                continue
+            a = fn.args
+            positional = [p.arg for p in a.posonlyargs + a.args]
+            kwonly = [p.arg for p in a.kwonlyargs]
+            local = {n.id for stmt in fn.body for n in ast.walk(stmt) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
+            local |= {p.arg for p in (a.vararg, a.kwarg) if p is not None}
+            end = fn.end_lineno or fn.lineno
+            names: set[str] = set()
+            body = flow.functions[fn.name].calls if fn.name in flow.functions else flow.calls
+            for c in body:
+                if c.cell == cell.index and fn.lineno < c.line <= end and c.name in SCORE_FUNCS:
+                    names |= c.pos_args[0] if c.pos_args else c.kw_args.get("y_true", set())
+            names = {n for n in names if n in positional or n in kwonly or n not in local}
+            if names:
+                out[fn.name] = (positional, kwonly, names)
+    return out
+
+
 def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) -> list[Flag]:
     metric_names = _metric_functions(nb)
+    wrappers = _wrapper_labels(nb, flow)
     src = {c.index: c.source.splitlines() for c in nb.code_cells}
     calls_by_cell: dict[int, list] = {}
     for c in flow.calls:
-        calls_by_cell.setdefault(c.cell, []).append(c)
+        if c.inlined_from is None or (c.inlined_from not in wrappers and c.name not in SCORE_FUNCS):
+            calls_by_cell.setdefault(c.cell, []).append(c)
 
     def span_text(ev) -> str:
         lines = src.get(ev.cell, [])
         return "\n".join(lines[ev.line - 1:max(ev.end_line, ev.line)])
 
-    def printed_directly(mx) -> bool:
+    def printed_directly(mx: CallSite) -> bool:
         text = src.get(mx.cell, [""] * mx.line)[mx.line - 1]
         start = text.find("print(")
         if start < 0:
@@ -784,6 +846,17 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
         return c.name in metric_names or c.name in CV_SCORERS or (c.name == "score" and c.receiver is not None)
 
     def label_names(c) -> set[str]:
+        if c.name in wrappers and c.name not in SCORE_FUNCS:
+            positional, kwonly, inner = wrappers[c.name]
+            out: set[str] = set()
+            for n in inner:
+                if n in positional and positional.index(n) < len(c.pos_args):
+                    out |= c.pos_args[positional.index(n)]
+                elif n in positional or n in kwonly:
+                    out |= c.kw_args.get(n, set())
+                else:
+                    out.add(n)
+            return out
         if c.name in CV_SCORERS:
             return c.pos_args[2] if len(c.pos_args) > 2 else c.kw_args.get("y", set())
         if c.name == "score":
@@ -800,7 +873,10 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
                 continue
             seen.add((n, pos))
             ev = flow.last_assign(n, pos)
-            if ev is not None and ev.call is not None and ev.call.name in LABEL_PASSTHROUGH:
+            if ev is not None and (
+                (ev.call is not None and ev.call.name in LABEL_PASSTHROUGH)
+                or (ev.call is None and ATTR_PASSTHROUGH_RE.match(src.get(ev.cell, [""] * ev.line)[ev.line - 1][ev.col:]))
+            ):
                 frontier.extend((s, (ev.cell, ev.line)) for s in ev.sources)
             else:
                 out.add((n, id(ev) if ev is not None else None))
@@ -837,7 +913,7 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
     for sel in flow.assigns:
         text = span_text(sel)
         if not SELECT_RE.search(text) and not (
-            IFEXP_RE.search(text) and sum(c.name in metric_names for c in calls_in(sel)) >= 2
+            IFEXP_RE.search(text) and (sum(c.name in metric_names for c in calls_in(sel)) >= 2 or _compares_named_scores(text, sel.targets))
         ):
             continue
         if FIRST_TRUE_RE.search(text) and not re.search(r"\b(?:max|min|sorted)\([^\n]*\bkey\s*=", text):
@@ -897,7 +973,14 @@ def detect_leakage_test_selection(nb: ParsedNotebook, flow: NotebookDataflow) ->
             "leakage-test-selection", confidence=confidence, cell=sel.cell, line=sel.line,
             evidence=evidence, selected=sorted(t for t, _ in selected),
         ))
-    flagged_at = {(f.cell, f.line) for f in flags}
+    seen: set[tuple[int, int]] = set()
+    unique = []
+    for f in flags:
+        if (f.cell, f.line) not in seen:
+            seen.add((f.cell, f.line))
+            unique.append(f)
+    flags = unique
+    flagged_at = seen
     for mx in flow.calls:
         if mx.name not in MAX_CALLS or mx.receiver not in (None, "np", "numpy") or mx.kw_args:
             continue
