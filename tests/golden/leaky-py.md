@@ -11,5 +11,5 @@ verdict: 1 high, 0 medium | static layer (no LLM)
 - **Confidence:** 0.92
 - **Repair:** `waldean propose examples/leaky.py` writes a repair contract that an agent or a person can apply and Waldean can verify
 
-## CLEAN (checked): baserate-accuracy-imbalanced, leakage-temporal-shuffle, leakage-test-selection, testing-multiple-uncorrected
+## CLEAN (checked): baserate-accuracy-imbalanced, leakage-resample-before-split, leakage-temporal-shuffle, leakage-test-selection, testing-multiple-uncorrected
 

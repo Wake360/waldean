@@ -703,6 +703,52 @@ class TestSelectionMutation(Mutation):
                     "same_choice_as_validation": agrees_with_val == "1"}
 
 
+class ResampleBeforeSplitMutation(Mutation):
+    flaw_id = "leakage-resample-before-split"
+
+    CONCLUSION = (
+        "After balancing the classes, the model reaches the accuracy and AUC "
+        "printed above on the held-out test set."
+    )
+
+    def applicable(self, nb_node) -> bool:
+        m = meta(nb_node)
+        return bool(m.get("imbalanced")) and bool(m.get("binary_col")) and "split_cell" in m
+
+    def apply(self, nb_node, seed: int):
+        m = meta(nb_node)
+        col = m["binary_col"]
+        if seed % 2 == 0:
+            code = (
+                "from sklearn.utils import resample\n"
+                f"minority = df[df[{col!r}] == 1]\n"
+                f"majority = df[df[{col!r}] == 0]\n"
+                "df = pd.concat([majority, resample(minority, replace=True, "
+                f"n_samples=len(majority), random_state={seed})])\n"
+            )
+        else:
+            code = (
+                f"minority = df[df[{col!r}] == 1]\n"
+                "df = pd.concat([df, minority.sample(n=len(minority) * 4, replace=True, "
+                f"random_state={seed})])\n"
+            )
+        code += f"X = df[num_cols]\ny = df[{col!r}]"
+        nb = _insert_code_cell(nb_node, m["split_cell"], code)
+        return _replace_markdown(nb, m["conclusion_cell"] + 1, self.CONCLUSION)
+
+    def verify(self, mutated_node) -> tuple[bool, dict]:
+        variant = 0 if any("resample(minority" in c["source"] for c in mutated_node.cells) else 1
+        probe = (
+            "print('WALDEAN_VERIFY_RESAMPLE', len(set(y_tr.index) & set(y_te.index)), len(y_te))"
+        )
+        executed = ex.execute(ex.with_appended_code_cell(mutated_node, probe))
+        lines = ex.stdout_lines(executed, "WALDEAN_VERIFY_RESAMPLE")
+        if not lines:
+            return False, {"reason": "no verify output"}
+        _, shared, n_test = lines[-1].split()
+        return int(shared) > 0, {"variant": variant, "rows_in_both_splits": int(shared), "test_rows": int(n_test)}
+
+
 MUTATIONS: list[Mutation] = [
     FitBeforeSplitMutation(),
     MultipleTestingMutation(),
@@ -712,4 +758,5 @@ MUTATIONS: list[Mutation] = [
     RegressionToMeanMutation(),
     TemporalShuffleMutation(),
     TestSelectionMutation(),
+    ResampleBeforeSplitMutation(),
 ]

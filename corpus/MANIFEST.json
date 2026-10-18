@@ -992,6 +992,32 @@
       }
     },
     {
+      "file": "mutated/fraud-s11__leakage-resample-before-split__m0.ipynb",
+      "base": "clean/fraud-s11.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 0,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "rows_in_both_splits": 260,
+        "test_rows": 1350
+      }
+    },
+    {
+      "file": "mutated/fraud-s11__leakage-resample-before-split__m1.ipynb",
+      "base": "clean/fraud-s11.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "rows_in_both_splits": 204,
+        "test_rows": 1050
+      }
+    },
+    {
       "file": "mutated/fraud-s12__leakage-fit-before-split__m0.ipynb",
       "base": "clean/fraud-s12.ipynb",
       "flaw_id": "leakage-fit-before-split",
@@ -1049,6 +1075,32 @@
       "evidence": {
         "majority_baseline": 0.9,
         "reported_accuracy": 0.8986666666666666
+      }
+    },
+    {
+      "file": "mutated/fraud-s12__leakage-resample-before-split__m0.ipynb",
+      "base": "clean/fraud-s12.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 0,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "rows_in_both_splits": 275,
+        "test_rows": 1350
+      }
+    },
+    {
+      "file": "mutated/fraud-s12__leakage-resample-before-split__m1.ipynb",
+      "base": "clean/fraud-s12.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "rows_in_both_splits": 207,
+        "test_rows": 1050
       }
     },
     {
@@ -1112,6 +1164,32 @@
       }
     },
     {
+      "file": "mutated/fraud-s13__leakage-resample-before-split__m0.ipynb",
+      "base": "clean/fraud-s13.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 0,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "rows_in_both_splits": 269,
+        "test_rows": 1350
+      }
+    },
+    {
+      "file": "mutated/fraud-s13__leakage-resample-before-split__m1.ipynb",
+      "base": "clean/fraud-s13.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "rows_in_both_splits": 211,
+        "test_rows": 1050
+      }
+    },
+    {
       "file": "mutated/fraud-s14__leakage-fit-before-split__m0.ipynb",
       "base": "clean/fraud-s14.ipynb",
       "flaw_id": "leakage-fit-before-split",
@@ -1169,6 +1247,32 @@
       "evidence": {
         "majority_baseline": 0.9,
         "reported_accuracy": 0.9013333333333333
+      }
+    },
+    {
+      "file": "mutated/fraud-s14__leakage-resample-before-split__m0.ipynb",
+      "base": "clean/fraud-s14.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 0,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "rows_in_both_splits": 270,
+        "test_rows": 1350
+      }
+    },
+    {
+      "file": "mutated/fraud-s14__leakage-resample-before-split__m1.ipynb",
+      "base": "clean/fraud-s14.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 1,
+      "split": "dev",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "rows_in_both_splits": 212,
+        "test_rows": 1050
       }
     },
     {
@@ -2540,6 +2644,32 @@
       }
     },
     {
+      "file": "mutated/fraud-s21__leakage-resample-before-split__m2.ipynb",
+      "base": "clean/fraud-s21.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 2,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "rows_in_both_splits": 269,
+        "test_rows": 1350
+      }
+    },
+    {
+      "file": "mutated/fraud-s21__leakage-resample-before-split__m3.ipynb",
+      "base": "clean/fraud-s21.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "rows_in_both_splits": 218,
+        "test_rows": 1050
+      }
+    },
+    {
       "file": "mutated/fraud-s22__leakage-fit-before-split__m2.ipynb",
       "base": "clean/fraud-s22.ipynb",
       "flaw_id": "leakage-fit-before-split",
@@ -2597,6 +2727,32 @@
       "evidence": {
         "majority_baseline": 0.9,
         "reported_accuracy": 0.9
+      }
+    },
+    {
+      "file": "mutated/fraud-s22__leakage-resample-before-split__m2.ipynb",
+      "base": "clean/fraud-s22.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 2,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "rows_in_both_splits": 273,
+        "test_rows": 1350
+      }
+    },
+    {
+      "file": "mutated/fraud-s22__leakage-resample-before-split__m3.ipynb",
+      "base": "clean/fraud-s22.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "rows_in_both_splits": 219,
+        "test_rows": 1050
       }
     },
     {
@@ -2660,6 +2816,32 @@
       }
     },
     {
+      "file": "mutated/fraud-s23__leakage-resample-before-split__m2.ipynb",
+      "base": "clean/fraud-s23.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 2,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "rows_in_both_splits": 270,
+        "test_rows": 1350
+      }
+    },
+    {
+      "file": "mutated/fraud-s23__leakage-resample-before-split__m3.ipynb",
+      "base": "clean/fraud-s23.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "rows_in_both_splits": 210,
+        "test_rows": 1050
+      }
+    },
+    {
       "file": "mutated/fraud-s24__leakage-fit-before-split__m2.ipynb",
       "base": "clean/fraud-s24.ipynb",
       "flaw_id": "leakage-fit-before-split",
@@ -2717,6 +2899,32 @@
       "evidence": {
         "majority_baseline": 0.9,
         "reported_accuracy": 0.9
+      }
+    },
+    {
+      "file": "mutated/fraud-s24__leakage-resample-before-split__m2.ipynb",
+      "base": "clean/fraud-s24.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 2,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 0,
+        "rows_in_both_splits": 271,
+        "test_rows": 1350
+      }
+    },
+    {
+      "file": "mutated/fraud-s24__leakage-resample-before-split__m3.ipynb",
+      "base": "clean/fraud-s24.ipynb",
+      "flaw_id": "leakage-resample-before-split",
+      "mutation_seed": 3,
+      "split": "heldout",
+      "verified": true,
+      "evidence": {
+        "variant": 1,
+        "rows_in_both_splits": 209,
+        "test_rows": 1050
       }
     },
     {
