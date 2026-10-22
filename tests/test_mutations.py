@@ -11,7 +11,7 @@ from waldean.bench.corpus import FAMILIES, _build_date, abtest_notebook, churn_n
 from waldean.core.flag import DEFAULT_CONFIDENCE_FLOOR
 from waldean.checks.detect import run_static
 from waldean.analysis.ingest import from_nbnode
-from waldean.bench.mutate import BaserateAccuracyMutation, FitBeforeSplitMutation, MultipleTestingMutation, MUTATIONS, RegressionToMeanMutation, ResampleBeforeSplitMutation, SignificanceMeaninglessMutation, SurvivorshipMutation, TemporalShuffleMutation, TestSelectionMutation, phrasing_variant
+from waldean.bench.mutate import BaserateAccuracyMutation, FitBeforeSplitMutation, MultipleTestingMutation, MUTATIONS, RegressionToMeanMutation, ResampleBeforeSplitMutation, SignificanceMeaninglessMutation, SurvivorshipMutation, TemporalShuffleMutation, TestSelectionMutation, meta, phrasing_variant
 
 
 def code_of(nb):
@@ -321,3 +321,9 @@ def test_resample_verify_and_flag(seed):
 def test_resample_verify_rejects_clean_fraud():
     ok, _ = ResampleBeforeSplitMutation().verify(fraud_notebook(7))
     assert not ok
+
+
+def test_forecast_window_feature_is_shifted():
+    clean = forecast_notebook(7)
+    assert meta(clean)["lag_cell"] == 3
+    assert "df['demand_ma14'] = df['demand'].shift(1).rolling(14).mean()" in clean.cells[3]["source"]
