@@ -41,7 +41,7 @@ verdict: 1 high, 0 medium | static layer (no LLM)
 - **Confidence:** 0.92
 - **Repair:** `waldean propose examples/leaky.ipynb` writes a repair contract that an agent or a person can apply and Waldean can verify
 
-## CLEAN (checked): baserate-accuracy-imbalanced, leakage-resample-before-split, leakage-temporal-shuffle, leakage-test-selection, testing-multiple-uncorrected
+## CLEAN (checked): baserate-accuracy-imbalanced, leakage-lag-full-series, leakage-resample-before-split, leakage-temporal-shuffle, leakage-test-selection, testing-multiple-uncorrected
 ```
 
 [`temporal-cv-before-after.ipynb`](https://github.com/Wake360/waldean/blob/v0.6.0/examples/temporal-cv-before-after.ipynb)
