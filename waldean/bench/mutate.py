@@ -602,6 +602,58 @@ class TemporalShuffleMutation(Mutation):
             return ok, {"variant": 1, "train_max_date": train_max, "test_min_date": test_min}
 
 
+class LagFullSeriesMutation(Mutation):
+    flaw_id = "leakage-lag-full-series"
+
+    CLEAN_FEATURE = "df['demand_ma14'] = df['demand'].shift(1).rolling(14).mean()"
+    LEAKY_FEATURES = (
+        "df['demand_ma14'] = df['demand'].rolling(14).mean()",
+        "df['demand_ma14'] = df['demand'].shift(1).rolling(14, center=True).mean()",
+    )
+    CONCLUSION = (
+        "The model reaches the MAE and R^2 printed above on the later quarter, "
+        "with walk-forward cross-validated MAE alongside."
+    )
+
+    def applicable(self, nb_node) -> bool:
+        m = meta(nb_node)
+        return "lag_cell" in m and self.CLEAN_FEATURE in nb_node.cells[m["lag_cell"]]["source"]
+
+    def apply(self, nb_node, seed: int):
+        m = meta(nb_node)
+        idx = m["lag_cell"]
+        src = nb_node.cells[idx]["source"].replace(self.CLEAN_FEATURE, self.LEAKY_FEATURES[seed % 2])
+        nb = _replace_cell(nb_node, idx, src)
+        return _replace_markdown(nb, m["conclusion_cell"], self.CONCLUSION)
+
+    def verify(self, mutated_node) -> tuple[bool, dict]:
+        m = meta(mutated_node)
+        line = next((ln for ln in mutated_node.cells[m["lag_cell"]]["source"].splitlines()
+                     if ln.startswith("df['demand_ma14'] = ")), None)
+        if line is None:
+            return False, {"reason": "feature line not found"}
+        variant = 1 if "center=True" in line else 0
+        rhs = line.split(" = ", 1)[1].replace("df[", "_d[")
+        probe = (
+            "_d = df.copy()\n"
+            f"_base = {rhs}\n"
+            "_t = len(_d) // 2\n"
+            "_d.loc[_t:, 'demand'] = _d.loc[_t:, 'demand'] + 1000.0\n"
+            f"_pert = {rhs}\n"
+            "print('WALDEAN_VERIFY_LAG', int(abs(_pert.iloc[_t] - _base.iloc[_t]) > 1e-6), "
+            "int(np.allclose(_base.iloc[30:_t], df['demand_ma14'].iloc[30:_t])), "
+            "int('demand_ma14' in feature_cols))"
+        )
+        executed = ex.execute(ex.with_appended_code_cell(mutated_node, probe))
+        lines = ex.stdout_lines(executed, "WALDEAN_VERIFY_LAG")
+        if not lines:
+            return False, {"reason": "no verify output"}
+        _, moves, matches, used = lines[-1].split()
+        evidence = {"variant": variant, "feature_moves_with_later_target": moves == "1",
+                    "probe_matches_stored_feature": matches == "1", "in_feature_cols": used == "1"}
+        return moves == "1" and matches == "1" and used == "1", evidence
+
+
 class TestSelectionMutation(Mutation):
     """Choose the model on the test split instead of the validation split,
     then report the chosen model on that same test split."""
@@ -759,4 +811,5 @@ MUTATIONS: list[Mutation] = [
     TemporalShuffleMutation(),
     TestSelectionMutation(),
     ResampleBeforeSplitMutation(),
+    LagFullSeriesMutation(),
 ]

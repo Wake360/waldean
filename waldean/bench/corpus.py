@@ -641,6 +641,7 @@ MUTATION_SEEDS = {
     "leakage-temporal-shuffle": {"dev": (0, 1), "heldout": (2, 3)},
     "leakage-test-selection": {"dev": (0, 1, 2), "heldout": (3, 4, 5)},
     "leakage-resample-before-split": {"dev": (0, 1), "heldout": (2, 3)},
+    "leakage-lag-full-series": {"dev": (0, 1), "heldout": (2, 3)},
 }
 
 

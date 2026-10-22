@@ -55,6 +55,7 @@ def test_g0_every_flaw_class_with_mutation_is_represented():
         "regression-to-mean-claim",
         "leakage-temporal-shuffle",
         "leakage-resample-before-split",
+        "leakage-lag-full-series",
     } <= labels
 
 
