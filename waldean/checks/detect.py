@@ -126,6 +126,8 @@ WINDOW_METHOD_RE = re.compile(r"\.(?:rolling|expanding|ewm|diff|pct_change)\(")
 SHIFTED_RE = re.compile(r"\.shift\((?!\s*(?:periods\s*=\s*)?-)")
 NEGATIVE_SHIFT_RE = re.compile(r"\.shift\(\s*(?:periods\s*=\s*)?-")
 CENTER_RE = re.compile(r"\bcenter\s*=\s*True\b")
+CLOSED_RE = re.compile(r"\bclosed\s*=\s*['\"](?:left|neither)['\"]")
+OFFSET_SLICE_RE = re.compile(r"\[\s*[\w.+-]+\s*:")
 COLUMN_LITERAL_RE = re.compile(r"\[\s*['\"](\w+)['\"]\s*\]")
 COLUMN_ASSIGN_RE = re.compile(r"^\s*\w+\[\s*['\"](\w+)['\"]\s*\]\s*=\s*(.+)$")
 
@@ -282,9 +284,14 @@ def detect_leakage_lag_full_series(nb: ParsedNotebook, flow: NotebookDataflow) -
             return None
         if CENTER_RE.search(tail):
             return "centered-window"
+        if CLOSED_RE.search(tail):
+            return None
         if not SHIFTED_RE.search(tail):
             return "window-includes-current"
         return None
+
+    def realigned(text: str) -> bool:
+        return bool(NEGATIVE_SHIFT_RE.search(text) or SHIFTED_RE.search(text) or OFFSET_SLICE_RE.search(text))
 
     flags: list[Flag] = []
     seen: set[tuple[int, int]] = set()
@@ -299,17 +306,29 @@ def detect_leakage_lag_full_series(nb: ParsedNotebook, flow: NotebookDataflow) -
         targets: set[str] = set()
         for n in y_names:
             ev = flow.last_assign(n, pos)
-            if ev is not None and not NEGATIVE_SHIFT_RE.search(line_of(ev)):
+            if ev is not None and not realigned(line_of(ev)):
                 targets |= set(COLUMN_LITERAL_RE.findall(line_of(ev).split("=", 1)[-1]))
         if not targets:
             continue
         events, _ = flow.chain(x_names, pos)
-        other_text = "\n".join(line_of(ev) for ev in events if not COLUMN_ASSIGN_RE.match(line_of(ev)))
-        for ev in events:
-            m = COLUMN_ASSIGN_RE.match(line_of(ev))
+        other_lines = [line_of(ev) for ev in events if not COLUMN_ASSIGN_RE.match(line_of(ev))]
+        if any(SHIFTED_RE.search(line) for line in other_lines):
+            continue
+        other_text = "\n".join(line for line in other_lines if ".drop(" not in line)
+        assigns = [(ev, COLUMN_ASSIGN_RE.match(line_of(ev))) for ev in events]
+        for ev, m in assigns:
             if m is None or (ev.cell, ev.line) in seen:
                 continue
             column, rhs = m.groups()
+            if any(
+                (later.cell, later.line) > (ev.cell, ev.line)
+                and later_m is not None
+                and later_m.group(1) == column
+                and re.search(rf"\[\s*['\"]{re.escape(column)}['\"]\s*\]", later_m.group(2))
+                and SHIFTED_RE.search(later_m.group(2))
+                for later, later_m in assigns
+            ):
+                continue
             if column in targets or (f"'{column}'" not in other_text and f'"{column}"' not in other_text):
                 continue
             for target in sorted(targets):

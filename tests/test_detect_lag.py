@@ -65,3 +65,40 @@ def test_target_smoothing_is_silent():
 
 def test_negative_shift_target_is_silent():
     assert not flags("df['feat'] = df['demand'].rolling(7).mean()", target="df['demand'].shift(-1)")
+
+
+def test_column_reshifted_on_a_later_line_is_silent():
+    assert not flags("df['feat'] = df['demand'].rolling(7).mean()\ndf['feat'] = df['feat'].shift(1)")
+
+
+def test_shifted_feature_matrix_is_silent():
+    notebook = nb([("code", c) for c in (
+        "df['feat'] = df['demand'].rolling(7).mean()",
+        f"feature_cols = ['feat']\nX = df[feature_cols].shift(1)\ny = df['demand']\n{TTS}",
+    )])
+    assert not detect_leakage_lag_full_series(notebook, analyze(notebook))
+
+
+def test_realigned_target_slice_is_silent():
+    notebook = nb([("code", c) for c in (
+        "df['feat'] = df['demand'].rolling(7).mean()",
+        f"feature_cols = ['feat']\nX = df[feature_cols].iloc[:-1]\ny = df['demand'].iloc[1:]\n{TTS}",
+    )])
+    assert not detect_leakage_lag_full_series(notebook, analyze(notebook))
+
+
+def test_values_slice_target_into_temporal_cv_is_silent():
+    assert not flags("df['feat'] = df['demand'].rolling(7).mean()", target="df['demand'].values[1:]", sink=CV)
+
+
+def test_closed_left_window_is_silent():
+    assert not flags("df['feat'] = df['demand'].rolling(7, closed='left').mean()")
+    assert not flags('df["feat"] = df["demand"].rolling(7, closed="neither").mean()')
+
+
+def test_leaky_column_dropped_from_matrix_is_silent():
+    notebook = nb([("code", c) for c in (
+        "df['feat'] = df['demand'].rolling(7).mean()",
+        f"X = df.drop(columns=['demand', 'feat'])\ny = df['demand']\n{TTS}",
+    )])
+    assert not detect_leakage_lag_full_series(notebook, analyze(notebook))
