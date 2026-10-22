@@ -70,6 +70,26 @@
       tests on: TimeSeriesSplit for cross-validation, or
       train_test_split(shuffle=False) on time-sorted rows.
 
+- id: leakage-lag-full-series
+  class: leakage
+  layer: static
+  severity: high
+  definition: >
+    A lag or window feature of the target is built so that its value at
+    row t reads the target at row t or later (a rolling, expanding, ewm,
+    diff or pct_change of the target with no shift before or after the window, a centered
+    window, or a negative shift), and the feature feeds a model
+    evaluation. A temporal split does not remove the leak.
+  book_anchor: "Huyen, Designing Machine Learning Systems ch. 5 (a form of the label leaks into the features); Hyndman & Athanasopoulos FPP3 §5.10"
+  failure_scenario: >
+    The model reads the value it is asked to predict through the feature,
+    so the reported error is far below what a real forecast reaches; at
+    prediction time the feature cannot be computed.
+  fix: >
+    Shift the target by at least the forecast horizon before any window
+    (df[y].shift(h).rolling(w)); never use center=True or a negative shift
+    for a predictor.
+
 # Static promotion parked (2026-07-06): the flaw is the PAIR (filter,
 # population-scoped claim). The static half sees only the filter — a
 # scoped-claim notebook emits the identical 0.55 candidate, so raising it

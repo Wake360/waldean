@@ -122,6 +122,14 @@ DATE_COLUMN_RE = re.compile(r"date|datetime|timestamp|dteday", re.IGNORECASE)
 # when shuffle=True, handled separately; TimeSeriesSplit never does)
 SHUFFLED_SPLITTERS = {"ShuffleSplit", "StratifiedShuffleSplit"}
 _TEMPORAL_SPLITTERS = SHUFFLED_SPLITTERS | {"KFold", "StratifiedKFold", "TimeSeriesSplit"}
+WINDOW_METHOD_RE = re.compile(r"\.(?:rolling|expanding|ewm|diff|pct_change)\(")
+SHIFTED_RE = re.compile(r"\.shift\((?!\s*(?:periods\s*=\s*)?-)")
+NEGATIVE_SHIFT_RE = re.compile(r"\.shift\(\s*(?:periods\s*=\s*)?-")
+CENTER_RE = re.compile(r"\bcenter\s*=\s*True\b")
+CLOSED_RE = re.compile(r"\bclosed\s*=\s*['\"](?:left|neither)['\"]")
+OFFSET_SLICE_RE = re.compile(r"\[\s*[\w.+-]+\s*:")
+COLUMN_LITERAL_RE = re.compile(r"\[\s*['\"](\w+)['\"]\s*\]")
+COLUMN_ASSIGN_RE = re.compile(r"^\s*\w+\[\s*['\"](\w+)['\"]\s*\]\s*=\s*(.+)$")
 
 
 def detect_leakage_temporal_shuffle(nb: ParsedNotebook, flow: NotebookDataflow) -> list[Flag]:
@@ -257,6 +265,87 @@ def detect_leakage_temporal_shuffle(nb: ParsedNotebook, flow: NotebookDataflow) 
                 sink=s.name,
             )
         )
+    return flags
+
+
+def detect_leakage_lag_full_series(nb: ParsedNotebook, flow: NotebookDataflow) -> list[Flag]:
+    sinks = [c for c in flow.calls if c.name == "train_test_split" or c.name in CV_SINKS]
+    src = {c.index: c.source.splitlines() for c in nb.code_cells}
+
+    def line_of(ev) -> str:
+        lines = src.get(ev.cell, [])
+        return lines[ev.line - 1] if 0 < ev.line <= len(lines) else ""
+
+    def leak_reason(tail: str) -> str | None:
+        if NEGATIVE_SHIFT_RE.search(tail):
+            return "negative-shift"
+        window = WINDOW_METHOD_RE.search(tail)
+        if window is None:
+            return None
+        if CENTER_RE.search(tail):
+            return "centered-window"
+        if CLOSED_RE.search(tail):
+            return None
+        if not SHIFTED_RE.search(tail):
+            return "window-includes-current"
+        return None
+
+    def realigned(text: str) -> bool:
+        return bool(NEGATIVE_SHIFT_RE.search(text) or SHIFTED_RE.search(text) or OFFSET_SLICE_RE.search(text))
+
+    flags: list[Flag] = []
+    seen: set[tuple[int, int]] = set()
+    for s in sinks:
+        if s.name in CV_SINKS:
+            x_names = s.pos_args[1] if len(s.pos_args) > 1 else s.kw_args.get("X", set())
+            y_names = s.pos_args[2] if len(s.pos_args) > 2 else s.kw_args.get("y", set())
+        else:
+            x_names = s.pos_args[0] if s.pos_args else set()
+            y_names = s.pos_args[1] if len(s.pos_args) > 1 else set()
+        pos = (s.cell, s.line)
+        targets: set[str] = set()
+        for n in y_names:
+            ev = flow.last_assign(n, pos)
+            if ev is not None and not realigned(line_of(ev)):
+                targets |= set(COLUMN_LITERAL_RE.findall(line_of(ev).split("=", 1)[-1]))
+        if not targets:
+            continue
+        events, _ = flow.chain(x_names, pos)
+        other_lines = [line_of(ev) for ev in events if not COLUMN_ASSIGN_RE.match(line_of(ev))]
+        if any(SHIFTED_RE.search(line) for line in other_lines):
+            continue
+        other_text = "\n".join(line for line in other_lines if ".drop(" not in line)
+        assigns = [(ev, COLUMN_ASSIGN_RE.match(line_of(ev))) for ev in events]
+        for ev, m in assigns:
+            if m is None or (ev.cell, ev.line) in seen:
+                continue
+            column, rhs = m.groups()
+            if any(
+                (later.cell, later.line) > (ev.cell, ev.line)
+                and later_m is not None
+                and later_m.group(1) == column
+                and re.search(rf"\[\s*['\"]{re.escape(column)}['\"]\s*\]", later_m.group(2))
+                and SHIFTED_RE.search(later_m.group(2))
+                for later, later_m in assigns
+            ):
+                continue
+            if column in targets or (f"'{column}'" not in other_text and f'"{column}"' not in other_text):
+                continue
+            for target in sorted(targets):
+                at = re.search(rf"\[\s*['\"]{re.escape(target)}['\"]\s*\]", rhs)
+                reason = leak_reason(rhs[at.end():]) if at else None
+                if reason is None:
+                    continue
+                seen.add((ev.cell, ev.line))
+                flags.append(_make_flag(
+                    "leakage-lag-full-series", confidence=0.9, cell=ev.cell, line=ev.line,
+                    evidence=(
+                        f"`{column}` (cell {ev.cell}) is built from the target `{target}` ({reason}) and "
+                        f"feeds `{s.name}` (cell {s.cell}); the feature at row t reads the value being predicted"
+                    ),
+                    column=column, target=target, reason=reason,
+                ))
+                break
     return flags
 
 
@@ -1100,6 +1189,7 @@ def detect_leakage_resample_before_split(nb: ParsedNotebook, flow: NotebookDataf
 DETECTORS = [
     detect_leakage_fit_before_split,
     detect_leakage_temporal_shuffle,
+    detect_leakage_lag_full_series,
     detect_multiple_testing,
     detect_baserate_accuracy,
     detect_survivorship_candidate,
@@ -1111,6 +1201,7 @@ DETECTORS = [
 STATIC_DECIDABLE = {
     "leakage-fit-before-split",
     "leakage-temporal-shuffle",
+    "leakage-lag-full-series",
     "testing-multiple-uncorrected",
     "baserate-accuracy-imbalanced",
     "leakage-test-selection",

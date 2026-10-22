@@ -572,7 +572,7 @@ def test_rules_json_valid(capsys):
     out = capsys.readouterr().out
     assert rc == 0
     data = json.loads(out)
-    assert len(data) == 11
+    assert len(data) == 12
     for d in data:
         assert set(d) == {"id", "layer", "severity", "definition", "book_anchor"}
 

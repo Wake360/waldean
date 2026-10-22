@@ -494,7 +494,7 @@ def forecast_notebook(seed: int):
         _code(
             "df['demand_lag1'] = df['demand'].shift(1)\n"
             "df['demand_lag7'] = df['demand'].shift(7)\n"
-            "df['demand_ma14'] = df['demand'].rolling(14).mean()\n"
+            "df['demand_ma14'] = df['demand'].shift(1).rolling(14).mean()\n"
             "df['dow'] = df['date'].dt.dayofweek\n"
             "df = df.dropna().reset_index(drop=True)"
         ),
@@ -524,7 +524,7 @@ def forecast_notebook(seed: int):
     ]
     return _nb(cells, {
         "family": "forecast", "seed": seed, "date_col": "date",
-        "temporal_split_cell": 4, "temporal_cv_cell": 5,
+        "temporal_split_cell": 4, "temporal_cv_cell": 5, "lag_cell": 3,
         "imports_cell": 1, "conclusion_cell": 6, "imbalanced": False,
     })
 
@@ -641,6 +641,7 @@ MUTATION_SEEDS = {
     "leakage-temporal-shuffle": {"dev": (0, 1), "heldout": (2, 3)},
     "leakage-test-selection": {"dev": (0, 1, 2), "heldout": (3, 4, 5)},
     "leakage-resample-before-split": {"dev": (0, 1), "heldout": (2, 3)},
+    "leakage-lag-full-series": {"dev": (0, 1), "heldout": (2, 3)},
 }
 
 
