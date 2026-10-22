@@ -282,7 +282,7 @@ def detect_leakage_lag_full_series(nb: ParsedNotebook, flow: NotebookDataflow) -
             return None
         if CENTER_RE.search(tail):
             return "centered-window"
-        if not SHIFTED_RE.search(tail[:window.start()]):
+        if not SHIFTED_RE.search(tail):
             return "window-includes-current"
         return None
 
@@ -299,7 +299,7 @@ def detect_leakage_lag_full_series(nb: ParsedNotebook, flow: NotebookDataflow) -
         targets: set[str] = set()
         for n in y_names:
             ev = flow.last_assign(n, pos)
-            if ev is not None:
+            if ev is not None and not NEGATIVE_SHIFT_RE.search(line_of(ev)):
                 targets |= set(COLUMN_LITERAL_RE.findall(line_of(ev).split("=", 1)[-1]))
         if not targets:
             continue

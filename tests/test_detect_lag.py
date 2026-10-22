@@ -7,10 +7,10 @@ TTS = "X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.25, shuffle=F
 CV = "scores = cross_val_score(Ridge(), X, y, cv=TimeSeriesSplit(n_splits=5))"
 
 
-def flags(feature_line, features="['lag1', 'feat']", sink=TTS):
+def flags(feature_line, features="['lag1', 'feat']", sink=TTS, target="df['demand']"):
     cells = [
         "df['lag1'] = df['demand'].shift(1)\n" + feature_line,
-        f"feature_cols = {features}\nX = df[feature_cols]\ny = df['demand']\n" + sink,
+        f"feature_cols = {features}\nX = df[feature_cols]\ny = {target}\n" + sink,
     ]
     notebook = nb([("code", c) for c in cells])
     return detect_leakage_lag_full_series(notebook, analyze(notebook))
@@ -45,6 +45,8 @@ def test_shifted_window_is_silent():
         "df['feat'] = df['demand'].shift().rolling(7).mean()",
         "df['feat'] = df['demand'].shift(h).rolling(7).mean()",
         "df['feat'] = df['demand'].shift(periods=7).ewm(span=7).mean()",
+        "df['feat'] = df['demand'].rolling(7).mean().shift(1)",
+        "df['feat'] = df['demand'].ewm(span=7).mean().shift()",
     ):
         assert not flags(line), line
 
@@ -59,3 +61,7 @@ def test_unused_column_is_silent():
 
 def test_target_smoothing_is_silent():
     assert not flags("df['demand'] = df['demand'].rolling(7).mean()")
+
+
+def test_negative_shift_target_is_silent():
+    assert not flags("df['feat'] = df['demand'].rolling(7).mean()", target="df['demand'].shift(-1)")

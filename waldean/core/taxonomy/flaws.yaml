@@ -77,7 +77,7 @@
   definition: >
     A lag or window feature of the target is built so that its value at
     row t reads the target at row t or later (a rolling, expanding, ewm,
-    diff or pct_change of the target with no preceding shift, a centered
+    diff or pct_change of the target with no shift before or after the window, a centered
     window, or a negative shift), and the feature feeds a model
     evaluation. A temporal split does not remove the leak.
   book_anchor: "Huyen, Designing Machine Learning Systems ch. 5 (a form of the label leaks into the features); Hyndman & Athanasopoulos FPP3 §5.10"
