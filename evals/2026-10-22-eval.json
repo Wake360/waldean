@@ -1,0 +1,78 @@
+{
+  "date": "2026-10-22",
+  "corpus_built": "2026-10-22",
+  "n_clean": 91,
+  "n_clean_real": 27,
+  "n_mutants": 272,
+  "n_mutants_narrative_only": 32,
+  "narrative_only_classes": {
+    "regression-to-mean-claim": 16,
+    "significance-meaningless": 16
+  },
+  "n_discarded": 0,
+  "confidence_floor": 0.8,
+  "static_classes": {
+    "baserate-accuracy-imbalanced": {
+      "tp": 8,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "leakage-fit-before-split": {
+      "tp": 48,
+      "fn": 0,
+      "fp": 2,
+      "precision": 0.96,
+      "recall": 1.0
+    },
+    "leakage-lag-full-series": {
+      "tp": 16,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "leakage-resample-before-split": {
+      "tp": 16,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "leakage-temporal-shuffle": {
+      "tp": 16,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "leakage-test-selection": {
+      "tp": 24,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "testing-multiple-uncorrected": {
+      "tp": 96,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "candidate_classes": {
+    "selection-survivorship-cohort": {
+      "tp": 16,
+      "fn": 0,
+      "recall": 1.0
+    }
+  },
+  "clean_fp_rate": 0.02197802197802198,
+  "clean_fp_files": [
+    "real/21__dipanjanS_practical-machine-learning-with-python__decision_tree_regression.ipynb",
+    "real/28__dipanjanS_practical-machine-learning-with-python__linear_regression.ipynb"
+  ],
+  "missed_mutants": []
+}
