@@ -806,7 +806,7 @@ REGRESSION_SCORES = {
     "root_mean_squared_error", "mean_absolute_percentage_error",
 }
 BASELINE_RE = re.compile(
-    r"Dummy(?:Classifier|Regressor)|baseline|naive(?!_bayes)|persistence|majority|zero.rule|base.rate",
+    r"Dummy(?:Classifier|Regressor)|baseline|naive.(?:forecast|predictor|model|mae|rmse|mse)|persistence.(?:forecast|model)|majority.(?:class|predictor)|zero.rule|base.rate",
     re.IGNORECASE,
 )
 

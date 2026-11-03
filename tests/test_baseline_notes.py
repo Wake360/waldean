@@ -51,3 +51,33 @@ def test_no_note_without_metric():
 def test_note_points_at_first_metric_by_position():
     cells = [("code", "print('setup')"), ("code", FIT), ("code", "print(f1_score(y_te, p > 0.5))")]
     assert "`roc_auc_score` (cell 1)" in notes(cells)[0]
+
+
+def test_majority_vote_is_not_a_baseline():
+    cells = [("code", FIT), ("markdown", "A majority vote classifier combines the models."), ("code", "y_pred_majority_votes = vote(preds)")]
+    assert len(notes(cells)) == 1
+
+
+def test_model_persistence_is_not_a_baseline():
+    cells = [("code", FIT), ("markdown", "## Model persistence using joblib")]
+    assert len(notes(cells)) == 1
+
+
+def test_naive_approach_is_not_a_baseline():
+    cells = [("code", FIT), ("markdown", "the naive approach to model validation")]
+    assert len(notes(cells)) == 1
+
+
+def test_gaussian_naive_bayes_text_is_not_a_baseline():
+    cells = [("code", FIT), ("markdown", "Gaussian Naive Bayes")]
+    assert len(notes(cells)) == 1
+
+
+def test_no_note_with_naive_mae_variable():
+    cells = [("code", FIT), ("code", "naive_mae = mean_absolute_error(y_te, np.full(len(y_te), y_tr.iloc[-1]))")]
+    assert notes(cells) == []
+
+
+def test_no_note_with_persistence_forecast():
+    cells = [("code", FIT), ("markdown", "A persistence forecast and a naive forecast are the references.")]
+    assert notes(cells) == []
