@@ -801,6 +801,36 @@ SCORE_FUNCS = {
     "mean_absolute_error", "root_mean_squared_error", "mean_absolute_percentage_error",
     "precision_recall_curve", "roc_curve",
 }
+REGRESSION_SCORES = {
+    "r2_score", "mean_squared_error", "mean_absolute_error",
+    "root_mean_squared_error", "mean_absolute_percentage_error",
+}
+BASELINE_RE = re.compile(
+    r"Dummy(?:Classifier|Regressor)|baseline|naive.(?:forecast|predictor|model|mae|rmse|mse)|persistence.(?:forecast|model)|majority.(?:class|predictor)|zero.rule|base.rate",
+    re.IGNORECASE,
+)
+
+
+def baseline_notes(nb: ParsedNotebook, flow: NotebookDataflow) -> list[str]:
+    scored = sorted(
+        (c for c in flow.calls if c.name in SCORE_FUNCS and c.name not in {"roc_curve", "precision_recall_curve"}),
+        key=lambda c: (c.cell, c.line),
+    )
+    if not scored:
+        return []
+    if BASELINE_RE.search("\n".join(c.source for c in nb.cells)):
+        return []
+    first = scored[0]
+    if first.name in REGRESSION_SCORES:
+        compare = "a DummyRegressor, the training mean or the last observed value"
+    else:
+        compare = "a DummyClassifier or the majority-class rate"
+    return [
+        f"no baseline found for `{first.name}` (cell {first.cell}): compare it with {compare} "
+        f"to show what the model adds"
+    ]
+
+
 CV_SCORERS = {"cross_val_score", "cross_validate"}
 PREDICT_CALLS = {"predict", "predict_proba", "decision_function", "cross_val_predict"}
 SELECT_RE = re.compile(

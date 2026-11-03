@@ -244,3 +244,21 @@ def test_sarif_script_region_uses_file_lines(tmp_path):
     results = [r for r in log["runs"][0]["results"] if r["ruleId"] == "leakage-fit-before-split"]
     assert results
     assert results[0]["locations"][0]["physicalLocation"]["region"]["startLine"] == 3
+
+
+def test_markdown_notes_section_before_clean():
+    md = to_markdown("nb.ipynb", [], notes=["no baseline found for `roc_auc_score` (cell 6)"])
+    assert "## Notes\n- no baseline found for `roc_auc_score` (cell 6)" in md
+    assert md.index("## Notes") < md.index("## CLEAN (checked)")
+
+
+def test_markdown_without_notes_has_no_heading():
+    assert "## Notes" not in to_markdown("nb.ipynb", [flag()])
+
+
+def test_json_notes_key_and_exit_code_unchanged():
+    plain = json.loads(to_json("nb.ipynb", [flag()]))
+    noted = json.loads(to_json("nb.ipynb", [flag()], notes=["n"]))
+    assert plain["notes"] == []
+    assert noted["notes"] == ["n"]
+    assert plain["exit_code"] == noted["exit_code"]

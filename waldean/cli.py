@@ -13,6 +13,7 @@ from nbformat.reader import NotJSONError
 
 from .api import (BackendError, EmptyDir, check, expand_notebooks, heldout_refusal, llm_backends,
                   missing_llm_keys, missing_subscription_clis)
+from .checks.detect import baseline_notes
 from .core.flag import DEFAULT_CONFIDENCE_FLOOR
 from .report import _colorize, exit_code, parse_warning, report_obj, to_markdown, to_sarif
 
@@ -92,12 +93,13 @@ def cmd_check(args) -> int:
             return 3
         warning = parse_warning(len(set(flow.parse_errors) | set(flow.skipped_cells) | set(flow.uninlined_cells)),
                                 len(nb.code_cells))
+        notes = baseline_notes(nb, flow)
         if args.format == "json":
-            reports.append(report_obj(path, flags, args.floor, args.severity_gate, warning))
+            reports.append(report_obj(path, flags, args.floor, args.severity_gate, warning, notes))
         elif args.format == "sarif":
             sarif_entries.append((path, flags))
         else:
-            text = to_markdown(path, flags, args.floor, warning, args.llm)
+            text = to_markdown(path, flags, args.floor, warning, args.llm, notes)
             print(_colorize(text) if color else text)
         confident = [f for f in flags if f.confidence >= args.floor]
         if any(f.severity == "high" for f in confident):
