@@ -60,24 +60,28 @@ def parse_warning(n_failed: int, n_total: int) -> str | None:
 
 
 def report_obj(path: str, flags: list[Flag], floor: float = DEFAULT_CONFIDENCE_FLOOR,
-               severity_gate: str = "high", warning: str | None = None) -> dict:
+               severity_gate: str = "high", warning: str | None = None,
+               notes: list[str] | None = None) -> dict:
     return {
         "notebook": path,
         "flags": [asdict(f) for f in flags if f.confidence >= floor],
         "candidates": [asdict(f) for f in flags if f.confidence < floor],
         "clean_classes": checked_classes(flags),
+        "notes": notes or [],
         "parse_warning": warning,
         "exit_code": exit_code(flags, floor, severity_gate),
     }
 
 
 def to_json(path: str, flags: list[Flag], floor: float = DEFAULT_CONFIDENCE_FLOOR,
-            severity_gate: str = "high", warning: str | None = None) -> str:
-    return json.dumps(report_obj(path, flags, floor, severity_gate, warning), indent=2)
+            severity_gate: str = "high", warning: str | None = None,
+            notes: list[str] | None = None) -> str:
+    return json.dumps(report_obj(path, flags, floor, severity_gate, warning, notes), indent=2)
 
 
 def to_markdown(path: str, flags: list[Flag], floor: float = DEFAULT_CONFIDENCE_FLOOR,
-                warning: str | None = None, llm: bool = False) -> str:
+                warning: str | None = None, llm: bool = False,
+                notes: list[str] | None = None) -> str:
     taxonomy = load_taxonomy()
     confident = sorted(
         (f for f in flags if f.confidence >= floor),
@@ -121,6 +125,10 @@ def to_markdown(path: str, flags: list[Flag], floor: float = DEFAULT_CONFIDENCE_
         lines.append(f"## Candidates (below confidence floor {floor:.2f})")
         for f in candidates:
             lines.append(f"- {f.flaw_id} (conf {f.confidence:.2f}, cell {f.cell}): {f.evidence}")
+        lines.append("")
+    if notes:
+        lines.append("## Notes")
+        lines += [f"- {n}" for n in notes]
         lines.append("")
     clean = checked_classes(flags)
     if clean:
