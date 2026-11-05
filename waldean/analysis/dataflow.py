@@ -151,6 +151,8 @@ class SliceEvent:
     line: int
     lower: str
     upper: str
+    target: str | None = None
+    event: AssignEvent | None = None
 
 
 @dataclass
@@ -159,6 +161,8 @@ class FuncDef:
     params: list[str]
     calls: list[CallSite] = field(default_factory=list)
     assigns: list[AssignEvent] = field(default_factory=list)
+    slices: list[SliceEvent] = field(default_factory=list)
+    returns: list[set[str]] | None = None
 
 
 class _CellVisitor(cst.CSTVisitor):
@@ -272,12 +276,16 @@ class _CellVisitor(cst.CSTVisitor):
         elif self.scope_depth == 1:
             self._func.calls.append(site)
         base = site.receiver_base
-        if site.name in MUTATING_METHODS and base is not None and base == site.receiver and self.scope_depth == 0:
-            self.mutations.append(AssignEvent(
+        if site.name in MUTATING_METHODS and base is not None and base == site.receiver:
+            mutation = AssignEvent(
                 targets={base}, sources=site.arg_names | {base},
                 cell=self.cell, line=site.line, end_line=site.end_line,
                 col=cast(CodeRange, self.get_metadata(PositionProvider, node)).start.column,
-            ))
+            )
+            if self.scope_depth == 0:
+                self.mutations.append(mutation)
+            elif self.scope_depth == 1 and self._func is not None and self._func is not self._lambda:
+                self._func.assigns.append(mutation)
         ev = self._pending.pop(id(node), None)
         if ev is not None:
             ev.call = site  # identity-shared: detect can test `ev.call is call`
@@ -287,12 +295,15 @@ class _CellVisitor(cst.CSTVisitor):
                        ordered: list[str] | None = None) -> None:
         if self.scope_depth > 0:
             if self._func is not None and self.scope_depth == 1:
-                self._func.assigns.append(AssignEvent(
+                fev = AssignEvent(
                     targets=targets, sources=expr_names(value) | set(extra_sources),
                     cell=self.cell, line=self._line(node), end_line=self._end_line(node),
                     col=cast(CodeRange, self.get_metadata(PositionProvider, node)).start.column,
                     ordered_targets=ordered or [],
-                ))
+                )
+                self._func.assigns.append(fev)
+                if isinstance(value, cst.Call):
+                    self._pending[id(value)] = fev
             return  # function/class locals do not rebind notebook names
         ev = AssignEvent(
             targets=targets,
@@ -318,14 +329,33 @@ class _CellVisitor(cst.CSTVisitor):
             if isinstance(t.target, (cst.Tuple, cst.List)):
                 ordered = [el.value.value if isinstance(el.value, cst.Name) else "" for el in t.target.elements]
         self._record_assign(targets, node.value, node, extra_sources=mutated, ordered=ordered)
-        self._record_slices(node.value)
+        plain = node.targets[0].target if len(node.targets) == 1 else None
+        self._record_slices(node.value, ordered, plain.value if isinstance(plain, cst.Name) else None)
 
-    def _record_slices(self, value: cst.BaseExpression) -> None:
-        if self.scope_depth > 0:
+    def visit_Return(self, node: cst.Return) -> None:
+        if self.scope_depth != 1 or self._func is None or node.value is None:
+            return
+        value = node.value
+        parts = [expr_names(el.value) for el in value.elements] if isinstance(value, cst.Tuple) else [expr_names(value)]
+        fn = self._func
+        if fn.returns is None:
+            fn.returns = parts
+        elif len(fn.returns) == len(parts):
+            fn.returns = [a | b for a, b in zip(fn.returns, parts)]
+        else:
+            fn.returns = [set().union(*fn.returns, *parts)]
+
+    def _record_slices(self, value: cst.BaseExpression, ordered: list[str], plain: str | None) -> None:
+        if self.scope_depth == 0:
+            sink, event = self.slices, self.assigns[-1]
+        elif self.scope_depth == 1 and self._func is not None and self._func is not self._lambda:
+            sink, event = self._func.slices, self._func.assigns[-1]
+        else:
             return
         exprs = [el.value for el in value.elements] if isinstance(value, cst.Tuple) else [value]
+        names = ordered if isinstance(value, cst.Tuple) and len(ordered) == len(exprs) else [plain] * len(exprs)
         code = cst.Module(body=[]).code_for_node
-        for expr in exprs:
+        for expr, name in zip(exprs, names):
             if not isinstance(expr, cst.Subscript):
                 continue
             sl = expr.slice[0].slice
@@ -337,10 +367,11 @@ class _CellVisitor(cst.CSTVisitor):
             if not isinstance(head, cst.Name):
                 continue
             lower = code(sl.lower).replace(" ", "") if sl.lower is not None else ""
-            self.slices.append(SliceEvent(
+            sink.append(SliceEvent(
                 base=head.value, cell=self.cell, line=self._line(expr),
                 lower="" if lower == "0" else lower,
                 upper=code(sl.upper).replace(" ", "") if sl.upper is not None else "",
+                target=name or None, event=event,
             ))
 
     def visit_AnnAssign(self, node: cst.AnnAssign) -> None:
@@ -397,6 +428,14 @@ class NotebookDataflow:
 
     def slice_splits(self) -> list[CallSite]:
         sinks: list[CallSite] = []
+        for pair in self.slice_pairs():
+            last = max(pair, key=lambda e: (e.cell, e.line))
+            sinks.append(CallSite(func="slice_split", name="slice_split", receiver=None,
+                                  cell=last.cell, line=last.line, loop_depth=0, pos_args=[{pair[0].base}]))
+        return sinks
+
+    def slice_pairs(self) -> list[tuple[SliceEvent, SliceEvent]]:
+        pairs: list[tuple[SliceEvent, SliceEvent]] = []
         by_base: dict[str, list[SliceEvent]] = {}
         for s in self.slices:
             by_base.setdefault(s.base, []).append(s)
@@ -419,12 +458,9 @@ class NotebookDataflow:
                 if hits:
                     pair = (h, events[min(hits)])
                     break
-            if pair is None:
-                continue
-            last = max(pair, key=lambda e: (e.cell, e.line))
-            sinks.append(CallSite(func="slice_split", name="slice_split", receiver=None,
-                                  cell=last.cell, line=last.line, loop_depth=0, pos_args=[{base}]))
-        return sinks
+            if pair is not None:
+                pairs.append(pair)
+        return pairs
 
     def _index(self, mutations: bool) -> dict[str, list[AssignEvent]]:
         cached = self._by_name_mut if mutations else self._by_name
@@ -570,6 +606,77 @@ def _call_target(site: CallSite, functions: dict[str, FuncDef]) -> tuple[FuncDef
     return None, []
 
 
+MAX_INLINE_DEPTH = 3
+
+
+class _OverBudget(Exception):
+    pass
+
+
+def _bind_returns(ev: AssignEvent, returns: list[set[str]] | None, rename: dict[str, set[str]],
+                  site: CallSite) -> list[AssignEvent]:
+    if not returns:
+        return []
+    returns = [_rename_names(r, rename) for r in returns]
+    if len(ev.ordered_targets) == len(returns) > 1 and all(ev.ordered_targets):
+        pairs = [({t}, r) for t, r in zip(ev.ordered_targets, returns)]
+    else:
+        pairs = [(ev.targets, set().union(*returns))]
+    return [AssignEvent(targets=t, sources=r, cell=site.cell, line=site.line,
+                        end_line=site.end_line or site.line, col=ev.col) for t, r in pairs]
+
+
+def _expand(fn: FuncDef, rename: dict[str, set[str]], site: CallSite, functions: dict[str, FuncDef],
+            stack: tuple[str, ...], budget: list[int]
+            ) -> tuple[list[CallSite], list[AssignEvent], list[SliceEvent]]:
+    budget[0] -= len(fn.calls) + len(fn.assigns)
+    if budget[0] < 0:
+        raise _OverBudget
+    calls: list[CallSite] = []
+    assigns: list[AssignEvent] = []
+    slices: list[SliceEvent] = []
+    copied: dict[int, AssignEvent] = {}
+    renamed: dict[int, CallSite] = {}
+    returned: dict[int, tuple[FuncDef, dict[str, set[str]]]] = {}
+    items = sorted([(c.line, 0, i) for i, c in enumerate(fn.calls)] + [(a.line, 1, i) for i, a in enumerate(fn.assigns)])
+    for _, kind, i in items:
+        if kind == 0:
+            c = fn.calls[i]
+            renamed[id(c)] = _rename_call(c, rename, site)
+            calls.append(renamed[id(c)])
+            callee, args = _call_target(c, functions)
+            if callee is None or callee.name in stack or len(stack) >= MAX_INLINE_DEPTH:
+                continue
+            inner = {p: _rename_names(a, rename) for p, a in zip(callee.params, args) if a}
+            sub_calls, sub_assigns, sub_slices = _expand(callee, inner, site, functions, (*stack, callee.name), budget)
+            calls += sub_calls
+            assigns += sub_assigns
+            slices += sub_slices
+            returned[id(c)] = (callee, inner)
+            continue
+        ev = fn.assigns[i]
+        new = AssignEvent(targets=_rename_names(ev.targets, rename), sources=_rename_names(ev.sources, rename),
+                          cell=site.cell, line=site.line, end_line=site.end_line or site.line,
+                          call=renamed.get(id(ev.call)) if ev.call is not None else None,
+                          ordered_targets=[next(iter(_rename_names({t}, rename)), t) if t else t
+                                           for t in ev.ordered_targets])
+        copied[id(ev)] = new
+        bound: list[AssignEvent] = []
+        if ev.call is not None and id(ev.call) in returned:
+            callee, inner = returned[id(ev.call)]
+            bound = _bind_returns(new, callee.returns, inner, site)
+        assigns += bound or [new]
+    for sl in fn.slices:
+        base = rename.get(sl.base, {sl.base})
+        if len(base) != 1:
+            continue
+        target = next(iter(rename.get(sl.target, {sl.target}))) if sl.target else None
+        slices.append(SliceEvent(base=next(iter(base)), cell=site.cell, line=site.line, lower=sl.lower,
+                                 upper=sl.upper, target=target,
+                                 event=copied.get(id(sl.event)) if sl.event is not None else None))
+    return calls, assigns, slices
+
+
 def analyze(nb: ParsedNotebook) -> NotebookDataflow:
     flow = NotebookDataflow()
     for cell in nb.code_cells:
@@ -604,27 +711,29 @@ def analyze(nb: ParsedNotebook) -> NotebookDataflow:
         flow.slices.extend(visitor.slices)
         flow.functions.update({f.name: f for f in visitor.functions})
     own_events = len(flow.calls) + len(flow.assigns) + sum(len(f.calls) + len(f.assigns) for f in flow.functions.values())
-    inline_budget = 4 * own_events
-    inlined = 0
+    budget = [4 * own_events]
+    assign_of = {id(ev.call): ev for ev in flow.assigns if ev.call is not None}
     for site in list(flow.calls):
         fn, args = _call_target(site, flow.functions)
         if fn is None:
             continue
-        inlined += len(fn.calls) + len(fn.assigns)
-        if inlined > inline_budget:
-            inline_budget = -1
+        rename = {p: a for p, a in zip(fn.params, args) if a}
+        try:
+            if budget[0] < 0:
+                raise _OverBudget
+            calls, assigns, slices = _expand(fn, rename, site, flow.functions, (fn.name,), budget)
+        except _OverBudget:
+            budget[0] = -1
             if site.cell not in flow.uninlined_cells:
                 flow.uninlined_cells.append(site.cell)
             continue
-        rename = {p: a for p, a in zip(fn.params, args) if a}
-        for c in fn.calls:
-            flow.calls.append(_rename_call(c, rename, site))
-        for i, ev in enumerate(fn.assigns):
-            flow.assigns.append(AssignEvent(
-                targets=_rename_names(ev.targets, rename), sources=_rename_names(ev.sources, rename),
-                cell=site.cell, line=site.line, end_line=site.end_line or site.line,
-                col=i - len(fn.assigns),
-            ))
+        for i, ev in enumerate(assigns):
+            ev.col = i - len(assigns)
+        flow.calls += calls
+        flow.assigns += assigns
+        flow.slices += slices
+        if id(site) in assign_of:
+            flow.assigns += _bind_returns(assign_of[id(site)], fn.returns, rename, site)
     flow.assigns.sort(key=lambda e: (e.cell, e.line, e.col))
     flow.uninlined_cells.sort()
     return flow

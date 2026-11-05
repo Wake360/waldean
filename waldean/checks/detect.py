@@ -363,6 +363,10 @@ def detect_leakage_fit_before_split(nb: ParsedNotebook, flow: NotebookDataflow) 
             split_outputs |= ev.targets
             split_binds |= {(t, id(ev)) for t in ev.targets}
             test_binds |= {(t, id(ev)) for t in ev.ordered_targets[1::2]}
+    for head, tail in flow.slice_pairs():
+        split_binds |= {(s.target, id(s.event)) for s in (head, tail) if s.target and s.event is not None}
+        if tail.target and tail.event is not None:
+            test_binds.add((tail.target, id(tail.event)))
     # every .transform call, for binding-aware receiver checks
     transform_calls = [c for c in flow.calls if c.name == "transform" and c.receiver]
     assign_event_of: dict[int, AssignEvent] = {

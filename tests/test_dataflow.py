@@ -295,3 +295,54 @@ def test_slice_split_pairing_does_not_materialise_every_pair():
 def test_slice_split_picks_the_first_head_with_a_matching_tail():
     flow = analyze(nb_from_sources("a = X[:5]\nb = X[:n]\nc = X[n:]\nd = X[:m]\ne = X[m:]"))
     assert [(s.cell, s.line) for s in flow.slice_splits()] == [(0, 3)]
+
+
+def test_helper_called_from_helper_is_inlined():
+    flow = analyze(nb_from_sources(
+        "def inner(d):\n    return d.fillna(d.mean())",
+        "def outer(d):\n    return inner(d)",
+        "df = outer(df)",
+    ))
+    assert any(c.cell == 2 and c.name == "fillna" and c.receiver_base == "df" for c in flow.calls)
+
+
+def test_recursive_helper_inlining_terminates():
+    flow = analyze(nb_from_sources("def f(d):\n    return f(d.x)", "y = f(df)"))
+    assert flow.uninlined_cells == []
+
+
+def test_returned_tuple_binds_targets_position_by_position():
+    flow = analyze(nb_from_sources(
+        "def split(d):\n    train = d[:n]\n    test = d[n:]\n    return train, test",
+        "tr, te = split(df)",
+    ))
+    assert "test" in chain_names(flow, {"te"}, (2, 0))
+    assert "test" not in chain_names(flow, {"tr"}, (2, 0))
+
+
+def test_slices_inside_helper_form_a_split_at_the_call_site():
+    flow = analyze(nb_from_sources(
+        "def split(d):\n    train = d[:n]\n    test = d[n:]\n    return train, test",
+        "tr, te = split(df)",
+    ))
+    sinks = flow.slice_splits()
+    assert len(sinks) == 1 and sinks[0].cell == 1 and sinks[0].pos_args == [{"df"}]
+
+
+def test_return_binding_survives_caller_reusing_callee_local_names():
+    flow = analyze(nb_from_sources(
+        "def split(d):\n    train = d[:n]\n    test = d[n:]\n    return train, test",
+        "def run(d):\n    train, test = split(d)\n    return test",
+        "out = run(df)",
+    ))
+    tails = {(t.target, id(t.event)) for _, t in flow.slice_pairs()}
+    _, bindings = flow.chain({"out"}, (3, 0))
+    assert bindings & tails
+
+
+def test_append_inside_helper_links_returned_list_to_its_input():
+    flow = analyze(nb_from_sources(
+        "def window(d):\n    X = []\n    for i in range(n):\n        X.append(d.iloc[i])\n    return np.array(X)",
+        "Xw = window(df)",
+    ))
+    assert "df" in chain_names(flow, {"Xw"}, (2, 0))

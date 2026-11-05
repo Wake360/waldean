@@ -993,3 +993,28 @@ def test_refit_scoring_check_stays_fast_on_many_later_calls():
     start = time.perf_counter()
     run_static(notebook)
     assert time.perf_counter() - start < 3.0
+
+
+NESTED_SPLIT_HELPERS = [
+    ("code", "def split(d):\n    n = int(0.7 * len(d))\n    train = d[:n]\n    test = d[n:]\n    return train, test"),
+    ("code", "def scale_test(d, scaler):\n    d[['a']] = scaler.{method}(d[['a']])\n    return d"),
+    ("code", (
+        "def create_model(d):\n    tr, te = split(d)\n    scaler = MinMaxScaler()\n"
+        "    tr[['a']] = scaler.fit_transform(tr[['a']])\n    te = scale_test(te, scaler)\n"
+        "    model.fit(tr, tr.y)\n    return model.score(te, te.y)"
+    )),
+    ("code", "score = create_model(df)"),
+]
+
+
+def nested_split_notebook(method):
+    return nb([(t, s.replace("{method}", method)) for t, s in NESTED_SPLIT_HELPERS])
+
+
+def test_refit_on_slice_test_part_two_helpers_deep_is_flagged():
+    flags = [f for f in run_static(nested_split_notebook("fit_transform")) if f.flaw_id == "leakage-fit-before-split"]
+    assert flags and flags[0].confidence >= 0.8 and flags[0].cell == 3
+
+
+def test_transform_on_slice_test_part_two_helpers_deep_is_silent():
+    assert "leakage-fit-before-split" not in flag_ids(nested_split_notebook("transform"), floor=0.0)
