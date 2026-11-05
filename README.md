@@ -142,8 +142,8 @@ A [hook](https://github.com/Wake360/waldean/blob/main/docs/agent-gate.md) can bl
 
 ## Known limitations
 
-- Misses on real code: a split returned from a helper or reached more than one
-  helper level deep, test data known only by name, a manual `KFold.split`
+- Misses on real code: a split reached more than three helper levels deep or
+  passed through a file, test data known only by name, a manual `KFold.split`
   loop, files over the input size cap, and Python 2 cells. A scaler fitted on
   all rows that feeds `cross_val_score` is reported only as a candidate below
   the 0.8 floor, by design.

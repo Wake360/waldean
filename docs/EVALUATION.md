@@ -92,15 +92,20 @@ classes on its own:
   the dogfood report.
 
   Function inlining limits: a call to a notebook-level function is
-  inlined one level deep; a helper called from inside a helper is not
-  inlined.
+  inlined up to three levels deep, so a helper called from a helper is
+  inlined too; a recursive call stops at the first repeat. The whole
+  inlined body sits at the outer call site, so order inside it is kept
+  but a later name in the body is visible to earlier calls there.
   Only positional parameters are renamed to the call's arguments;
   keyword-only and positional-only parameters and keyword arguments are
   not. Assignments inside the helper appear as notebook-level names at the
   call site, so a helper local can shadow a notebook name of the same
-  spelling (a known imprecision). Return values are not bound, so
-  `train, test = split(df)` does not carry the helper's split. `.pipe`
-  is inlined when its first argument is a named function or a lambda.
+  spelling (a known imprecision). Return values are bound position by
+  position, so `train, test = split(df)` carries the helper's
+  `train_test_split` or row-slice split, and the tail slice counts as test
+  data. A split passed through a file (pickle, CSV) is not followed.
+  `.pipe` is inlined when its first argument is a named function or a
+  lambda.
 
 - `leakage-temporal-shuffle` — time-ordered data with lag/rolling-window
   features (`shift`, `rolling`, `diff`, `pct_change`, …) split by a
