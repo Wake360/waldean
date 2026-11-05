@@ -1018,3 +1018,13 @@ def test_refit_on_slice_test_part_two_helpers_deep_is_flagged():
 
 def test_transform_on_slice_test_part_two_helpers_deep_is_silent():
     assert "leakage-fit-before-split" not in flag_ids(nested_split_notebook("transform"), floor=0.0)
+
+
+def test_refit_on_notebook_level_slice_test_part_is_flagged():
+    notebook = nb([
+        ("code", "train = df[:n]\ntest = df[n:]"),
+        ("code", "scaler.fit(train)\nmodel.fit(scaler.transform(train), y_tr)"),
+        ("code", "test_s = scaler.fit_transform(test)\npred = model.predict(test_s)"),
+    ])
+    flags = [f for f in run_static(notebook) if f.flaw_id == "leakage-fit-before-split"]
+    assert flags and flags[0].cell == 2 and flags[0].confidence >= 0.8
